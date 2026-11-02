@@ -1,22 +1,29 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
+import { sampleRange } from "@/lib/samples/range";
+import { periodParams, type SP } from "@/lib/url";
 import { getSampleItems, getSampleProducts } from "@/lib/samples/analysis";
 import { Badge, Card, CardHeader, EmptyState, PageHeader, Td, Th } from "@/components/ui/primitives";
 import { BarList } from "@/components/charts/bar-list";
 import { SamplesNav } from "@/components/samples/samples-nav";
+import { FilesBar } from "@/components/samples/files-bar";
 import { cn, fmtInt, fmtPct, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sampled products" };
 
-export default async function SampleProductsPage() {
-  await requireUser();
-  const [list, items] = await Promise.all([getSampleProducts(), getSampleItems()]);
+export default async function SampleProductsPage({ searchParams }: PageProps<"/samples/products">) {
+  const user = await requireUser();
+  const sp = (await searchParams) as SP;
+  const pp = periodParams(sp);
+  const { range } = await sampleRange(sp);
+  const [list, items] = await Promise.all([getSampleProducts(range), getSampleItems(range)]);
 
   if (!list.length) {
     return (
       <div>
         <PageHeader title="Samples" description="Which sampled products turn into content and sales." />
-        <SamplesNav current="/samples/products" />
+        <FilesBar role={user.role} />
+        <SamplesNav current="/samples/products" params={pp} />
         <Card><EmptyState title="No samples yet" description="Upload the All orders export to see which products you sample and what they bring back." /></Card>
       </div>
     );
@@ -27,7 +34,8 @@ export default async function SampleProductsPage() {
   return (
     <div>
       <PageHeader title="Samples" description="Which sampled products turn into content and sales – and what physically went out, with bundles split into their items." />
-      <SamplesNav current="/samples/products" />
+      <FilesBar role={user.role} />
+        <SamplesNav current="/samples/products" params={pp} />
       <div className="space-y-5">
         <section className="grid gap-4 xl:grid-cols-2">
           <Card>

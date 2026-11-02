@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { periodQuery, resolvePeriod } from "@/lib/period";
+import { periodQuery } from "@/lib/period";
+import { sampleRange } from "@/lib/samples/range";
+import { periodParams, type SP } from "@/lib/url";
 import { getSampleReport } from "@/lib/analytics/samples";
 import { Card, CardHeader, EmptyState, PageHeader, Td, Th } from "@/components/ui/primitives";
 import { KpiCard } from "@/components/ui/kpi-card";
@@ -11,14 +13,16 @@ import { fmtDate, fmtInt, fmtPct, fmtRM } from "@/lib/utils";
 export const metadata: Metadata = { title: "TikTok sample report" };
 
 export default async function SamplesReportPage({ searchParams }: PageProps<"/samples/report">) {
-  const period = await resolvePeriod(await searchParams);
+  const sp = (await searchParams) as SP;
+  const pp = periodParams(sp);
+  const { period } = await sampleRange(sp);
   const qs = periodQuery(period);
   const r = await getSampleReport(period);
   if (!r) {
     return (
       <>
         <PageHeader title="Samples" description="Are your free samples turning into content and sales?" />
-        <SamplesNav current="/samples/report" />
+        <SamplesNav current="/samples/report" params={pp} />
         <Card><EmptyState title="No sample data for this period" description="Upload the Sample analysis export in the Data hub." /></Card>
       </>
     );
@@ -34,7 +38,7 @@ export default async function SamplesReportPage({ searchParams }: PageProps<"/sa
         title="Samples"
         description={`TikTok's sample analysis for ${fmtDate(r.snapshot.start)} – ${fmtDate(r.snapshot.end)} (follows the date picker). ROI is TikTok's estimate of GMV against sample cost.`}
       />
-      <SamplesNav current="/samples/report" />
+      <SamplesNav current="/samples/report" params={pp} />
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <KpiCard label="Samples shipped" value={fmtInt(t.shipped)} sub={`${fmtInt(t.requested)} requested`} />
         <KpiCard label="Posted content" value={`${fmtInt(t.posted)} / ${fmtInt(t.posted + t.noContent)}`} sub="creators with samples" hint="Creators who received samples and posted at least one video or LIVE." />

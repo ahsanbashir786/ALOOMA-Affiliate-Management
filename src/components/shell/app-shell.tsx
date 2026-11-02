@@ -26,13 +26,12 @@ export function AppShell({
   const pathname = usePathname();
   const sp = useSearchParams();
   const period = computePeriod(bounds, {
-    range: sp.get("range"),
+    // Sample pages default to every sample; other pages to the last 28 days.
+    range: sp.get("range") ?? (pathname.startsWith("/samples") ? "all" : null),
     from: sp.get("from"),
     to: sp.get("to"),
   });
-  // Sample pages show every sample regardless of period – except TikTok's dated sample report.
-  const showPeriod =
-    !NO_PERIOD.some((p) => pathname.startsWith(p)) && !(pathname.startsWith("/samples") && pathname !== "/samples/report");
+  const showPeriod = !NO_PERIOD.some((p) => pathname.startsWith(p));
 
   return (
     <div className="min-h-screen">

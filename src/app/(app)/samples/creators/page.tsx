@@ -4,50 +4,76 @@ import { MessageCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { getThresholds } from "@/lib/analytics/settings";
 import { CONTENT_TYPE_LABEL, getSampleScorecard, type ScoreRow } from "@/lib/samples/analysis";
-import { QUEUES, VERDICTS, type SampleVerdict } from "@/lib/samples/states";
-import { href, one, type SP } from "@/lib/url";
+import { QUEUES, VERDICTS, waLink, type SampleVerdict } from "@/lib/samples/states";
+import { sampleRange } from "@/lib/samples/range";
+import { href, one, periodParams, type SP } from "@/lib/url";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Select, SortTh, Td, Th } from "@/components/ui/primitives";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Pagination } from "@/components/ui/pagination";
 import { SamplesNav } from "@/components/samples/samples-nav";
-import { waLink } from "@/lib/samples/states";
+import { FilesBar } from "@/components/samples/files-bar";
 import { cn, fmtDate, fmtInt, fmtPct, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sample scorecard" };
 
 const PAGE_SIZE = 40;
-type SortKey = "samples" | "rate" | "days" | "gmv" | "notposted" | "name";
-const ORDER: SampleVerdict[] = QUEUES;
+
+const SORTS = {
+  notposted: { label: "Not posted (most first)", dir: "desc" },
+  gmv: { label: "Sales after samples", dir: "desc" },
+  value: { label: "Est. value", dir: "desc" },
+  samples: { label: "Samples received", dir: "desc" },
+  posted: { label: "Samples posted", dir: "desc" },
+  rate: { label: "Posting rate", dir: "desc" },
+  days: { label: "Days to post (fastest first)", dir: "asc" },
+  videos: { label: "Videos since sample", dir: "desc" },
+  lives: { label: "LIVEs", dir: "desc" },
+  type: { label: "Type", dir: "asc" },
+  step: { label: "Next step", dir: "asc" },
+  name: { label: "Creator name (A–Z)", dir: "asc" },
+} as const;
+type SortKey = keyof typeof SORTS;
+
+const TYPE_ORDER: Record<string, number> = { both: 0, video: 1, live: 2 };
+
+function sortValue(r: ScoreRow, k: SortKey): number | string {
+  switch (k) {
+    case "samples": return r.samples;
+    case "posted": return r.posted;
+    case "rate": return r.postingRate ?? -1;
+    case "days": return r.avgDaysToPost ?? Infinity;
+    case "gmv": return r.contentGmv;
+    case "value": return r.value;
+    case "videos": return r.videosSince;
+    case "lives": return r.lives;
+    case "type": return r.type ? TYPE_ORDER[r.type] : 9;
+    case "step": return QUEUES.indexOf(r.verdict);
+    case "name": return r.username;
+    default: return r.notPosted * 1e6 + r.samples;
+  }
+}
 
 export default async function SampleScorecardPage({ searchParams }: PageProps<"/samples/creators">) {
-  await requireUser();
+  const user = await requireUser();
   const sp = (await searchParams) as SP;
-  const [{ rows: all, dataDate }, t] = await Promise.all([getSampleScorecard(), getThresholds()]);
+  const pp = periodParams(sp);
+  const { range } = await sampleRange(sp);
+  const [{ rows: all, dataDate }, t] = await Promise.all([getSampleScorecard(range), getThresholds()]);
   const verdict = one(sp.verdict) as SampleVerdict | undefined;
   const type = one(sp.type);
   const q = (one(sp.q) ?? "").trim().toLowerCase();
-  const sort = (one(sp.sort) as SortKey) || "notposted";
-  const dir = one(sp.dir) === "asc" ? "asc" : "desc";
+  const sort: SortKey = (one(sp.sort) as SortKey) in SORTS ? (one(sp.sort) as SortKey) : "notposted";
+  const dir = one(sp.dir) === "asc" || one(sp.dir) === "desc" ? (one(sp.dir) as "asc" | "desc") : SORTS[sort].dir;
   const page = Math.max(1, Number(one(sp.page)) || 1);
 
   let list = all;
   if (verdict && VERDICTS[verdict]) list = list.filter((r) => r.verdict === verdict);
   if (type) list = list.filter((r) => (type === "none" ? !r.type : r.type === type));
   if (q) list = list.filter((r) => r.username.includes(q) || (r.phone ?? "").includes(q));
-  const val = (r: ScoreRow): number | string => {
-    switch (sort) {
-      case "samples": return r.samples;
-      case "rate": return r.postingRate ?? -1;
-      case "days": return r.avgDaysToPost ?? Infinity;
-      case "gmv": return r.contentGmv;
-      case "name": return r.username;
-      default: return r.notPosted * 1e6 + r.samples;
-    }
-  };
   list = [...list].sort((a, b) => {
-    const x = val(a), y = val(b);
+    const x = sortValue(a, sort), y = sortValue(b, sort);
     const c = typeof x === "string" ? x.localeCompare(y as string) : (x as number) - (y as number);
-    return dir === "asc" ? c : -c;
+    return (dir === "asc" ? c : -c) || b.samples - a.samples;
   });
 
   const judged = all.reduce((a, r) => a + r.judged, 0);
@@ -60,20 +86,24 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
   const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
   const cur = Math.min(page, pages);
   const rows = list.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
-  const base = { verdict, type, q: one(sp.q), sort: sort !== "notposted" ? sort : undefined, dir: dir !== "desc" ? dir : undefined };
-  const sortHref = (k: SortKey) => href("/samples/creators", { ...base, sort: k, dir: sort === k && dir === "desc" ? "asc" : "desc", page: undefined });
-  const sortProps = (k: SortKey) => ({ href: sortHref(k), active: sort === k, dir } as const);
+  // Keep the chosen sort in every link; the default sort needs no parameters.
+  const isDefault = sort === "notposted" && dir === SORTS.notposted.dir;
+  const base = { ...pp, verdict, type, q: one(sp.q), sort: isDefault ? undefined : sort, dir: isDefault ? undefined : dir };
+  const sortHref = (k: SortKey) =>
+    href("/samples/creators", { ...base, sort: k, dir: sort === k ? (dir === "desc" ? "asc" : "desc") : SORTS[k].dir, page: undefined });
+  const sp2 = (k: SortKey) => ({ href: sortHref(k), active: sort === k, dir } as const);
 
   return (
     <div>
       <PageHeader
         title="Samples"
-        description={`Compare creators side by side. Posting is judged ${t.samplePostDays} days after delivery; “Send more samples” needs at least ${fmtRM(t.sampleMoreMinGmv)} in sales from the sampled products.`}
+        description={`Compare creators side by side${range ? ` (samples approved ${fmtDate(range.start)} – ${fmtDate(range.end)})` : ""}. Posting is judged ${t.samplePostDays} days after delivery; “Send more samples” needs at least ${fmtRM(t.sampleMoreMinGmv)} in sales from the sampled products.`}
       />
-      <SamplesNav current="/samples/creators" />
+      <FilesBar role={user.role} />
+      <SamplesNav current="/samples/creators" params={pp} />
 
       {!all.length ? (
-        <Card><EmptyState title="No sampled creators yet" description="Upload the All orders export – free-sample orders are matched to creators automatically." /></Card>
+        <Card><EmptyState title={range ? "No samples in this date range" : "No sampled creators yet"} description={range ? "Choose a wider range at the top." : "Upload the All orders export – free-sample orders are matched to creators automatically."} /></Card>
       ) : (
         <div className="space-y-5">
           <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -87,7 +117,7 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
 
           <Card>
             <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 pt-2">
-              {[undefined, ...ORDER].map((v) => (
+              {[undefined, ...QUEUES].map((v) => (
                 <Link
                   key={v ?? "all"}
                   href={href("/samples/creators", { ...base, verdict: v, page: undefined })}
@@ -101,7 +131,10 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
             </div>
             <form action="/samples/creators" className="flex flex-wrap items-center gap-2.5 border-b border-line p-4">
               {verdict && <input type="hidden" name="verdict" value={verdict} />}
-              <Input name="q" defaultValue={one(sp.q)} placeholder="Search creator or phone…" className="max-w-[260px]" aria-label="Search" />
+              {pp.range && <input type="hidden" name="range" value={pp.range} />}
+              {pp.from && <input type="hidden" name="from" value={pp.from} />}
+              {pp.to && <input type="hidden" name="to" value={pp.to} />}
+              <Input name="q" defaultValue={one(sp.q)} placeholder="Search creator or phone…" className="max-w-[240px]" aria-label="Search" />
               <Select name="type" defaultValue={type ?? ""} aria-label="Content type">
                 <option value="">Video & LIVE</option>
                 <option value="video">Video only</option>
@@ -109,25 +142,36 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
                 <option value="both">Video + LIVE</option>
                 <option value="none">Not known yet</option>
               </Select>
-              <Button type="submit">Filter</Button>
-              <span className="ml-auto text-[12.5px] text-ink-3">Data up to {fmtDate(dataDate)}</span>
+              <label className="flex items-center gap-2 text-[13.5px] text-ink-2">
+                Sort by
+                <Select name="sort" defaultValue={sort} aria-label="Sort by">
+                  {(Object.keys(SORTS) as SortKey[]).map((k) => <option key={k} value={k}>{SORTS[k].label}</option>)}
+                </Select>
+              </label>
+              <Select name="dir" defaultValue={dir} aria-label="Sort direction">
+                <option value="desc">High → low</option>
+                <option value="asc">Low → high</option>
+              </Select>
+              <Button type="submit">Apply</Button>
+              <span className="ml-auto text-[12.5px] text-ink-3">{fmtInt(list.length)} creators · data up to {fmtDate(dataDate)}</span>
             </form>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1280px] border-collapse">
+              <table className="w-full min-w-[1320px] border-collapse">
                 <thead>
                   <tr>
-                    <SortTh {...sortProps("name")}>Creator</SortTh>
-                    <Th>Type</Th>
-                    <Th align="right">Videos / LIVEs</Th>
-                    <SortTh {...sortProps("samples")} align="right">Samples</SortTh>
-                    <Th align="right">Posted</Th>
-                    <SortTh {...sortProps("rate")} align="right">Posting rate</SortTh>
-                    <SortTh {...sortProps("days")} align="right">Days to post</SortTh>
-                    <SortTh {...sortProps("gmv")} align="right">Sales after</SortTh>
-                    <SortTh {...sortProps("notposted")} align="right">Not posted</SortTh>
+                    <SortTh {...sp2("name")}>Creator</SortTh>
+                    <SortTh {...sp2("type")}>Type</SortTh>
+                    <SortTh {...sp2("videos")} align="right">Videos</SortTh>
+                    <SortTh {...sp2("lives")} align="right">LIVEs</SortTh>
+                    <SortTh {...sp2("samples")} align="right">Samples</SortTh>
+                    <SortTh {...sp2("posted")} align="right">Posted</SortTh>
+                    <SortTh {...sp2("rate")} align="right">Posting rate</SortTh>
+                    <SortTh {...sp2("days")} align="right">Days to post</SortTh>
+                    <SortTh {...sp2("gmv")} align="right">Sales after</SortTh>
+                    <SortTh {...sp2("notposted")} align="right">Not posted</SortTh>
                     <Th>Products</Th>
-                    <Th>Next step</Th>
-                    <Th align="right">Est. value</Th>
+                    <SortTh {...sp2("step")}>Next step</SortTh>
+                    <SortTh {...sp2("value")} align="right">Est. value</SortTh>
                   </tr>
                 </thead>
                 <tbody>
@@ -145,7 +189,8 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
                         </div>
                       </Td>
                       <Td>{r.type ? <Badge tone={r.type === "live" ? "brand" : r.type === "both" ? "good" : "neutral"}>{CONTENT_TYPE_LABEL[r.type]}</Badge> : <span className="text-ink-3">–</span>}</Td>
-                      <Td align="right" className="text-ink-2">{fmtInt(r.videos)} / {fmtInt(r.lives)}</Td>
+                      <Td align="right">{fmtInt(r.videosSince)}</Td>
+                      <Td align="right">{fmtInt(r.lives)}</Td>
                       <Td align="right">{fmtInt(r.samples)}{r.qty !== r.samples ? <span className="text-ink-3"> ({r.qty} items)</span> : null}</Td>
                       <Td align="right">{fmtInt(r.posted)} / {fmtInt(r.judged)}</Td>
                       <Td align="right" className={cn(r.postingRate != null && r.postingRate < 0.5 && "font-medium text-serious")}>{r.postingRate == null ? "–" : fmtPct(r.postingRate, 0)}</Td>
@@ -157,13 +202,17 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
                       <Td align="right" className="text-good">{r.value > 0 ? fmtRM(r.value) : "–"}</Td>
                     </tr>
                   ))}
-                  {!rows.length && <tr><Td colSpan={12} className="py-10 text-center text-ink-3">No creators match.</Td></tr>}
+                  {!rows.length && <tr><Td colSpan={13} className="py-10 text-center text-ink-3">No creators match.</Td></tr>}
                 </tbody>
               </table>
             </div>
             <Pagination page={cur} pages={pages} total={list.length} pageSize={PAGE_SIZE} hrefFor={(p) => href("/samples/creators", { ...base, page: p })} />
           </Card>
-          <p className="text-[12.5px] leading-relaxed text-ink-3">Type comes from what the creator actually did (video vs LIVE sales and posts in TikTok&apos;s reports), or from your notes when there&apos;s no data yet. “Est. value” is a cautious estimate of sales gained by acting (for old content: monthly sales that depend on the old videos). Work through these on the Tracker – each verdict also appears in the Action centre with a WhatsApp message.</p>
+          <p className="text-[12.5px] leading-relaxed text-ink-3">
+            Click any column title to sort (click again to reverse), or use the Sort by menu. Type comes from what the creator actually did (video vs LIVE sales and posts in
+            TikTok&apos;s reports), or from your notes when there&apos;s no data yet. “Est. value” is a cautious estimate of sales gained by acting (for old content: monthly sales
+            that depend on the old videos). Work through these on the Tracker – each verdict also appears in the Action centre with a WhatsApp message.
+          </p>
         </div>
       )}
     </div>

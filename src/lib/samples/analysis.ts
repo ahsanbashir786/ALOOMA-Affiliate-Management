@@ -5,6 +5,10 @@ import { getThresholds, type Thresholds } from "@/lib/analytics/settings";
 import { RESULT_EXPR } from "./service";
 import { lineState, type LineState, type ResultKey, type SampleVerdict } from "./states";
 
+/** Optional date window (inclusive, YYYY-MM-DD) applied to when the sample was approved. */
+export type DateRange = { start: string; end: string } | undefined;
+const rangeSql = (r: DateRange) => (r ? sql`and s.approved_at >= ${r.start}::date and s.approved_at < (${r.end}::date + 1)` : sql``);
+
 // ───────────────────────── Creator content type ─────────────────────────
 
 export type ContentType = "video" | "live" | "both";
@@ -111,7 +115,7 @@ function adviceFor(r: ScoreRow, t: Thresholds, today: string): string {
 }
 
 /** One row per creator who received samples (free-sample orders), with the next step for the manager. */
-export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate: string; perPosted: number }> {
+export async function getSampleScorecard(range?: DateRange): Promise<{ rows: ScoreRow[]; dataDate: string; perPosted: number }> {
   const t = await getThresholds();
   const [{ d }] = await rows<{ d: string }>(sql`
     select to_char(greatest(
@@ -126,7 +130,7 @@ export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate
   }>(sql`
     with s as (
       select s.*, ${RESULT_EXPR} as r from samples s
-      where s.source = 'orders' and s.creator is not null
+      where s.source = 'orders' and s.creator is not null ${rangeSql(range)}
     ),
     agg as (
       select creator,
@@ -242,6 +246,8 @@ export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate
 
 export type BundlePart = { sku: string; name: string; qty: number };
 
+export type SampleVideo = { id: string; link: string | null; postedAt: string | null; views: number; gmv: number; orders: number; product: boolean };
+
 export type SampleLine = {
   id: number;
   creator: string | null;
@@ -265,6 +271,8 @@ export type SampleLine = {
   state: LineState;
   videoCount: number;
   otherVideoCount: number;
+  /** Every video posted since delivery (this product first), with its link, views and sales. */
+  videos: SampleVideo[];
   contentViews: number;
   contentGmv: number;
   contentOrders: number;
@@ -291,7 +299,7 @@ async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> 
     left join users u on u.id = s.owner_id
     where s.source = 'orders' and ${where}
     order by s.approved_at desc nulls last, s.id desc`);
-  return list.map((r) => {
+  const lines = list.map((r) => {
     const result = ((r.r as ResultKey) ?? "in_transit") as ResultKey;
     const delivered = day(r.delivered_at);
     return {
@@ -316,6 +324,7 @@ async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> 
       state: lineState(result, Number(r.content_orders ?? 0)),
       videoCount: Number(r.video_count ?? 0),
       otherVideoCount: Number(r.other_video_count ?? 0),
+      videos: [],
       contentViews: Number(r.content_views ?? 0),
       contentGmv: Number(r.content_gmv ?? 0),
       contentOrders: Number(r.content_orders ?? 0),
@@ -325,29 +334,78 @@ async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> 
       note: (r.note as string) ?? null,
       orderSubstatus: (r.order_substatus as string) ?? null,
       trackingId: (r.tracking_id as string) ?? null,
-    };
+    } as SampleLine;
   });
+  await attachVideos(lines);
+  return lines;
+}
+
+/** Adds the list of videos posted since delivery (with link, views and sales) to every delivered sample line. */
+async function attachVideos(lines: SampleLine[]): Promise<void> {
+  const ids = lines.filter((l) => l.creator && l.deliveredAt).map((l) => l.id);
+  if (!ids.length) return;
+  const idList = sql.join(ids.map((i) => sql`${i}`), sql`, `);
+  const vids = await rows<{ sid: number; vid: string; link: string | null; posted: string | null; views: number; prod: boolean }>(sql`
+    with sp as (
+      select s.id, s.creator, s.delivered_at,
+        coalesce(
+          (select o.product_id from order_lines o where s.sku_id is not null and o.sku_id = s.sku_id limit 1),
+          (select o.product_id from order_lines o where s.seller_sku is not null and upper(o.seller_sku) = upper(s.seller_sku) limit 1),
+          (select p.product_id from products p where s.product_name is not null and p.name = s.product_name limit 1)
+        ) as pid
+      from samples s where s.id in (${idList}) and s.creator is not null and s.delivered_at is not null
+    )
+    select sp.id as sid, v.video_id as vid, v.link, to_char(v.posted_at, 'YYYY-MM-DD') as posted,
+      coalesce((select max(s2.views) from video_snapshots s2 where s2.video_id = v.video_id), 0)::int as views,
+      coalesce(sp.pid = any(v.product_ids), false) as prod
+    from sp join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day'
+    union all
+    -- new videos that already sell in orders but are not in the video report yet
+    select sp.id, o.content_id, 'https://www.tiktok.com/@' || sp.creator || '/video/' || o.content_id,
+      to_char(min(o.created_at), 'YYYY-MM-DD'), 0, bool_or(sp.pid is null or o.product_id = sp.pid)
+    from sp join order_lines o on o.creator = sp.creator and o.content_type = 'Video' and o.content_id is not null
+    where not exists (select 1 from videos v2 where v2.video_id = o.content_id)
+    group by sp.id, o.content_id, sp.creator, sp.delivered_at
+    having min(o.created_at) >= sp.delivered_at
+    order by posted`);
+  if (!vids.length) return;
+  const sales = await rows<{ content_id: string; gmv: number; n: number }>(sql`
+    select content_id, coalesce(sum(pay) filter (where valid), 0)::float8 as gmv, (count(distinct order_id) filter (where valid))::int as n
+    from ${AL}
+    where content_id in (${sql.join([...new Set(vids.map((v) => v.vid))].map((i) => sql`${i}`), sql`, `)})
+    group by content_id`);
+  const sale = new Map(sales.map((x) => [x.content_id, x]));
+  const by = new Map<number, SampleVideo[]>();
+  for (const v of vids) {
+    const x = sale.get(v.vid);
+    by.set(v.sid, [...(by.get(v.sid) ?? []), { id: v.vid, link: v.link, postedAt: v.posted, views: v.views, gmv: x?.gmv ?? 0, orders: x?.n ?? 0, product: v.prod }]);
+  }
+  for (const l of lines) {
+    const list = by.get(l.id);
+    // this product first, then by date
+    if (list) l.videos = [...list].sort((a, b) => Number(b.product) - Number(a.product) || (a.postedAt ?? "").localeCompare(b.postedAt ?? ""));
+  }
 }
 
 /** Sample lines of the given creators, grouped by creator. */
-export async function getSampleLines(creators: string[]): Promise<Map<string, SampleLine[]>> {
+export async function getSampleLines(creators: string[], range?: DateRange): Promise<Map<string, SampleLine[]>> {
   const out = new Map<string, SampleLine[]>();
   if (!creators.length) return out;
-  const lines = await queryLines(sql`s.creator in (${sql.join(creators.map((c) => sql`${c}`), sql`, `)})`);
+  const lines = await queryLines(sql`s.creator in (${sql.join(creators.map((c) => sql`${c}`), sql`, `)}) ${rangeSql(range)}`);
   for (const l of lines) out.set(l.creator!, [...(out.get(l.creator!) ?? []), l]);
   return out;
 }
 
 /** Samples whose receiver couldn't be matched to a creator yet, grouped by the masked name TikTok shows. */
-export async function getUnknownLines(): Promise<{ buyer: string; lines: SampleLine[] }[]> {
-  const lines = await queryLines(sql`s.creator is null`);
+export async function getUnknownLines(range?: DateRange): Promise<{ buyer: string; lines: SampleLine[] }[]> {
+  const lines = await queryLines(sql`s.creator is null ${rangeSql(range)}`);
   const by = new Map<string, SampleLine[]>();
   for (const l of lines) by.set(l.buyerMasked ?? "?", [...(by.get(l.buyerMasked ?? "?") ?? []), l]);
   return [...by].map(([buyer, ls]) => ({ buyer, lines: ls }));
 }
 
 /** Creators with at least one sample that matches the search, owner or follow-up filter. */
-export async function getCreatorsMatching(f: { q?: string; owner?: string | null; due?: boolean }): Promise<Set<string> | null> {
+export async function getCreatorsMatching(f: { q?: string; owner?: string | null; due?: boolean }, range?: DateRange): Promise<Set<string> | null> {
   if (!f.q && !f.owner && !f.due) return null;
   const conds = [sql`s.source = 'orders' and s.creator is not null`];
   if (f.q) {
@@ -361,14 +419,14 @@ export async function getCreatorsMatching(f: { q?: string; owner?: string | null
     select distinct s.creator from samples s
     left join creators c on c.username = s.creator
     left join sku_items k on upper(k.sku) = upper(s.seller_sku)
-    where ${sql.join(conds, sql` and `)}`);
+    where ${sql.join(conds, sql` and `)} ${rangeSql(range)}`);
   return new Set(r.map((x) => x.creator));
 }
 
 /** Count of samples by line state – used by the KPI strip. */
-export async function getSampleTotals(): Promise<{ sent: number; qty: number; delivered: number; chase: number; noSales: number; selling: number; gmv: number; unknown: number }> {
+export async function getSampleTotals(range?: DateRange): Promise<{ sent: number; qty: number; delivered: number; chase: number; noSales: number; selling: number; gmv: number; unknown: number }> {
   const [r] = await rows<{ sent: number; qty: number; delivered: number; chase: number; nosales: number; selling: number; gmv: number; unknown: number }>(sql`
-    with s as (select s.*, ${RESULT_EXPR} as r from samples s where s.source = 'orders')
+    with s as (select s.*, ${RESULT_EXPR} as r from samples s where s.source = 'orders' ${rangeSql(range)})
     select count(*)::int as sent, coalesce(sum(quantity), 0)::int as qty,
       (count(*) filter (where delivered_at is not null))::int as delivered,
       (count(*) filter (where r = 'not_posted'))::int as chase,
@@ -401,14 +459,14 @@ export type SampleProductRow = {
 };
 
 /** Sampled SKUs: how many went out, how many turned into content, and the sales that followed. */
-export async function getSampleProducts(): Promise<SampleProductRow[]> {
+export async function getSampleProducts(range?: DateRange): Promise<SampleProductRow[]> {
   const data = await rows<{
     sku: string; name: string | null; family: string | null; is_set: boolean | null; contents: string | null; samples: number;
     qty: number; creators: number; judged: number; posted: number; days: number | null; gmv: number; orders: number;
   }>(sql`
     with s as (
       select s.*, ${RESULT_EXPR} as r, coalesce(s.seller_sku, 'Unknown') as key
-      from samples s where s.source = 'orders'
+      from samples s where s.source = 'orders' ${rangeSql(range)}
     )
     select s.key as sku, max(coalesce(k.name, s.variation)) as name, max(k.family) as family, bool_or(k.is_set) as is_set,
       (select string_agg(b.qty || '× ' || coalesce(ki.name, b.component_sku), ', ' order by b.component_sku)
@@ -441,9 +499,9 @@ export async function getSampleProducts(): Promise<SampleProductRow[]> {
 }
 
 /** Single items sent, with bundles broken down into their contents (needs the SKU list). */
-export async function getSampleItems(): Promise<{ sku: string; name: string; qty: number; creators: number }[]> {
+export async function getSampleItems(range?: DateRange): Promise<{ sku: string; name: string; qty: number; creators: number }[]> {
   return rows(sql`
-    with s as (select * from samples where source = 'orders' and coalesce(order_status, '') <> 'Canceled'),
+    with s as (select s.* from samples s where s.source = 'orders' and coalesce(s.order_status, '') <> 'Canceled' ${rangeSql(range)}),
     items as (
       select coalesce(b.component_sku, s.seller_sku, 'Unknown') as sku, s.quantity * coalesce(b.qty, 1) as qty, s.creator
       from s left join sku_bom b on upper(b.set_sku) = upper(s.seller_sku)

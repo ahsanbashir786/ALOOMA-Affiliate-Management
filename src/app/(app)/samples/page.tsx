@@ -8,11 +8,13 @@ import { can, requireUser } from "@/lib/auth";
 import { getThresholds } from "@/lib/analytics/settings";
 import { getCreatorsMatching, getSampleLines, getSampleScorecard, getSampleTotals, getUnknownLines } from "@/lib/samples/analysis";
 import { QUEUES, VERDICTS, type SampleVerdict } from "@/lib/samples/states";
-import { href, one, type SP } from "@/lib/url";
+import { href, one, periodParams, type SP } from "@/lib/url";
+import { sampleRange } from "@/lib/samples/range";
 import { Button, Card, EmptyState, Input, PageHeader } from "@/components/ui/primitives";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Pagination } from "@/components/ui/pagination";
 import { SamplesNav } from "@/components/samples/samples-nav";
+import { FilesBar } from "@/components/samples/files-bar";
 import { CreatorGroup } from "@/components/samples/creator-group";
 import { SampleLineCard } from "@/components/samples/sample-line";
 import { BuyerMatchForm } from "@/components/samples/buyer-match";
@@ -35,13 +37,16 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
   const noPhone = one(sp.nophone) === "1";
   const page = Math.max(1, Number(one(sp.page)) || 1);
 
+  const pp = periodParams(sp);
+  const { period, range } = await sampleRange(sp);
+
   const [{ rows: all, dataDate }, totals, team, t, unknown, matching] = await Promise.all([
-    getSampleScorecard(),
-    getSampleTotals(),
+    getSampleScorecard(range),
+    getSampleTotals(range),
     db.select({ id: users.id, name: users.name }).from(users).where(sql`${users.active} and ${users.role} in ('admin','manager')`).orderBy(asc(users.name)),
     getThresholds(),
-    getUnknownLines(),
-    getCreatorsMatching({ q, owner: mine ? user.id : null, due }),
+    getUnknownLines(range),
+    getCreatorsMatching({ q, owner: mine ? user.id : null, due }, range),
   ]);
 
   const count = (v: SampleVerdict) => all.filter((r) => r.verdict === v).length;
@@ -54,7 +59,7 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
   const view: SampleVerdict | "all" | "unknown" =
     requested === "all" || requested === "unknown" ? requested : QUEUES.includes(requested as SampleVerdict) ? (requested as SampleVerdict) : first;
 
-  const base = { view: requested, q: q || undefined, mine: mine ? "1" : undefined, due: due ? "1" : undefined, nophone: noPhone ? "1" : undefined };
+  const base = { ...pp, view: requested, q: q || undefined, mine: mine ? "1" : undefined, due: due ? "1" : undefined, nophone: noPhone ? "1" : undefined };
   const noSamples = totals.sent === 0;
 
   let list = all;
@@ -65,23 +70,26 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
   const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
   const cur = Math.min(page, pages);
   const shown = list.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
-  const lines = view === "unknown" ? new Map() : await getSampleLines(shown.map((r) => r.username));
+  const lines = view === "unknown" ? new Map() : await getSampleLines(shown.map((r) => r.username), range);
 
   return (
     <div>
       <PageHeader
         title="Samples"
-        description={`Every free sample, from shipped to content posted – built automatically from your All orders and video files. Posting is judged ${t.samplePostDays} days after delivery.`}
+        description={`Every free sample, from shipped to content posted – built automatically from your files. ${
+          range ? `Showing samples approved ${fmtDate(range.start)} – ${fmtDate(range.end)}.` : "Showing all samples."
+        } Posting is judged ${t.samplePostDays} days after delivery.`}
         actions={canEdit ? <RefreshSamplesButton /> : undefined}
       />
-      <SamplesNav current="/samples" />
+      <FilesBar role={user.role} />
+      <SamplesNav current="/samples" params={pp} />
 
       {noSamples ? (
         <Card>
           <EmptyState
             icon={<Gift className="size-5" />}
-            title="No samples yet"
-            description="Upload the All orders export in the Data hub – free samples (RM 0 orders) are picked up automatically. Add Video analysis and Affiliate orders so the app can see who posted and what sold."
+            title={range ? "No samples in this date range" : "No samples yet"}
+            description={range ? `No sample was approved in ${period.label.toLowerCase()}. Choose a wider range at the top.` : "Upload the All orders export in the Data hub – free samples (RM 0 orders) are picked up automatically. Add Video analysis and Affiliate orders so the app can see who posted and what sold."}
           />
         </Card>
       ) : (
@@ -147,6 +155,9 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
 
           <form action="/samples" className="flex flex-wrap items-center gap-2.5 rounded-xl border border-line bg-surface p-3 shadow-card">
             {requested && <input type="hidden" name="view" value={requested} />}
+            {pp.range && <input type="hidden" name="range" value={pp.range} />}
+            {pp.from && <input type="hidden" name="from" value={pp.from} />}
+            {pp.to && <input type="hidden" name="to" value={pp.to} />}
             <Input name="q" defaultValue={q} placeholder="Search creator, phone, SKU or product…" className="max-w-[300px]" aria-label="Search" />
             <label className="flex items-center gap-2 text-[13.5px] text-ink-2">
               <input type="checkbox" name="mine" value="1" defaultChecked={mine} className="size-4 accent-[var(--brand)]" /> My samples
