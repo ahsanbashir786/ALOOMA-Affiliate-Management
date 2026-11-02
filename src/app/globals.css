@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+/* ───────── Design tokens ─────────
+   Neutral warm surfaces, one brand blue, categorical chart series and
+   reserved status colours (see dataviz palette: validated light + dark). */
+:root {
+  color-scheme: light;
+  --app: #f5f5f2;
+  --surface: #ffffff;
+  --surface-2: #fafaf8;
+  --line: #e6e5e0;
+  --line-strong: #d3d2cb;
+  --ink: #14140f;
+  --ink-2: #52514e;
+  --ink-3: #85847e;
+  --brand: #2a78d6;
+  --brand-strong: #1c5cab;
+  --brand-soft: #e8f1fc;
+  --good: #0a7f0a;
+  --good-soft: #e6f4e6;
+  --warn: #9a6700;
+  --warn-soft: #fdf3d9;
+  --serious: #b4491f;
+  --serious-soft: #fdebe3;
+  --critical: #d03b3b;
+  --critical-soft: #fbe7e7;
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s5: #e87ba4;
+  --s6: #008300;
+  --s7: #6250d6;
+  --s8: #e34948;
+  --grid: #ecece7;
+  --shadow: 0 1px 2px rgba(20, 20, 15, 0.04), 0 1px 1px rgba(20, 20, 15, 0.03);
+  --shadow-pop: 0 12px 32px rgba(20, 20, 15, 0.14), 0 2px 6px rgba(20, 20, 15, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --app: #111110;
+    --surface: #1a1a19;
+    --surface-2: #20201f;
+    --line: #2c2c2a;
+    --line-strong: #3d3d3a;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-3: #8f8e86;
+    --brand: #3987e5;
+    --brand-strong: #6da7ec;
+    --brand-soft: #14263b;
+    --good: #3fbf3f;
+    --good-soft: #14281a;
+    --warn: #e5a82a;
+    --warn-soft: #2d2410;
+    --serious: #ec835a;
+    --serious-soft: #2e1b14;
+    --critical: #ec6a6a;
+    --critical-soft: #2f1717;
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s4: #c98500;
+    --s5: #d55181;
+    --s6: #008300;
+    --s7: #9085e9;
+    --s8: #e66767;
+    --grid: #262624;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --app: #111110;
+  --surface: #1a1a19;
+  --surface-2: #20201f;
+  --line: #2c2c2a;
+  --line-strong: #3d3d3a;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --ink-3: #8f8e86;
+  --brand: #3987e5;
+  --brand-strong: #6da7ec;
+  --brand-soft: #14263b;
+  --good: #3fbf3f;
+  --good-soft: #14281a;
+  --warn: #e5a82a;
+  --warn-soft: #2d2410;
+  --serious: #ec835a;
+  --serious-soft: #2e1b14;
+  --critical: #ec6a6a;
+  --critical-soft: #2f1717;
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --s5: #d55181;
+  --s6: #008300;
+  --s7: #9085e9;
+  --s8: #e66767;
+  --grid: #262624;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+@theme inline {
+  --color-app: var(--app);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-serious: var(--serious);
+  --color-serious-soft: var(--serious-soft);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --shadow-card: var(--shadow);
+  --shadow-pop: var(--shadow-pop);
+}
+
+html {
+  background: var(--app);
+}
+body {
+  background: var(--app);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Slim scrollbars for tables / panels */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: fade-up 0.3s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    animation: none;
+  }
+}
