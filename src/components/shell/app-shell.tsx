@@ -30,7 +30,9 @@ export function AppShell({
     from: sp.get("from"),
     to: sp.get("to"),
   });
-  const showPeriod = !NO_PERIOD.some((p) => pathname.startsWith(p));
+  // Sample pages show every sample regardless of period – except TikTok's dated sample report.
+  const showPeriod =
+    !NO_PERIOD.some((p) => pathname.startsWith(p)) && !(pathname.startsWith("/samples") && pathname !== "/samples/report");
 
   return (
     <div className="min-h-screen">

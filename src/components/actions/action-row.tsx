@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, Loader2, Send, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, MessageCircle, Send, X } from "lucide-react";
 import { assignAction, saveActionNote, setActionStatus } from "@/app/actions/actions";
 import { Badge, Button, Select } from "@/components/ui/primitives";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -24,6 +24,7 @@ export type ActionItem = {
   assigneeId: string | null;
   assigneeName: string | null;
   note: string | null;
+  phone: string | null;
   createdAt: string;
   completedAt: string | null;
 };
@@ -104,6 +105,16 @@ export function ActionRow({
             <pre className="font-sans text-[14px] leading-relaxed whitespace-pre-wrap text-ink">{item.instruction}</pre>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <CopyButton text={item.instruction} />
+              {item.phone && (
+                <a
+                  href={`https://wa.me/${item.phone.replace(/\D/g, "")}?text=${encodeURIComponent(item.instruction.split("\n\nWhatsApp:")[0])}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-surface-2"
+                >
+                  <MessageCircle className="size-4 text-good" /> WhatsApp {item.phone}
+                </a>
+              )}
               <a
                 href={`https://www.tiktok.com/@${item.username}`}
                 target="_blank"

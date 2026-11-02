@@ -10,6 +10,7 @@ import { Delta } from "@/components/ui/delta";
 import { Pagination } from "@/components/ui/pagination";
 import { SegmentBadge } from "@/components/creators/segment-badge";
 import { cn, fmtCompact, fmtInt, fmtPct, fmtRM, initials, pctChange } from "@/lib/utils";
+import { CONTENT_TYPE_LABEL } from "@/lib/samples/analysis";
 
 export const metadata: Metadata = { title: "Creators" };
 
@@ -23,6 +24,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
 
   const q = (one(sp.q) ?? "").trim().toLowerCase();
   const segment = one(sp.segment) as SegmentKey | "longtail" | undefined;
+  const ctype = one(sp.type);
   const sort = (one(sp.sort) as SortKey) || "gmv";
   const dir = one(sp.dir) === "asc" ? "asc" : "desc";
   const page = Math.max(1, Number(one(sp.page)) || 1);
@@ -31,6 +33,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   if (q) list = list.filter((c) => c.username.toLowerCase().includes(q));
   if (segment === "longtail") list = list.filter((c) => !c.segment);
   else if (segment) list = list.filter((c) => c.segment === segment);
+  if (ctype) list = list.filter((c) => (ctype === "none" ? !c.contentType : c.contentType === ctype));
 
   const val = (c: (typeof list)[number]): number | string => {
     switch (sort) {
@@ -55,7 +58,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   const cur = Math.min(page, pages);
   const rows = list.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
   const pp = periodParams(sp);
-  const base = { ...pp, q: one(sp.q), segment, sort: sort !== "gmv" ? sort : undefined, dir: dir !== "desc" ? dir : undefined };
+  const base = { ...pp, q: one(sp.q), segment, type: ctype, sort: sort !== "gmv" ? sort : undefined, dir: dir !== "desc" ? dir : undefined };
   const hasPrev = period.prevEnd >= period.dataMin;
   const qs = periodQuery(period);
 
@@ -86,8 +89,15 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
             ))}
             <option value="longtail">Long tail</option>
           </Select>
+          <Select name="type" defaultValue={ctype ?? ""} aria-label="Content type">
+            <option value="">Video & LIVE</option>
+            <option value="video">Video creators</option>
+            <option value="live">LIVE sellers</option>
+            <option value="both">Video + LIVE</option>
+            <option value="none">Unknown</option>
+          </Select>
           <Button type="submit" variant="primary">Apply</Button>
-          {(q || segment) && (
+          {(q || segment || ctype) && (
             <Link href={href("/creators", pp)} className="text-[13px] text-ink-3 hover:text-ink">Clear</Link>
           )}
           <span className="tnum ml-auto text-[13px] text-ink-3">{fmtInt(total)} creators</span>
@@ -97,15 +107,17 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
           <EmptyState title="No creators match" description="Try a different search or segment." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse">
+            <table className="w-full min-w-[1180px] border-collapse">
               <thead>
                 <tr>
                   <SortTh {...sortProps("name")}>Creator</SortTh>
                   <Th>Segment</Th>
+                  <Th>Type</Th>
                   <SortTh {...sortProps("gmv")} align="right">GMV</SortTh>
                   <SortTh {...sortProps("change")} align="right">vs prev.</SortTh>
                   <SortTh {...sortProps("orders")} align="right">Orders</SortTh>
                   <SortTh {...sortProps("vpw")} align="right">Videos / wk</SortTh>
+                  <Th align="right" title="Shoppable videos and LIVE streams posted in the transaction report window">Videos / LIVEs</Th>
                   <Th align="right">Top product</Th>
                   <SortTh {...sortProps("cancel")} align="right">Cancelled</SortTh>
                   <SortTh {...sortProps("followers")} align="right">Followers</SortTh>
@@ -131,10 +143,20 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
                         ))}
                       </div>
                     </Td>
+                    <Td>
+                      {c.contentType ? (
+                        <Badge tone={c.contentType === "live" ? "brand" : c.contentType === "both" ? "good" : "neutral"} className="text-[11px]">
+                          {CONTENT_TYPE_LABEL[c.contentType]}
+                        </Badge>
+                      ) : (
+                        <span className="text-ink-3">–</span>
+                      )}
+                    </Td>
                     <Td align="right" className="font-medium">{fmtRM(c.gmv)}</Td>
                     <Td align="right"><Delta value={hasPrev ? pctChange(c.gmv, c.prevGmv) : null} /></Td>
                     <Td align="right">{fmtInt(c.orders)}</Td>
                     <Td align="right">{c.vpw == null ? "–" : c.vpw.toFixed(1)}</Td>
+                    <Td align="right" className="text-ink-2">{c.videosPosted == null ? "–" : `${fmtInt(c.videosPosted)} / ${fmtInt(c.livesPosted ?? 0)}`}</Td>
                     <Td align="right" className="max-w-[200px] truncate text-ink-2" title={c.topProductId ? names.get(c.topProductId) : undefined}>
                       {c.topProductId ? names.get(c.topProductId)?.replace(/Washable Quilted THICK /, "") ?? "–" : "–"}
                     </Td>

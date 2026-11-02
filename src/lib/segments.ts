@@ -9,7 +9,11 @@ export type SegmentKey =
   | "slipping"
   | "inactive"
   | "sample_no_post"
-  | "untapped";
+  | "untapped"
+  // Sample follow-up actions (from the sample tracker, not creator segments)
+  | "sample_chase"
+  | "more_samples"
+  | "stop_samples";
 
 export type SegmentTone = "good" | "brand" | "neutral" | "warn" | "serious" | "critical";
 
@@ -87,7 +91,31 @@ export const SEGMENTS: Record<
     summary: "Large following in your creator pool but no sales yet.",
     playbook: "Invite to a target collaboration with a free sample and a clear product brief.",
   },
+  sample_chase: {
+    label: "Sample delivered, not posted",
+    short: "Chase sample",
+    tone: "serious",
+    summary: "A free sample was delivered and the posting deadline has passed with no video or LIVE.",
+    playbook: "WhatsApp a friendly reminder, ask for a posting date and offer a brief.",
+  },
+  more_samples: {
+    label: "Send more samples",
+    short: "More samples",
+    tone: "good",
+    summary: "Posts with samples and the content sells.",
+    playbook: "Offer the next product (a matching set or a new size) and keep them posting.",
+  },
+  stop_samples: {
+    label: "Stop samples",
+    short: "Stop samples",
+    tone: "critical",
+    summary: "Received samples but didn't post, even after the deadline.",
+    playbook: "Don't approve new sample requests until they post content for the samples already received.",
+  },
 };
+
+/** Action types that come from the sample tracker. */
+export const SAMPLE_ACTIONS: SegmentKey[] = ["sample_chase", "more_samples", "stop_samples"];
 
 export const SEGMENT_ORDER: SegmentKey[] = [
   "underposting",

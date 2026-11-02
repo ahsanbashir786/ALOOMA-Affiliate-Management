@@ -33,7 +33,8 @@ type Item = {
 };
 
 // Import order: orders first so later periods resolve against the data window.
-const ORDER = ["affiliate_orders", "all_orders", "product_list", "creator_list", "creator_transactions", "video_list", "sample_analysis"];
+// SKU lists first (product names for samples); the staff sheet last (it matches against everything else).
+const ORDER = ["sku_catalog", "affiliate_orders", "all_orders", "product_list", "creator_list", "creator_transactions", "video_list", "sample_analysis", "staff_sheet"];
 
 export function UploadWorkbench() {
   const router = useRouter();
@@ -131,7 +132,7 @@ export function UploadWorkbench() {
             <UploadCloud className="size-5" />
           </span>
           <span className="text-[15px] font-semibold text-ink">Drop your TikTok exports here</span>
-          <span className="mt-1 text-[13px] text-ink-3">or click to browse · .xlsx · several files at once is fine – each type is detected automatically</span>
+          <span className="mt-1 text-[13px] text-ink-3">or click to browse · .xlsx · several files at once is fine – each type is detected automatically (TikTok exports, your SKU lists and the staff sheet)</span>
           <input
             ref={inputRef}
             id="file-input"
@@ -188,9 +189,16 @@ export function UploadWorkbench() {
                         </div>
                         {it.info.periodSource === "filename" && <span className="pb-1.5 text-[12px] text-ink-3">read from filename – please check</span>}
                       </div>
+                    ) : it.info.kind === "sku_catalog" ? (
+                      <p className="text-[13px] text-ink-2">SKU list – single items and bundle contents are added or updated. Upload every SKU workbook you have.</p>
+                    ) : it.info.kind === "staff_sheet" ? (
+                      <p className="text-[13px] text-ink-2">
+                        Staff sheet – WhatsApp numbers, past samples, LIVE/video approach, notes and video links. Contact details edited in the app are kept.
+                      </p>
                     ) : (
                       <p className="text-[13px] text-ink-2">
                         Orders {it.start ? `${fmtDate(it.start)} – ${fmtDate(it.end)}` : ""}. Existing orders are updated in place, so you can re-upload overlapping ranges safely.
+                        {it.info.kind === "all_orders" ? " Free-sample orders (RM 0) go to the sample tracker." : ""}
                       </p>
                     )}
                     {it.info.needsPeriod && it.info.existing.length > 0 && (

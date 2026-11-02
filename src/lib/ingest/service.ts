@@ -5,10 +5,10 @@ import path from "node:path";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { uploads } from "@/db/schema";
-import { detectKind, KIND_META, SNAPSHOT_KINDS, type Kind } from "./kinds";
+import { detectKind, detectKindFromTabs, KIND_META, REFERENCE_KINDS, SNAPSHOT_KINDS, type Kind } from "./kinds";
 import { importFile, type ImportResult } from "./import";
 import { guessPeriodFromFilename, isDescriptionRow, parseDMY } from "./parse-utils";
-import { readXlsx } from "./read-xlsx";
+import { readWorkbook, readXlsx, type RawTab } from "./read-xlsx";
 
 const DIR = path.join(tmpdir(), "ams-uploads");
 export const MAX_UPLOAD_BYTES = 60 * 1024 * 1024;
@@ -48,9 +48,25 @@ async function refYear(): Promise<number> {
   return rows[0]?.y ?? new Date().getFullYear();
 }
 
+/** Detects the file type; multi-tab reference workbooks are read in full. */
+async function detect(
+  path: string,
+  sheet: { header: string[]; rows: unknown[] },
+): Promise<{ kind: Kind | null; rows: number; tabs: RawTab[] | null }> {
+  let kind = detectKind(sheet.header);
+  let tabs: RawTab[] | null = null;
+  if (!kind || REFERENCE_KINDS.includes(kind)) {
+    tabs = await readWorkbook(path);
+    kind = kind ?? detectKindFromTabs(tabs);
+  }
+  const rows = tabs && kind && REFERENCE_KINDS.includes(kind) ? tabs.reduce((a, t) => a + t.rows.length, 0) : sheet.rows.length;
+  return { kind, rows, tabs };
+}
+
 export async function inspectUpload(token: string, filename: string): Promise<InspectResult> {
   const sheet = await readXlsx(tokenPath(token));
-  const kind = detectKind(sheet.header);
+  const found = await detect(tokenPath(token), sheet);
+  const kind = found.kind;
   const warnings: string[] = [];
   const base: InspectResult = {
     token,
@@ -73,6 +89,10 @@ export async function inspectUpload(token: string, filename: string): Promise<In
     return base;
   }
 
+  if (REFERENCE_KINDS.includes(kind)) {
+    base.rows = found.rows;
+    return base;
+  }
   const rows = sheet.rows.length && isDescriptionRow(sheet.rows[0]) ? sheet.rows.slice(1) : sheet.rows;
   base.rows = rows.length;
   if (!rows.length) warnings.push("The file has a header but no data rows.");
@@ -126,14 +146,15 @@ export async function commitUpload(args: {
   userId: string | null;
 }): Promise<ImportResult> {
   const sheet = await readXlsx(tokenPath(args.token));
-  const detected = detectKind(sheet.header);
-  if (detected !== args.kind) throw new Error("The file no longer matches the selected report type.");
+  const found = await detect(tokenPath(args.token), sheet);
+  if (found.kind !== args.kind) throw new Error("The file no longer matches the selected report type.");
   try {
     return await importFile({
       kind: args.kind,
       filename: args.filename,
       header: sheet.header,
       rows: sheet.rows,
+      tabs: found.tabs ?? undefined,
       periodStart: args.periodStart,
       periodEnd: args.periodEnd,
       userId: args.userId,
@@ -171,6 +192,14 @@ export async function deleteUploadCascade(id: number) {
   const [u] = await db.select().from(uploads).where(eq(uploads.id, id));
   if (!u) return;
   if (u.kind === "affiliate_orders") await db.execute(sql`delete from order_lines where upload_id = ${id}`);
-  if (u.kind === "all_orders") await db.execute(sql`delete from shop_order_lines where upload_id = ${id}`);
+  if (u.kind === "all_orders") {
+    // Sample rows the team has worked on are kept; untouched ones go with their orders.
+    await db.execute(sql`delete from samples where upload_id = ${id} and source = 'orders'
+      and owner_id is null and note is null and follow_up_at is null and result_override is null and coalesce(creator_match,'') <> 'manual'`);
+    await db.execute(sql`delete from shop_order_lines where upload_id = ${id}`);
+  }
+  if (u.kind === "staff_sheet") {
+    await db.execute(sql`delete from samples where source = 'staff_sheet' and upload_id = ${id}`);
+  }
   await db.delete(uploads).where(and(eq(uploads.id, id)));
 }

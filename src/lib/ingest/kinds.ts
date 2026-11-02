@@ -6,6 +6,8 @@ export const KINDS = [
   "video_list",
   "sample_analysis",
   "product_list",
+  "sku_catalog",
+  "staff_sheet",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -56,7 +58,24 @@ export const KIND_META: Record<
     transactional: false,
     where: "Affiliate Center → Products → List products",
   },
+  sku_catalog: {
+    label: "SKU list / bundles",
+    description:
+      "Your own SKU master: single items and what each bundle (SET) contains. Lets samples and sales be counted per item. Upload each SKU workbook once and again when it changes.",
+    transactional: false,
+    where: "Your internal SKU / BOM workbooks",
+  },
+  staff_sheet: {
+    label: "Staff affiliate sheet",
+    description:
+      "The team's own tracking sheet: WhatsApp numbers, samples given, LIVE vs sample approach, video links and ad codes. Imported once to bring history into the app.",
+    transactional: false,
+    where: "Your internal Google Sheet / Excel (download as .xlsx)",
+  },
 };
+
+/** Kinds whose period is optional (they are reference data, not dated reports). */
+export const REFERENCE_KINDS: Kind[] = ["sku_catalog", "staff_sheet"];
 
 /** Which kinds are stored as dated snapshots (so a period is required). */
 export const SNAPSHOT_KINDS: Kind[] = [
@@ -77,5 +96,18 @@ export function detectKind(header: string[]): Kind | null {
   if (has("Creator name", "Samples requested", "45-day ROI")) return "sample_analysis";
   if (has("Product ID", "Product name", "Refunded GMV")) return "product_list";
   if (has("Order ID", "Order Status", "SKU Subtotal After Discount")) return "all_orders";
+  if (has("Username", "WhatsApp")) return "staff_sheet";
+  if (has("SKU", "Variation Name") || has("Set SKU", "Variation Name")) return "sku_catalog";
+  return null;
+}
+
+/** For workbooks whose first tab has a title row above the header (e.g. the bundle lists). */
+export function detectKindFromTabs(tabs: { rows: (string | number | null)[][] }[]): Kind | null {
+  for (const t of tabs) {
+    for (const r of t.rows.slice(0, 5)) {
+      const k = detectKind(r.map((c) => (c == null ? "" : String(c).trim())));
+      if (k) return k;
+    }
+  }
   return null;
 }

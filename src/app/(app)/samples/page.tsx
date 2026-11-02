@@ -1,99 +1,141 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { periodQuery, resolvePeriod } from "@/lib/period";
-import { getSampleReport } from "@/lib/analytics/samples";
-import { Card, CardHeader, EmptyState, PageHeader, Td, Th } from "@/components/ui/primitives";
-import { KpiCard } from "@/components/ui/kpi-card";
-import { BarList } from "@/components/charts/bar-list";
-import { fmtDate, fmtInt, fmtPct, fmtRM } from "@/lib/utils";
+import { asc, sql } from "drizzle-orm";
+import { Gift } from "lucide-react";
+import { db } from "@/db";
+import { skuItems, users } from "@/db/schema";
+import { can, requireUser } from "@/lib/auth";
+import { getThresholds } from "@/lib/analytics/settings";
+import { getSampleTracker, STAGES, type StageKey } from "@/lib/samples/analysis";
+import { sampleDataDate } from "@/lib/samples/service";
+import { href, one, type SP } from "@/lib/url";
+import { Button, Card, EmptyState, Input, PageHeader, Th } from "@/components/ui/primitives";
+import { Pagination } from "@/components/ui/pagination";
+import { SamplesNav } from "@/components/samples/samples-nav";
+import { SampleRow } from "@/components/samples/sample-row";
+import { AddSampleForm } from "@/components/samples/add-sample-form";
+import { RefreshSamplesButton } from "@/components/samples/refresh-button";
+import { cn, fmtDate, fmtInt } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Samples" };
+export const metadata: Metadata = { title: "Sample tracker" };
 
-export default async function SamplesPage({ searchParams }: PageProps<"/samples">) {
-  const period = await resolvePeriod(await searchParams);
-  const qs = periodQuery(period);
-  const r = await getSampleReport(period);
-  if (!r) {
-    return (
-      <>
-        <PageHeader title="Samples" description="Are your free samples turning into content and sales?" />
-        <Card><EmptyState title="No sample data for this period" description="Upload the Sample analysis export in the Data hub." /></Card>
-      </>
-    );
-  }
-  const t = r.totals;
-  const shippedRows = r.rows.filter((x) => x.shipped > 0);
-  const noContent = shippedRows.filter((x) => x.videos + x.lives === 0).sort((a, b) => b.shipped - a.shipped).slice(0, 15);
-  const winners = [...shippedRows].sort((a, b) => b.roi45 - a.roi45 || b.contentGmv - a.contentGmv).filter((x) => x.contentGmv > 0).slice(0, 12);
+const PAGE_SIZE = 40;
+
+export default async function SampleTrackerPage({ searchParams }: PageProps<"/samples">) {
+  const user = await requireUser();
+  const sp = (await searchParams) as SP;
+  const stage = (STAGES.some((s) => s.key === one(sp.stage)) ? one(sp.stage) : "open") as StageKey;
+  const q = (one(sp.q) ?? "").trim();
+  const mine = one(sp.mine) === "1";
+  const due = one(sp.due) === "1";
+  const page = Math.max(1, Number(one(sp.page)) || 1);
+  const canEdit = can(user, "manager");
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [data, team, t, dataDate, skus] = await Promise.all([
+    getSampleTracker({ stage, q, owner: mine ? user.id : null, due, page, pageSize: PAGE_SIZE }),
+    db.select({ id: users.id, name: users.name }).from(users).where(sql`${users.active} and ${users.role} in ('admin','manager')`).orderBy(asc(users.name)),
+    getThresholds(),
+    sampleDataDate(),
+    db.select({ sku: skuItems.sku, name: skuItems.name }).from(skuItems).orderBy(asc(skuItems.sku)),
+  ]);
+  const pages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const base = { stage: stage === "open" ? undefined : stage, q: q || undefined, mine: mine ? "1" : undefined, due: due ? "1" : undefined };
+  const anything = Object.values(data.counts).some((n) => n > 0);
 
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
         title="Samples"
-        description={`Sample analysis for ${fmtDate(r.snapshot.start)} – ${fmtDate(r.snapshot.end)}. ROI is TikTok's estimate of GMV against sample cost.`}
+        description={`Every free sample from request to content: shipped, delivered, and whether the creator posted within ${t.samplePostDays} days of delivery.`}
+        actions={canEdit ? <RefreshSamplesButton /> : undefined}
       />
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <KpiCard label="Samples shipped" value={fmtInt(t.shipped)} sub={`${fmtInt(t.requested)} requested`} />
-        <KpiCard label="Posted content" value={`${fmtInt(t.posted)} / ${fmtInt(t.posted + t.noContent)}`} sub="creators with samples" hint="Creators who received samples and posted at least one video or LIVE." />
-        <KpiCard label="No content yet" value={fmtInt(t.noContent)} sub="creators" invert />
-        <KpiCard label="Content GMV" value={fmtRM(t.contentGmv)} sub="from sample content" />
-        <KpiCard label="Break-even or better" value={fmtPct(t.breakeven, 0)} sub={`avg 45-day ROI ${t.avgRoi45.toFixed(1)}`} hint="Share of sampled creators whose 45-day ROI is at least 1." />
-      </section>
+      <SamplesNav current="/samples" />
 
-      <section className="grid gap-4 xl:grid-cols-3">
+      {!anything ? (
         <Card>
-          <CardHeader title="Return on samples" description="45-day ROI of creators who received samples." />
-          <div className="px-5 pb-5">
-            <BarList items={r.roiBuckets.map((b, i) => ({ label: b.label, value: b.n, display: fmtInt(b.n), highlight: i === 3 }))} />
-            <p className="mt-4 text-[12.5px] text-ink-3">
-              Concentrate samples on creators who convert; pause them for creators who keep receiving samples without posting.
-            </p>
-          </div>
+          <EmptyState
+            icon={<Gift className="size-5" />}
+            title="No samples yet"
+            description="Upload the All orders export in the Data hub – free samples (RM 0 orders) are picked up automatically. You can also import your staff sheet for history, or log a request below."
+            action={canEdit ? <AddSampleForm today={today} skus={skus} /> : undefined}
+          />
         </Card>
-        <Card className="xl:col-span-2">
-          <CardHeader title="Shipped, but no content" description="Chase these first – the sample cost is already spent." />
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] border-collapse">
-              <thead><tr><Th>Creator</Th><Th align="right">Requested</Th><Th align="right">Shipped</Th><Th align="right">Posting rate</Th></tr></thead>
-              <tbody>
-                {noContent.map((x) => (
-                  <tr key={x.username} className="hover:bg-surface-2/60">
-                    <Td><Link href={`/creators/${encodeURIComponent(x.username)}?${qs}`} className="text-ink hover:text-brand hover:underline">{x.username}</Link></Td>
-                    <Td align="right">{fmtInt(x.requested)}</Td>
-                    <Td align="right">{fmtInt(x.shipped)}</Td>
-                    <Td align="right">{fmtPct(x.postingRate, 0)}</Td>
-                  </tr>
-                ))}
-                {!noContent.length && <tr><Td colSpan={4} className="py-8 text-center text-ink-3">Everyone with samples has posted. 🎉</Td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader title="Best returns on samples" description="Creators whose sample content sold the most relative to cost." />
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse">
-            <thead>
-              <tr><Th>Creator</Th><Th align="right">Shipped</Th><Th align="right">Videos / LIVEs</Th><Th align="right">Content GMV</Th><Th align="right">45-day ROI</Th><Th align="right">90-day ROI</Th></tr>
-            </thead>
-            <tbody>
-              {winners.map((x) => (
-                <tr key={x.username} className="hover:bg-surface-2/60">
-                  <Td><Link href={`/creators/${encodeURIComponent(x.username)}?${qs}`} className="text-ink hover:text-brand hover:underline">{x.username}</Link></Td>
-                  <Td align="right">{fmtInt(x.shipped)}</Td>
-                  <Td align="right">{x.videos} / {x.lives}</Td>
-                  <Td align="right" className="font-medium">{fmtRM(x.contentGmv)}</Td>
-                  <Td align="right">{x.roi45.toFixed(1)}</Td>
-                  <Td align="right">{x.roi90.toFixed(1)}</Td>
-                </tr>
+      ) : (
+        <div className="space-y-4">
+          {canEdit && <AddSampleForm today={today} skus={skus} />}
+          <Card>
+            <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 pt-2">
+              {STAGES.map((s) => (
+                <Link
+                  key={s.key}
+                  href={href("/samples", { ...base, stage: s.key === "open" ? undefined : s.key, page: undefined })}
+                  aria-current={stage === s.key ? "page" : undefined}
+                  className={cn(
+                    "-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-[13.5px] font-medium",
+                    stage === s.key ? "border-brand text-ink" : "border-transparent text-ink-3 hover:text-ink",
+                  )}
+                >
+                  {s.label}
+                  <span className={cn("tnum rounded-full px-1.5 text-[12px]", s.key === "not_posted" && data.counts[s.key] > 0 ? "bg-critical-soft text-critical" : "bg-surface-2 text-ink-2")}>
+                    {fmtInt(data.counts[s.key])}
+                  </span>
+                </Link>
               ))}
-              {!winners.length && <tr><Td colSpan={6} className="py-8 text-center text-ink-3">No sampled creator has generated sales yet.</Td></tr>}
-            </tbody>
-          </table>
+            </div>
+            <form action="/samples" className="flex flex-wrap items-center gap-2.5 border-b border-line p-4">
+              {stage !== "open" && <input type="hidden" name="stage" value={stage} />}
+              <Input name="q" defaultValue={q} placeholder="Search creator, phone, SKU or product…" className="max-w-[300px]" aria-label="Search" />
+              <label className="flex items-center gap-2 text-[13.5px] text-ink-2">
+                <input type="checkbox" name="mine" value="1" defaultChecked={mine} className="size-4 accent-[var(--brand)]" /> My samples
+              </label>
+              <label className="flex items-center gap-2 text-[13.5px] text-ink-2">
+                <input type="checkbox" name="due" value="1" defaultChecked={due} className="size-4 accent-[var(--brand)]" /> Follow-up due
+              </label>
+              <Button type="submit">Filter</Button>
+              <span className="ml-auto text-[12.5px] text-ink-3">
+                {fmtInt(data.total)} sample{data.total === 1 ? "" : "s"}{dataDate ? ` · posting checked against data up to ${fmtDate(dataDate)}` : ""}
+              </span>
+            </form>
+            {data.rows.length === 0 ? (
+              <EmptyState title="Nothing here" description="No samples match these filters." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1320px] border-collapse">
+                  <thead>
+                    <tr>
+                      <Th className="w-8"><span className="sr-only">Expand</span></Th>
+                      <Th>Creator</Th>
+                      <Th>Product</Th>
+                      <Th align="right">Qty</Th>
+                      <Th>Requested</Th>
+                      <Th>Approved</Th>
+                      <Th>Shipped</Th>
+                      <Th>Delivered</Th>
+                      <Th title={`Delivered + ${t.samplePostDays} days`}>Post by</Th>
+                      <Th>Posted</Th>
+                      <Th>Result</Th>
+                      <Th>In charge</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.rows.map((s) => (
+                      <SampleRow key={s.id} s={s} team={team} canEdit={canEdit} today={today} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <Pagination page={Math.min(page, pages)} pages={pages} total={data.total} pageSize={PAGE_SIZE} hrefFor={(p) => href("/samples", { ...base, page: p })} />
+          </Card>
+          <p className="text-[12.5px] leading-relaxed text-ink-3">
+            How the check works: a sample counts as <b>posted</b> when the creator has a video with that product (Video analysis) posted after delivery,
+            LIVE sales after delivery, or TikTok&apos;s sample analysis reports content with samples. Without any of these it is “waiting” until{" "}
+            {t.samplePostDays} days after delivery, then “not posted”. TikTok hides the receiver&apos;s name on sample orders, so the creator is matched from
+            the visible letters – set it by hand under a row if it&apos;s wrong or unknown.
+          </p>
         </div>
-      </Card>
+      )}
     </div>
   );
 }

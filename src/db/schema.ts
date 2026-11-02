@@ -26,6 +26,8 @@ export const uploadKindEnum = pgEnum("upload_kind", [
   "video_list",
   "sample_analysis",
   "product_list",
+  "sku_catalog",
+  "staff_sheet",
 ]);
 
 export const actionStatusEnum = pgEnum("action_status", [
@@ -85,6 +87,13 @@ export const creators = pgTable("creators", {
   notes: text("notes"),
   tags: text("tags").array().notNull().default([]),
   doNotContact: boolean("do_not_contact").notNull().default(false),
+  /** WhatsApp number in international format, e.g. +60123456789 */
+  phone: text("phone"),
+  /** How the team works with this creator: "video", "live" or "both" (from the staff sheet or set by hand). */
+  approach: text("approach"),
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
+  /** True once phone/approach were edited in the app – the staff sheet import then leaves them alone. */
+  contactEdited: boolean("contact_edited").notNull().default(false),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -186,6 +195,12 @@ export const shopOrderLines = pgTable(
     category: text("category"),
     orderChannel: text("order_channel"),
     creator: text("creator"),
+    /** Masked buyer handle from the export, e.g. "p***ha_love". */
+    buyerUsername: text("buyer_username"),
+    trackingId: text("tracking_id"),
+    rtsAt: timestamp("rts_at"),
+    /** Free sample order (RM 0, no payment). Excluded from sales and order-health figures. */
+    isSample: boolean("is_sample").notNull().default(false),
     uploadId: integer("upload_id").references(() => uploads.id, { onDelete: "set null" }),
   },
   (t) => [
@@ -343,4 +358,95 @@ export const actions = pgTable(
     uniqueIndex("actions_uq").on(t.username, t.type, t.periodEnd),
     index("actions_status_idx").on(t.status),
   ],
+);
+
+// ───────── SKU catalogue (single items + bundle bill of materials) ─────────
+export const skuItems = pgTable("sku_items", {
+  sku: text("sku").primaryKey(),
+  /** Product family, e.g. "Quilt Cover Rosewood" or "Set Bedsheets White". */
+  family: text("family"),
+  name: text("name").notNull(),
+  isSet: boolean("is_set").notNull().default(false),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/** What a bundle SKU contains. A component listed twice has qty 2. */
+export const skuBom = pgTable(
+  "sku_bom",
+  {
+    setSku: text("set_sku").notNull(),
+    componentSku: text("component_sku").notNull(),
+    qty: integer("qty").notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.setSku, t.componentSku] })],
+);
+
+// ───────── Samples (one row per sample line) ─────────
+export const samples = pgTable(
+  "samples",
+  {
+    id: serial("id").primaryKey(),
+    /** "orders" = free-sample order from the all-orders export, "manual" = added by staff, "staff_sheet" = imported history. */
+    source: text("source").notNull(),
+    orderId: text("order_id"),
+    skuId: text("sku_id"),
+    sellerSku: text("seller_sku"),
+    /** Code as written by staff (staff sheet / manual), kept for reference. */
+    rawCode: text("raw_code"),
+    productName: text("product_name"),
+    variation: text("variation"),
+    quantity: integer("quantity").notNull().default(1),
+    buyerMasked: text("buyer_masked"),
+    creator: text("creator"),
+    /** "auto" (matched from the masked buyer), "manual" (set by staff) or "sheet". */
+    creatorMatch: text("creator_match"),
+    orderStatus: text("order_status"),
+    orderSubstatus: text("order_substatus"),
+    requestedAt: date("requested_at", { mode: "string" }),
+    /** Order created = sample approved in Seller Center. */
+    approvedAt: timestamp("approved_at"),
+    shippedAt: timestamp("shipped_at"),
+    deliveredAt: timestamp("delivered_at"),
+    cancelledAt: timestamp("cancelled_at"),
+    trackingId: text("tracking_id"),
+    shippingProvider: text("shipping_provider"),
+    // ── posting check (recomputed after every import) ──
+    /** in_transit | in_window | posted_video | did_live | not_posted | cancelled | no_creator | history */
+    result: text("result"),
+    postedAt: timestamp("posted_at"),
+    postVideoId: text("post_video_id"),
+    postLink: text("post_link"),
+    /** Valid GMV / orders the creator made from the sampled product after delivery. */
+    contentGmv: doublePrecision("content_gmv").notNull().default(0),
+    contentOrders: integer("content_orders").notNull().default(0),
+    checkedAt: timestamp("checked_at"),
+    // ── staff work ──
+    /** Manual result that overrides the automatic check (posted_video | did_live | not_posted). */
+    resultOverride: text("result_override"),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
+    followUpAt: date("follow_up_at", { mode: "string" }),
+    note: text("note"),
+    uploadId: integer("upload_id").references(() => uploads.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("samples_order_uq").on(t.orderId, t.skuId),
+    index("samples_creator_idx").on(t.creator),
+    index("samples_result_idx").on(t.result),
+  ],
+);
+
+/** Video links and ad authorisation codes collected by staff (staff sheet "Videos" tab). */
+export const staffVideos = pgTable(
+  "staff_videos",
+  {
+    id: serial("id").primaryKey(),
+    username: text("username").notNull(),
+    sampleCode: text("sample_code"),
+    url: text("url"),
+    adCode: text("ad_code"),
+    status: text("status"),
+  },
+  (t) => [index("staff_videos_user_idx").on(t.username)],
 );

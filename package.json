@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:push": "drizzle-kit push",
-    "import:sample": "tsx --env-file=.env scripts/import-sample.ts",
+    "import:sample": "tsx --env-file=.env --conditions=react-server scripts/import-sample.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

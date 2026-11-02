@@ -28,6 +28,10 @@ export type Thresholds = {
   untappedMinFollowers: number;
   /** Cancellation rate above which COD/quality is flagged. */
   highCancelRate: number;
+  /** Days after delivery a creator has to post content with a free sample. */
+  samplePostDays: number;
+  /** Sales (RM) from sample content above which a creator earns more samples. */
+  sampleMoreMinGmv: number;
 };
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
@@ -42,6 +46,8 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   lowConversionMinViews: 20000,
   untappedMinFollowers: 20000,
   highCancelRate: 0.2,
+  samplePostDays: 7,
+  sampleMoreMinGmv: 300,
 };
 
 export const getThresholds = cache(async (): Promise<Thresholds> => {

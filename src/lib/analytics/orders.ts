@@ -23,7 +23,7 @@ export type OrderHealth = {
 };
 
 export async function getOrderHealth(period: Period): Promise<OrderHealth> {
-  const w = inPeriod("created_at", period);
+  const w = sql`${inPeriod("created_at", period)} and not is_sample`;
   const [k] = await rows<{
     orders: number; gross: number; net: number; canc: number; ret: number; cod: number; ship: number | null; deliv: number | null;
   }>(sql`

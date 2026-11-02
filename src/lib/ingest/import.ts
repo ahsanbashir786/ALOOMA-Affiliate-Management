@@ -6,7 +6,12 @@ import {
   orderLines,
   productSnapshots,
   products,
+  samples,
   sampleSnapshots,
+  skuBom,
+  skuItems,
+  staffVideos,
+  creators,
   shopOrderLines,
   uploads,
   videoSnapshots,
@@ -29,7 +34,8 @@ import {
   toObjects,
   type RowObj,
 } from "./parse-utils";
-import type { Cell } from "./read-xlsx";
+import type { Cell, RawTab } from "./read-xlsx";
+import { parseSkuWorkbook, resolveStaffCode } from "@/lib/samples/sku";
 
 export type ImportInput = {
   kind: Kind;
@@ -39,6 +45,8 @@ export type ImportInput = {
   periodStart: string | null;
   periodEnd: string | null;
   userId?: string | null;
+  /** Every tab of the workbook – only for multi-tab kinds (SKU lists, staff sheet). */
+  tabs?: RawTab[];
 };
 
 export type ImportResult = {
@@ -98,6 +106,10 @@ export async function importFile(input: ImportInput): Promise<ImportResult> {
       return importSampleAnalysis(input);
     case "product_list":
       return importProductList(input);
+    case "sku_catalog":
+      return importSkuCatalog(input);
+    case "staff_sheet":
+      return importStaffSheet(input);
   }
 }
 
@@ -288,6 +300,10 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
       category: str(r["Product Category"]),
       orderChannel: str(r["Order Channel"]),
       creator: str(r["Creator Handle"]),
+      buyerUsername: str(r["Buyer Username"]),
+      trackingId: str(r["Tracking ID"]),
+      rtsAt: parseDMY(r["RTS Time"]),
+      isSample: isSampleLine(r),
     });
   }
   if (!lines.size) throw new Error("No valid order lines found in this file.");
@@ -295,7 +311,7 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
   const end = input.periodEnd ?? maxT!.toISOString().slice(0, 10);
   const uploadId = await createUpload({ ...input, periodStart: start, periodEnd: end }, lines.size, { skipped });
   const rows = [...lines.values()].map((l) => ({ ...l, uploadId }));
-  for (const part of chunk(rows, chunkSizeFor(33))) {
+  for (const part of chunk(rows, chunkSizeFor(40))) {
     await db
       .insert(shopOrderLines)
       .values(part)
@@ -321,16 +337,24 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
           paymentMethod: sql`excluded.payment_method`,
           orderChannel: sql`excluded.order_channel`,
           creator: sql`excluded.creator`,
+          buyerUsername: sql`excluded.buyer_username`,
+          trackingId: sql`excluded.tracking_id`,
+          rtsAt: sql`excluded.rts_at`,
+          isSample: sql`excluded.is_sample`,
           uploadId: sql`excluded.upload_id`,
         },
       });
   }
+  const sampleCount = await upsertSampleOrders([...lines.values()].filter((l) => l.isSample), uploadId);
   return {
     uploadId,
     imported: lines.size,
     skipped,
     replacedUploads: 0,
-    notes: [`Shop orders from ${start} to ${end}. Existing lines were updated in place.`],
+    notes: [
+      `Shop orders from ${start} to ${end}. Existing lines were updated in place.`,
+      ...(sampleCount ? [`${sampleCount} free-sample lines added to the sample tracker.`] : []),
+    ],
   };
 }
 
@@ -582,6 +606,264 @@ async function importProductList(input: ImportInput): Promise<ImportResult> {
   }
   await db.update(uploads).set({ rowCount: rows.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
   return { uploadId, imported: rows.size, skipped, replacedUploads: replaced, notes: [] };
+}
+
+// ───────────────────────── Free samples (from all orders) ─────────────────────────
+
+/** TikTok writes free samples as RM 0 orders with no payment method. */
+function isSampleLine(r: RowObj): boolean {
+  return (
+    num(r["Order Amount"]) === 0 &&
+    num(r["SKU Subtotal Before Discount"]) === 0 &&
+    !str(r["Payment Method"])
+  );
+}
+
+async function upsertSampleOrders(lines: (typeof shopOrderLines.$inferInsert)[], uploadId: number): Promise<number> {
+  if (!lines.length) return 0;
+  const rows = lines.map((l) => ({
+    source: "orders",
+    orderId: l.orderId,
+    skuId: l.skuId,
+    sellerSku: l.sellerSku ?? null,
+    productName: l.productName ?? null,
+    variation: l.variation ?? null,
+    quantity: l.quantity ?? 1,
+    buyerMasked: l.buyerUsername ?? null,
+    orderStatus: l.status,
+    orderSubstatus: l.substatus ?? null,
+    approvedAt: l.createdAt,
+    shippedAt: l.shippedAt ?? null,
+    deliveredAt: l.deliveredAt ?? null,
+    cancelledAt: l.cancelledAt ?? null,
+    trackingId: l.trackingId ?? null,
+    shippingProvider: l.shippingProvider ?? null,
+    uploadId,
+  }));
+  for (const part of chunk(rows, chunkSizeFor(25))) {
+    await db
+      .insert(samples)
+      .values(part)
+      .onConflictDoUpdate({
+        target: [samples.orderId, samples.skuId],
+        set: {
+          sellerSku: sql`excluded.seller_sku`,
+          productName: sql`excluded.product_name`,
+          variation: sql`excluded.variation`,
+          quantity: sql`excluded.quantity`,
+          buyerMasked: sql`excluded.buyer_masked`,
+          orderStatus: sql`excluded.order_status`,
+          orderSubstatus: sql`excluded.order_substatus`,
+          approvedAt: sql`excluded.approved_at`,
+          shippedAt: sql`excluded.shipped_at`,
+          deliveredAt: sql`excluded.delivered_at`,
+          cancelledAt: sql`excluded.cancelled_at`,
+          trackingId: sql`excluded.tracking_id`,
+          shippingProvider: sql`excluded.shipping_provider`,
+          uploadId: sql`excluded.upload_id`,
+          updatedAt: sql`now()`,
+        },
+      });
+  }
+  return rows.length;
+}
+
+// ───────────────────────── SKU catalogue ─────────────────────────
+async function importSkuCatalog(input: ImportInput): Promise<ImportResult> {
+  const { items, bom } = parseSkuWorkbook(input.tabs ?? [{ name: "Sheet", rows: [input.header, ...input.rows] }]);
+  if (!items.length) throw new Error("No SKUs found. Expected columns such as “Variation Name” and “SKU” or “Set SKU”.");
+  const uploadId = await createUpload(input, items.length, { sets: items.filter((i) => i.isSet).length, bomLines: bom.length });
+  await db.transaction(async (tx) => {
+    for (const part of chunk(items, 1000)) {
+      await tx
+        .insert(skuItems)
+        .values(part)
+        .onConflictDoUpdate({
+          target: skuItems.sku,
+          set: { family: sql`excluded.family`, name: sql`excluded.name`, isSet: sql`excluded.is_set`, updatedAt: sql`now()` },
+        });
+    }
+    // A set's contents are replaced as a whole so removed components disappear.
+    const sets = [...new Set(bom.map((b) => b.setSku))];
+    for (const part of chunk(sets, 1000)) {
+      await tx.delete(skuBom).where(sql`${skuBom.setSku} in (${sql.join(part.map((x) => sql`${x}`), sql`, `)})`);
+    }
+    for (const part of chunk(bom, 1000)) await tx.insert(skuBom).values(part);
+  });
+  const sets = items.filter((i) => i.isSet).length;
+  return {
+    uploadId,
+    imported: items.length,
+    skipped: 0,
+    replacedUploads: 0,
+    notes: [`${items.length - sets} single SKUs and ${sets} bundle SKUs (${bom.length} bundle lines).`],
+  };
+}
+
+// ───────────────────────── Staff affiliate sheet ─────────────────────────
+
+/** "6.019602194E10" / 60196021940 / "012-345 6789" → "+60196021940" */
+export function normalisePhone(v: Cell | undefined): string | null {
+  if (v == null || v === "") return null;
+  let digits: string;
+  if (typeof v === "number" || /^[\d.]+e\+?\d+$/i.test(String(v).trim())) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    digits = BigInt(Math.round(n)).toString();
+  } else {
+    // Letter O typed instead of zero is a common slip in the sheet.
+    digits = String(v).replace(/[oO]/g, "0").replace(/\D/g, "");
+  }
+  if (digits.startsWith("0")) digits = "6" + digits;
+  else if (/^1\d{8,9}$/.test(digits)) digits = "60" + digits;
+  return digits.length >= 10 && digits.length <= 13 ? `+${digits}` : null;
+}
+
+const cleanUser = (v: Cell | undefined) => {
+  const s = v == null ? "" : String(v).replace(/[\n\r]+/g, " ").trim().replace(/^@/, "").toLowerCase();
+  return /^[a-z0-9._]{2,40}$/.test(s) ? s : null;
+};
+
+/** Excel serial (46134) or dd/mm/yyyy → YYYY-MM-DD */
+function sheetDate(v: Cell | undefined): string | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 40000 && n < 60000) return new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86_400_000).toISOString().slice(0, 10);
+  const d = parseDMY(String(v));
+  return d ? d.toISOString().slice(0, 10) : null;
+}
+
+const NOTE_COLS = /^(comment|comments for bs|other comment|status campaign|for other sample|request to post|authorize code|follow up)/i;
+
+async function importStaffSheet(input: ImportInput): Promise<ImportResult> {
+  const tabs = input.tabs ?? [];
+  type Person = { phones: Map<string, number>; approach: Set<string>; notes: Set<string>; codes: Set<string>; followUp: string | null };
+  const people = new Map<string, Person>();
+  const videoRows: (typeof staffVideos.$inferInsert)[] = [];
+  let skipped = 0;
+  const get = (u: string) => {
+    let p = people.get(u);
+    if (!p) people.set(u, (p = { phones: new Map(), approach: new Set(), notes: new Set(), codes: new Set(), followUp: null }));
+    return p;
+  };
+
+  for (const tab of tabs) {
+    // Shopee affiliates and the sold-quantity lookups aren't TikTok creator records.
+    if (/shopee|sold/i.test(tab.name)) continue;
+    const header = tab.rows[0].map((c) => (c == null ? "" : String(c).trim()));
+    const phoneCol = header.findIndex((h) => /^whatsapp$/i.test(h));
+    let userCol = header.findIndex((h) => /^username$/i.test(h));
+    if (userCol < 0 && phoneCol === 1) userCol = 0; // the "ALL" tab has a username where the header should be
+    if (userCol < 0) continue;
+    const isVideos = /^videos$/i.test(tab.name) || (header.includes("Videos") && header.includes("Codes"));
+    // Lookup tabs (e.g. "Data Verification") have no contact details – skip them.
+    if (phoneCol < 0 && !isVideos) continue;
+    const sampleCols = isVideos ? [] : header.map((h, i) => (/^sample/i.test(h) ? i : -1)).filter((i) => i >= 0);
+    const approachCol = header.findIndex((h) => /live \/ sample approach/i.test(h));
+    const noteCols = header.map((h, i) => (NOTE_COLS.test(h) || (h === "" && i > userCol + 1) ? i : -1)).filter((i) => i >= 0);
+    const followCol = header.findIndex((h) => /^follow up$/i.test(h));
+    const rows = userCol === 0 && phoneCol === 1 && !/^username$/i.test(header[0]) ? tab.rows : tab.rows.slice(1);
+
+    for (const r of rows) {
+      const u = cleanUser(r[userCol]);
+      if (!u) {
+        if (r.some((c) => c != null)) skipped++;
+        continue;
+      }
+      if (isVideos) {
+        const link = r[header.indexOf("Videos")];
+        const code = r[header.indexOf("Codes")];
+        const sample = r[header.indexOf("Sample")];
+        videoRows.push({
+          username: u,
+          sampleCode: sample == null ? null : String(sample).trim(),
+          url: link != null && /^https?:\/\//.test(String(link)) ? String(link).trim() : null,
+          adCode: code == null ? null : String(code).trim(),
+          status: [link != null && !/^https?:\/\//.test(String(link)) ? String(link).trim() : null, r[4] != null ? String(r[4]).trim() : null]
+            .filter((x): x is string => !!x)
+            .join(" · ") || null,
+        });
+        continue;
+      }
+      const p = get(u);
+      const phone = phoneCol >= 0 ? normalisePhone(r[phoneCol]) : null;
+      if (phone) p.phones.set(phone, (p.phones.get(phone) ?? 0) + 1);
+      for (const c of sampleCols) {
+        const v = r[c];
+        if (v != null && String(v).trim()) p.codes.add(String(v).trim());
+      }
+      if (approachCol >= 0 && r[approachCol] != null) {
+        const a = String(r[approachCol]).toLowerCase();
+        if (a.includes("live")) p.approach.add("live");
+        if (a.includes("sample")) p.approach.add("video");
+      }
+      for (const c of noteCols) {
+        if (c === followCol) continue;
+        const v = r[c];
+        if (v != null && String(v).trim() && !/^\d+(\.\d+)?$/.test(String(v).trim())) p.notes.add(`${header[c] || tab.name}: ${String(v).trim()}`);
+      }
+      if (followCol >= 0) {
+        const d = sheetDate(r[followCol]);
+        if (d && (!p.followUp || d > p.followUp)) p.followUp = d;
+      }
+    }
+  }
+  if (!people.size) throw new Error("No creators found. Expected tabs with “Username” and “WhatsApp” columns.");
+
+  const uploadId = await createUpload(input, people.size, { videos: videoRows.length, skipped });
+  let sampleLines = 0;
+  await db.transaction(async (tx) => {
+    const contactRows = [...people].map(([username, p]) => {
+      const approach = p.approach.size === 2 ? "both" : p.approach.size === 1 ? [...p.approach][0] : null;
+      const notes = [...p.notes, ...(p.followUp ? [`Last follow-up date: ${p.followUp}`] : [])].join("\n").slice(0, 4000) || null;
+      // The number written most often across tabs wins.
+      const phone = [...p.phones].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      return { username, phone, approach, notes };
+    });
+    for (const part of chunk(contactRows, 2000)) {
+      await tx
+        .insert(creators)
+        .values(part)
+        .onConflictDoUpdate({
+          target: creators.username,
+          // Never overwrite contact details the team has since edited in the app.
+          set: {
+            phone: sql`case when ${creators.contactEdited} then ${creators.phone} else coalesce(excluded.phone, ${creators.phone}) end`,
+            approach: sql`case when ${creators.contactEdited} then ${creators.approach} else coalesce(excluded.approach, ${creators.approach}) end`,
+            notes: sql`coalesce(${creators.notes}, excluded.notes)`,
+            updatedAt: sql`now()`,
+          },
+        });
+    }
+    // History from the sheet is replaced as a whole on re-import.
+    await tx.delete(samples).where(eq(samples.source, "staff_sheet"));
+    const sampleRows = [...people].flatMap(([username, p]) =>
+      [...p.codes].map((code) => ({
+        source: "staff_sheet",
+        creator: username,
+        creatorMatch: "sheet",
+        rawCode: code,
+        sellerSku: resolveStaffCode(code),
+        quantity: 1,
+        result: "history",
+        uploadId,
+      })),
+    );
+    sampleLines = sampleRows.length;
+    for (const part of chunk(sampleRows, 2000)) await tx.insert(samples).values(part);
+    await tx.delete(staffVideos);
+    for (const part of chunk(videoRows, 2000)) await tx.insert(staffVideos).values(part);
+  });
+  const withPhone = [...people.values()].filter((p) => p.phones.size).length;
+  return {
+    uploadId,
+    imported: people.size,
+    skipped,
+    replacedUploads: 0,
+    notes: [
+      `${people.size} creators (${withPhone} with a WhatsApp number), ${sampleLines} past samples and ${videoRows.length} video links / ad codes.`,
+    ],
+  };
 }
 
 export type { RowObj };

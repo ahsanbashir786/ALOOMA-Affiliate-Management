@@ -12,8 +12,9 @@ find sellers who deserve more investment, and turn that into ready-to-send instr
 | **Opportunities** | Creators grouped by what they need next (see below) with the reasoning, an estimated uplift and a copy-ready message. |
 | **Action centre** | Work queue ranked by priority: assign, mark sent/done/dismissed, add notes. Re-generated from fresh data after every import; work already done is never overwritten. |
 | **Content** | How old are the videos that sell (evergreen dependence), evergreen winners, best posting times, hashtags that convert, top videos. |
-| **Products / Samples / Orders** | Product performance and under-promoted products; sample funnel and ROI; shop-wide cancellations (COD vs. online), payments, states, delivery. |
-| **Data hub** | Drag-and-drop the TikTok exports. File type is detected automatically; period is read from the filename. |
+| **Samples** | **Tracker**: every free sample from request → approved → shipped → delivered → posted, with the creator's WhatsApp, SKU (bundles split into items), person in charge, follow-up date and notes. **Creator scorecard**: posting rate, days to post, Video/LIVE type, sales after samples, and a verdict – *Send more samples*, *Chase*, *Stop samples*. **Products**: which sampled SKUs turn into content and sales. Plus TikTok's own sample report. |
+| **Products / Orders** | Product performance and under-promoted products; shop-wide cancellations (COD vs. online), payments, states, delivery. |
+| **Data hub** | Drag-and-drop the TikTok exports, your SKU / bundle lists and the staff sheet. File type is detected automatically; period is read from the filename. |
 | **Settings** (admin) | Team and roles, recommendation thresholds, brand-owned accounts. |
 
 Roles: **admin** (everything), **affiliate manager** (upload data, work actions), **viewer** (read-only).
@@ -22,6 +23,29 @@ Roles: **admin** (everything), **affiliate manager** (upload data, work actions)
 
 `Star` · `Winner, posts too little` · `Rising` · `New seller` · `Steady` · `Views, few sales` · `Slipping` · `Gone quiet` ·
 `Sample, no content` · `Untapped reach`. Thresholds are percentile-based and editable in Settings.
+
+### Free samples – how the tracker works
+
+TikTok has no sample export, but free samples appear in the **All orders** export as RM 0 orders with no payment method,
+including shipped/delivered times and tracking. The app picks them up on every upload:
+
+1. **Creator** – TikTok masks the receiver (`p***ha_love`). The visible first letter and ending are matched against known
+   creators (those TikTok says received samples first). Only a single match is accepted; otherwise set it by hand in the tracker.
+2. **Posting check** – a sample counts as *posted* if, after delivery, the creator has a video with that product (Video analysis),
+   a new video that already sells it (orders), LIVE sales, or TikTok's sample analysis reports content with samples.
+   Without that it is *waiting* until delivery + 7 days (Settings), then *not posted – chase*.
+3. **Actions** – non-posters get a ready-to-send WhatsApp reminder in the Action centre; good converters get *Send more samples*;
+   repeat non-posters get *Stop samples*. Confirming a result by hand in the tracker overrides the automatic check.
+4. **Requests before the order exists** – use *Log a sample request*; when TikTok's order arrives it is linked automatically.
+
+### Files to upload
+
+| File | Where | How often |
+|---|---|---|
+| Affiliate orders, All shop orders | Seller Center → Orders | weekly |
+| Creator list, Transaction analysis, Video analysis, Sample analysis, Product list | Affiliate Center | weekly / monthly (period in the filename) |
+| SKU list + bundle (SET) lists | your own workbooks | when SKUs change |
+| Staff affiliate sheet | your own sheet (.xlsx) | once, to bring in numbers and history |
 
 ## Data model in one paragraph
 
@@ -46,6 +70,8 @@ Then open **Data hub** and upload your exports. For a quick start with a folder 
 `npm run import:sample -- ./path/to/exports`.
 
 Production: `npm run build && npm start` (set `DATABASE_URL`; put it behind HTTPS).
+
+After pulling a new version, run `npm install` and `npm run db:push` (adds new tables/columns; your data stays) before `npm run dev`.
 
 ## Notes and limits
 

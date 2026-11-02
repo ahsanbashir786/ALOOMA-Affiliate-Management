@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, CircleDashed } from "lucide-react";
 import { db } from "@/db";
 import { uploads, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { KINDS, KIND_META, type Kind } from "@/lib/ingest/kinds";
+import { KINDS, KIND_META, REFERENCE_KINDS, type Kind } from "@/lib/ingest/kinds";
 import { Badge, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/primitives";
 import { UploadWorkbench } from "@/components/data/upload-workbench";
 import { DeleteUploadButton } from "@/components/data/delete-upload-button";
@@ -30,7 +30,8 @@ export default async function DataPage() {
   const latest = new Map<Kind, (typeof list)[number]>();
   for (const u of list) {
     const cur = latest.get(u.kind);
-    if (!cur || (u.periodEnd ?? "") > (cur.periodEnd ?? "")) latest.set(u.kind, u);
+    // Reference files have no period – the newest upload counts.
+    if (!cur || (u.periodEnd ?? "") > (cur.periodEnd ?? "") || (REFERENCE_KINDS.includes(u.kind) && u.createdAt > cur.createdAt)) latest.set(u.kind, u);
   }
   const daysOld = (d: string | null) => (d ? Math.round((Date.parse(today) - Date.parse(d)) / 86_400_000) : null);
 
@@ -65,7 +66,11 @@ export default async function DataPage() {
                 </div>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-ink-3">{m.description}</p>
                 <p className="tnum mt-2 text-[13px] text-ink-2">
-                  {u ? `${fmtDate(u.periodStart)} – ${fmtDate(u.periodEnd)} · ${fmtInt(u.rowCount)} rows` : "Not uploaded yet"}
+                  {!u
+                    ? "Not uploaded yet"
+                    : REFERENCE_KINDS.includes(k)
+                      ? `Uploaded ${fmtDate(u.createdAt)} · ${fmtInt(u.rowCount)} ${k === "staff_sheet" ? "creators" : "SKUs"}`
+                      : `${fmtDate(u.periodStart)} – ${fmtDate(u.periodEnd)} · ${fmtInt(u.rowCount)} rows`}
                 </p>
                 <p className="mt-1 text-[12px] text-ink-3">Export: {m.where}</p>
               </li>
@@ -93,7 +98,7 @@ export default async function DataPage() {
                 <tr key={u.id}>
                   <Td className="max-w-[300px] truncate" title={u.filename}>{u.filename}</Td>
                   <Td><Badge>{KIND_META[u.kind].label}</Badge></Td>
-                  <Td className="tnum whitespace-nowrap text-ink-2">{fmtDate(u.periodStart)} – {fmtDate(u.periodEnd)}</Td>
+                  <Td className="tnum whitespace-nowrap text-ink-2">{u.periodStart ? `${fmtDate(u.periodStart)} – ${fmtDate(u.periodEnd)}` : "–"}</Td>
                   <Td align="right">{fmtInt(u.rowCount)}</Td>
                   <Td className="whitespace-nowrap text-ink-2">{fmtDate(u.createdAt)}{u.by ? ` · ${u.by}` : ""}</Td>
                   <Td><DeleteUploadButton id={u.id} label={u.filename} /></Td>

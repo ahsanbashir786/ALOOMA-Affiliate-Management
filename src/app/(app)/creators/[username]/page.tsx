@@ -10,7 +10,12 @@ import { Badge, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/pri
 import { KpiCard } from "@/components/ui/kpi-card";
 import { TrendChart } from "@/components/charts/trend-chart";
 import { SegmentBadge } from "@/components/creators/segment-badge";
-import { NotesForm, QueueActionButton } from "@/components/creators/creator-tools";
+import { ContactForm, NotesForm, QueueActionButton } from "@/components/creators/creator-tools";
+import { ResultBadge } from "@/components/samples/result-badge";
+import { CONTENT_TYPE_LABEL, getCreatorSamples, getStaffVideos } from "@/lib/samples/analysis";
+import { db } from "@/db";
+import { creators } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { CopyButton } from "@/components/ui/copy-button";
 import { fmtCompact, fmtDate, fmtInt, fmtPct, fmtRM, initials, pctChange } from "@/lib/utils";
 
@@ -25,6 +30,72 @@ const SERIES = [
   { key: "showcase", label: "Showcase", color: "var(--s3)" },
   { key: "etp", label: "External traffic", color: "var(--s4)" },
 ];
+
+/** Contact details, samples and staff-logged videos – shown whether or not the creator sold in this period. */
+async function CreatorExtras({ username, canEdit }: { username: string; canEdit: boolean }) {
+  const [[contact], samples, videos] = await Promise.all([
+    db.select({ phone: creators.phone, approach: creators.approach }).from(creators).where(eq(creators.username, username)).limit(1),
+    getCreatorSamples(username),
+    getStaffVideos(username),
+  ]);
+  return (
+    <section className="grid gap-4 lg:grid-cols-3">
+      <Card>
+        <CardHeader title="Contact" description="Used for WhatsApp links in the tracker and Action centre." />
+        <div className="px-5 pb-5">
+          <ContactForm username={username} phone={contact?.phone ?? null} approach={contact?.approach ?? null} canEdit={canEdit} />
+        </div>
+      </Card>
+      <Card className="lg:col-span-2">
+        <CardHeader
+          title="Samples"
+          description="Free samples to this creator and whether content followed."
+          action={<Link href={`/samples?q=${encodeURIComponent(username)}&stage=all`} className="text-[13px] font-medium text-brand hover:underline">Open in tracker</Link>}
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] border-collapse">
+            <thead>
+              <tr><Th>Product</Th><Th>Approved</Th><Th>Delivered</Th><Th>Posted</Th><Th>Result</Th><Th align="right">Sales after</Th></tr>
+            </thead>
+            <tbody>
+              {samples.map((x) => (
+                <tr key={x.id}>
+                  <Td className="max-w-[260px]">
+                    <span className="line-clamp-1">{x.name ?? x.variation ?? x.sku ?? x.raw_code}</span>
+                    <span className="text-[11.5px] text-ink-3">{x.sku ?? x.raw_code}</span>
+                  </Td>
+                  <Td className="whitespace-nowrap text-ink-2">{x.approved ? fmtDate(x.approved) : "–"}</Td>
+                  <Td className="whitespace-nowrap text-ink-2">{x.delivered ? fmtDate(x.delivered) : "–"}</Td>
+                  <Td className="whitespace-nowrap text-ink-2">
+                    {x.post_link ? <a href={x.post_link} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">{x.posted ? fmtDate(x.posted) : "video"}</a> : x.posted ? fmtDate(x.posted) : "–"}
+                  </Td>
+                  <Td><ResultBadge result={x.r} /></Td>
+                  <Td align="right">{x.gmv ? fmtRM(x.gmv) : "–"}</Td>
+                </tr>
+              ))}
+              {!samples.length && <tr><Td colSpan={6} className="py-8 text-center text-ink-3">No samples recorded.</Td></tr>}
+            </tbody>
+          </table>
+        </div>
+        {videos.length > 0 && (
+          <div className="border-t border-line px-5 py-4">
+            <p className="mb-2 text-[12.5px] font-medium text-ink-3">Videos & ad codes from the staff sheet</p>
+            <ul className="space-y-1.5 text-[13px]">
+              {videos.map((v, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                  <span className="text-ink-2">{v.sample_code ?? "–"}</span>
+                  {v.url ? <a href={v.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand hover:underline">video <ExternalLink className="size-3" /></a> : null}
+                  {v.ad_code && <code className="max-w-[260px] truncate rounded bg-surface-2 px-1.5 text-[12px] text-ink-2" title={v.ad_code}>{v.ad_code}</code>}
+                  {v.status && <span className="text-ink-3">{v.status}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Card>
+    </section>
+  );
+}
 
 export default async function CreatorPage({ params, searchParams }: PageProps<"/creators/[username]">) {
   const username = decodeURIComponent((await params).username);
@@ -42,6 +113,7 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
           <ArrowLeft className="size-4" /> All creators
         </Link>
         <PageHeader title={username} description={`No sales for this creator in ${period.label.toLowerCase()} or the period before.`} />
+        <CreatorExtras username={username} canEdit={canEdit} />
       </div>
     );
   }
@@ -70,6 +142,7 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
                 <Badge key={f} tone="neutral" className="text-[11.5px]">{FLAGS[f].label}</Badge>
               ))}
               {detail.doNotContact && <Badge tone="critical">Do not contact</Badge>}
+              {c.contentType && <Badge tone={c.contentType === "live" ? "brand" : "neutral"}>{CONTENT_TYPE_LABEL[c.contentType]} creator</Badge>}
               <span className="tnum text-[13px] text-ink-3">
                 Rank #{c.rank}{c.followers != null ? ` · ${fmtCompact(c.followers)} followers` : ""}
               </span>
@@ -199,9 +272,11 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
         </div>
       </Card>
 
+      <CreatorExtras username={username} canEdit={canEdit} />
+
       <section className="grid gap-4 lg:grid-cols-3">
         <Card>
-          <CardHeader title="Samples" description="From the sample analysis export." />
+          <CardHeader title="TikTok sample stats" description="From the sample analysis export." />
           <div className="px-5 pb-5">
             {detail.sample ? (
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[14px]">

@@ -3,9 +3,9 @@ import Link from "next/link";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { ClipboardList } from "lucide-react";
 import { db } from "@/db";
-import { actions, users } from "@/db/schema";
+import { actions, creators, users } from "@/db/schema";
 import { can, requireUser } from "@/lib/auth";
-import { SEGMENTS, SEGMENT_ORDER } from "@/lib/segments";
+import { SAMPLE_ACTIONS, SEGMENTS, SEGMENT_ORDER } from "@/lib/segments";
 import { href, one, type SP } from "@/lib/url";
 import { Card, EmptyState, Input, PageHeader, Select, Button } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/pagination";
@@ -56,9 +56,11 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
       reason: actions.reason, instruction: actions.instruction, expectedUplift: actions.expectedUplift,
       baselineGmv: actions.baselineGmv, status: actions.status, assigneeId: actions.assigneeId,
       assigneeName: users.name, note: actions.note, createdAt: actions.createdAt, completedAt: actions.completedAt,
+      phone: creators.phone,
     })
     .from(actions)
     .leftJoin(users, eq(users.id, actions.assigneeId))
+    .leftJoin(creators, eq(creators.username, actions.username))
     .where(where)
     .orderBy(desc(actions.priority), desc(actions.expectedUplift))
     .limit(PAGE_SIZE)
@@ -105,7 +107,7 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
           <Input name="q" defaultValue={q} placeholder="Search creator…" className="max-w-[240px]" aria-label="Search" />
           <Select name="type" defaultValue={type} aria-label="Type">
             <option value="">All types</option>
-            {SEGMENT_ORDER.filter((k) => k !== "steady").map((k) => (
+            {[...SAMPLE_ACTIONS, ...SEGMENT_ORDER.filter((k) => k !== "steady")].map((k) => (
               <option key={k} value={k}>{SEGMENTS[k].label}</option>
             ))}
           </Select>

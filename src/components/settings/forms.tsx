@@ -83,6 +83,7 @@ export function UserRow({ u, isMe }: { u: { id: string; name: string; email: str
 type T = {
   targetVideosPerWeek: number; minSellerGmv: number; starTopShare: number; strongPercentile: number; declineThreshold: number;
   growthThreshold: number; upliftHaircut: number; upliftWeeks: number; lowConversionMinViews: number; untappedMinFollowers: number; highCancelRate: number;
+  samplePostDays: number; sampleMoreMinGmv: number;
 };
 
 const FIELDS: { name: keyof T; label: string; help: string; pct?: boolean; step?: string }[] = [
@@ -97,6 +98,8 @@ const FIELDS: { name: keyof T; label: string; help: string; pct?: boolean; step?
   { name: "upliftWeeks", label: "Uplift horizon (weeks)", help: "Weeks of extra posting used in the estimate." },
   { name: "lowConversionMinViews", label: "Min. views to judge conversion", help: "Per 28 days. Creators below this aren't coached on conversion." },
   { name: "untappedMinFollowers", label: "Untapped reach followers", help: "Non-sellers above this follower count are suggested for outreach." },
+  { name: "samplePostDays", label: "Days to post after a sample arrives", help: "After this many days from delivery, a sample with no content is marked “Not posted – chase”." },
+  { name: "sampleMoreMinGmv", label: "“Send more samples” at (RM)", help: "Creators who posted and sold at least this much from sample content are recommended for more samples." },
 ];
 
 export function ThresholdsForm({ t }: { t: T }) {

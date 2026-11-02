@@ -79,7 +79,7 @@ const emptyTotals = (): Record<SourceKey, number> => ({
 export async function getSourceMix(period: Period): Promise<SourceMix> {
   const own = await getOwnAccounts();
   const [{ n }] = await rows<{ n: number }>(sql`
-    select count(*)::int as n from shop_order_lines where ${inPeriod("created_at", period)}`);
+    select count(*)::int as n from shop_order_lines where ${inPeriod("created_at", period)} and not is_sample`);
   const hasShopData = n > 0;
   const bucket: "day" | "week" = period.days > 45 ? "week" : "day";
 
@@ -103,7 +103,7 @@ export async function getSourceMix(period: Period): Promise<SourceMix> {
              case when ${between("s.created_at", period.start, period.end)} then 'cur' else 'prev' end as period
       from shop_order_lines s
       left join order_lines a on a.order_id = s.order_id and a.sku_id = s.sku_id
-      where s.status <> 'Canceled' and coalesce(s.cancel_type,'') <> 'Return/Refund'
+      where s.status <> 'Canceled' and coalesce(s.cancel_type,'') <> 'Return/Refund' and not s.is_sample
         and (${between("s.created_at", period.start, period.end)} or ${between("s.created_at", period.prevStart, period.prevEnd)})
       group by 1, 2, 4`);
   } else {

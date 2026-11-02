@@ -4,6 +4,7 @@ import type { Period } from "@/lib/period-core";
 import { pickSnapshot, type SnapshotRef } from "./snapshots";
 import { getOwnAccounts } from "./settings";
 import { AL, between, inPeriod, rows, safeDiv, textArr } from "./sql";
+import { contentType, type ContentType } from "@/lib/samples/analysis";
 
 export type CreatorMetrics = {
   username: string;
@@ -46,6 +47,9 @@ export type CreatorMetrics = {
   samplesShipped: number | null;
   /** GMV per 1,000 video views */
   gpmViews: number | null;
+  /** Video creator, LIVE seller or both – from sales and posts, else the team's notes. */
+  contentType: ContentType | null;
+  phone: string | null;
 };
 
 export type SnapshotInfo = {
@@ -140,6 +144,9 @@ export async function getCreatorMetrics(period: Period): Promise<{ rows: Creator
         select username, followers from creator_list_snapshots where upload_id = ${snapshots.list.uploadId}`)
     : [];
 
+  const contacts = await rows<{ username: string; phone: string | null; approach: string | null }>(sql`
+    select username, phone, approach from creators where phone is not null or approach is not null`);
+  const contactMap = new Map(contacts.map((c) => [c.username, c]));
   const prevMap = new Map(prev.map((p) => [p.creator, p]));
   const topMap = new Map(top.map((t) => [t.creator, t]));
   const ageMap = new Map(age.map((a) => [a.creator, a]));
@@ -194,6 +201,14 @@ export async function getCreatorMetrics(period: Period): Promise<{ rows: Creator
       ctor: x?.ctor ?? null,
       samplesShipped: snapshots.txn ? (x?.shipped ?? 0) : null,
       gpmViews: views && views > 0 ? (gmv / views) * 1000 : null,
+      contentType: contentType({
+        videoGmv: c?.video ?? 0,
+        liveGmv: c?.live ?? 0,
+        videos: x?.videos ?? 0,
+        lives: x?.lives ?? 0,
+        approach: contactMap.get(username)?.approach,
+      }),
+      phone: contactMap.get(username)?.phone ?? null,
     };
   };
 
