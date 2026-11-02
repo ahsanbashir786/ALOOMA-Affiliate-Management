@@ -3,20 +3,21 @@ import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { getThresholds } from "@/lib/analytics/settings";
-import { CONTENT_TYPE_LABEL, getSampleScorecard, VERDICTS, type SampleVerdict, type ScoreRow } from "@/lib/samples/analysis";
+import { CONTENT_TYPE_LABEL, getSampleScorecard, type ScoreRow } from "@/lib/samples/analysis";
+import { QUEUES, VERDICTS, type SampleVerdict } from "@/lib/samples/states";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Select, SortTh, Td, Th } from "@/components/ui/primitives";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Pagination } from "@/components/ui/pagination";
 import { SamplesNav } from "@/components/samples/samples-nav";
-import { waLink } from "@/components/samples/result-badge";
+import { waLink } from "@/lib/samples/states";
 import { cn, fmtDate, fmtInt, fmtPct, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sample scorecard" };
 
 const PAGE_SIZE = 40;
 type SortKey = "samples" | "rate" | "days" | "gmv" | "notposted" | "name";
-const ORDER: SampleVerdict[] = ["chase", "stop", "more", "wait", "ok"];
+const ORDER: SampleVerdict[] = QUEUES;
 
 export default async function SampleScorecardPage({ searchParams }: PageProps<"/samples/creators">) {
   await requireUser();
@@ -67,7 +68,7 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
     <div>
       <PageHeader
         title="Samples"
-        description={`Who turns samples into content and sales. Posting is judged ${t.samplePostDays} days after delivery; “Send more” needs at least ${fmtRM(t.sampleMoreMinGmv)} in sales from the sampled products.`}
+        description={`Compare creators side by side. Posting is judged ${t.samplePostDays} days after delivery; “Send more samples” needs at least ${fmtRM(t.sampleMoreMinGmv)} in sales from the sampled products.`}
       />
       <SamplesNav current="/samples/creators" />
 
@@ -81,7 +82,7 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
             <KpiCard label="Days to post" value={avgDays == null ? "–" : avgDays.toFixed(1)} sub="average, delivery → content" />
             <KpiCard label="Sales after samples" value={fmtRM(gmv)} sub="sampled products, after delivery" hint="Valid affiliate sales by these creators of the product they were sampled, from the delivery date on." />
             <KpiCard label="To chase" value={fmtInt(count("chase"))} invert sub="creators" />
-            <KpiCard label="Stop samples" value={fmtInt(count("stop"))} invert sub="creators" />
+            <KpiCard label="Ask for more content" value={fmtInt(count("more_content"))} sub="selling, post little" />
           </section>
 
           <Card>
@@ -112,7 +113,7 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
               <span className="ml-auto text-[12.5px] text-ink-3">Data up to {fmtDate(dataDate)}</span>
             </form>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1180px] border-collapse">
+              <table className="w-full min-w-[1280px] border-collapse">
                 <thead>
                   <tr>
                     <SortTh {...sortProps("name")}>Creator</SortTh>
@@ -126,6 +127,7 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
                     <SortTh {...sortProps("notposted")} align="right">Not posted</SortTh>
                     <Th>Products</Th>
                     <Th>Next step</Th>
+                    <Th align="right">Est. value</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -141,7 +143,6 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
                           )}
                           {r.doNotContact && <Badge tone="critical">Do not contact</Badge>}
                         </div>
-                        {r.history > 0 && <p className="text-[11.5px] text-ink-3">+{r.history} earlier in staff sheet</p>}
                       </Td>
                       <Td>{r.type ? <Badge tone={r.type === "live" ? "brand" : r.type === "both" ? "good" : "neutral"}>{CONTENT_TYPE_LABEL[r.type]}</Badge> : <span className="text-ink-3">–</span>}</Td>
                       <Td align="right" className="text-ink-2">{fmtInt(r.videos)} / {fmtInt(r.lives)}</Td>
@@ -153,19 +154,16 @@ export default async function SampleScorecardPage({ searchParams }: PageProps<"/
                       <Td align="right" className={cn(r.notPosted > 0 && "font-medium text-critical")}>{fmtInt(r.notPosted)}</Td>
                       <Td className="max-w-[240px]"><span className="line-clamp-2 text-[12.5px] text-ink-2" title={r.products}>{r.products}</span></Td>
                       <Td><Badge tone={VERDICTS[r.verdict].tone}>{VERDICTS[r.verdict].label}</Badge></Td>
+                      <Td align="right" className="text-good">{r.value > 0 ? fmtRM(r.value) : "–"}</Td>
                     </tr>
                   ))}
-                  {!rows.length && <tr><Td colSpan={11} className="py-10 text-center text-ink-3">No creators match.</Td></tr>}
+                  {!rows.length && <tr><Td colSpan={12} className="py-10 text-center text-ink-3">No creators match.</Td></tr>}
                 </tbody>
               </table>
             </div>
             <Pagination page={cur} pages={pages} total={list.length} pageSize={PAGE_SIZE} hrefFor={(p) => href("/samples/creators", { ...base, page: p })} />
           </Card>
-          <p className="text-[12.5px] leading-relaxed text-ink-3">
-            Type comes from what the creator actually did (video vs LIVE sales and posts in TikTok&apos;s reports), or from your staff sheet when there&apos;s no data yet.
-            “Stop samples” = nothing posted for 2+ samples past the deadline, or one sample still unposted {t.samplePostDays * 2}+ days after delivery.
-            Each verdict also appears in the Action centre with a ready-to-send WhatsApp message.
-          </p>
+          <p className="text-[12.5px] leading-relaxed text-ink-3">Type comes from what the creator actually did (video vs LIVE sales and posts in TikTok&apos;s reports), or from your notes when there&apos;s no data yet. “Est. value” is a cautious estimate of sales gained by acting (for old content: monthly sales that depend on the old videos). Work through these on the Tracker – each verdict also appears in the Action centre with a WhatsApp message.</p>
         </div>
       )}
     </div>

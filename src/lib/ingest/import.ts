@@ -10,7 +10,6 @@ import {
   sampleSnapshots,
   skuBom,
   skuItems,
-  staffVideos,
   creators,
   shopOrderLines,
   uploads,
@@ -35,7 +34,7 @@ import {
   type RowObj,
 } from "./parse-utils";
 import type { Cell, RawTab } from "./read-xlsx";
-import { parseSkuWorkbook, resolveStaffCode } from "@/lib/samples/sku";
+import { parseSkuWorkbook } from "@/lib/samples/sku";
 
 export type ImportInput = {
   kind: Kind;
@@ -724,101 +723,65 @@ const cleanUser = (v: Cell | undefined) => {
   return /^[a-z0-9._]{2,40}$/.test(s) ? s : null;
 };
 
-/** Excel serial (46134) or dd/mm/yyyy → YYYY-MM-DD */
-function sheetDate(v: Cell | undefined): string | null {
-  if (v == null || v === "") return null;
-  const n = Number(v);
-  if (Number.isFinite(n) && n > 40000 && n < 60000) return new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86_400_000).toISOString().slice(0, 10);
-  const d = parseDMY(String(v));
-  return d ? d.toISOString().slice(0, 10) : null;
-}
+const NOTE_COLS = /^(comment|comments for bs|other comment|for other sample)/i;
 
-const NOTE_COLS = /^(comment|comments for bs|other comment|status campaign|for other sample|request to post|authorize code|follow up)/i;
-
+/**
+ * The staff sheet is only used for contact details: WhatsApp number, LIVE/video
+ * approach and notes. Samples themselves come from the all-orders export.
+ */
 async function importStaffSheet(input: ImportInput): Promise<ImportResult> {
   const tabs = input.tabs ?? [];
-  type Person = { phones: Map<string, number>; approach: Set<string>; notes: Set<string>; codes: Set<string>; followUp: string | null };
+  type Person = { phones: Map<string, number>; approach: Set<string>; notes: Set<string> };
   const people = new Map<string, Person>();
-  const videoRows: (typeof staffVideos.$inferInsert)[] = [];
   let skipped = 0;
   const get = (u: string) => {
     let p = people.get(u);
-    if (!p) people.set(u, (p = { phones: new Map(), approach: new Set(), notes: new Set(), codes: new Set(), followUp: null }));
+    if (!p) people.set(u, (p = { phones: new Map(), approach: new Set(), notes: new Set() }));
     return p;
   };
 
   for (const tab of tabs) {
-    // Shopee affiliates and the sold-quantity lookups aren't TikTok creator records.
-    if (/shopee|sold/i.test(tab.name)) continue;
+    // Shopee affiliates, sold-quantity lookups and the video list aren't TikTok contact records.
+    if (/shopee|sold|^videos$/i.test(tab.name)) continue;
     const header = tab.rows[0].map((c) => (c == null ? "" : String(c).trim()));
     const phoneCol = header.findIndex((h) => /^whatsapp$/i.test(h));
+    if (phoneCol < 0) continue; // lookup tabs (e.g. "Data Verification") have no contact details
     let userCol = header.findIndex((h) => /^username$/i.test(h));
-    if (userCol < 0 && phoneCol === 1) userCol = 0; // the "ALL" tab has a username where the header should be
+    const headerless = userCol < 0 && phoneCol === 1; // the "ALL" tab has a username where the header should be
+    if (headerless) userCol = 0;
     if (userCol < 0) continue;
-    const isVideos = /^videos$/i.test(tab.name) || (header.includes("Videos") && header.includes("Codes"));
-    // Lookup tabs (e.g. "Data Verification") have no contact details – skip them.
-    if (phoneCol < 0 && !isVideos) continue;
-    const sampleCols = isVideos ? [] : header.map((h, i) => (/^sample/i.test(h) ? i : -1)).filter((i) => i >= 0);
     const approachCol = header.findIndex((h) => /live \/ sample approach/i.test(h));
     const noteCols = header.map((h, i) => (NOTE_COLS.test(h) || (h === "" && i > userCol + 1) ? i : -1)).filter((i) => i >= 0);
-    const followCol = header.findIndex((h) => /^follow up$/i.test(h));
-    const rows = userCol === 0 && phoneCol === 1 && !/^username$/i.test(header[0]) ? tab.rows : tab.rows.slice(1);
 
-    for (const r of rows) {
+    for (const r of headerless ? tab.rows : tab.rows.slice(1)) {
       const u = cleanUser(r[userCol]);
       if (!u) {
         if (r.some((c) => c != null)) skipped++;
         continue;
       }
-      if (isVideos) {
-        const link = r[header.indexOf("Videos")];
-        const code = r[header.indexOf("Codes")];
-        const sample = r[header.indexOf("Sample")];
-        videoRows.push({
-          username: u,
-          sampleCode: sample == null ? null : String(sample).trim(),
-          url: link != null && /^https?:\/\//.test(String(link)) ? String(link).trim() : null,
-          adCode: code == null ? null : String(code).trim(),
-          status: [link != null && !/^https?:\/\//.test(String(link)) ? String(link).trim() : null, r[4] != null ? String(r[4]).trim() : null]
-            .filter((x): x is string => !!x)
-            .join(" · ") || null,
-        });
-        continue;
-      }
       const p = get(u);
-      const phone = phoneCol >= 0 ? normalisePhone(r[phoneCol]) : null;
+      const phone = normalisePhone(r[phoneCol]);
       if (phone) p.phones.set(phone, (p.phones.get(phone) ?? 0) + 1);
-      for (const c of sampleCols) {
-        const v = r[c];
-        if (v != null && String(v).trim()) p.codes.add(String(v).trim());
-      }
       if (approachCol >= 0 && r[approachCol] != null) {
         const a = String(r[approachCol]).toLowerCase();
         if (a.includes("live")) p.approach.add("live");
         if (a.includes("sample")) p.approach.add("video");
       }
       for (const c of noteCols) {
-        if (c === followCol) continue;
         const v = r[c];
         if (v != null && String(v).trim() && !/^\d+(\.\d+)?$/.test(String(v).trim())) p.notes.add(`${header[c] || tab.name}: ${String(v).trim()}`);
-      }
-      if (followCol >= 0) {
-        const d = sheetDate(r[followCol]);
-        if (d && (!p.followUp || d > p.followUp)) p.followUp = d;
       }
     }
   }
   if (!people.size) throw new Error("No creators found. Expected tabs with “Username” and “WhatsApp” columns.");
 
-  const uploadId = await createUpload(input, people.size, { videos: videoRows.length, skipped });
-  let sampleLines = 0;
+  const uploadId = await createUpload(input, people.size, { skipped });
   await db.transaction(async (tx) => {
     const contactRows = [...people].map(([username, p]) => {
       const approach = p.approach.size === 2 ? "both" : p.approach.size === 1 ? [...p.approach][0] : null;
-      const notes = [...p.notes, ...(p.followUp ? [`Last follow-up date: ${p.followUp}`] : [])].join("\n").slice(0, 4000) || null;
       // The number written most often across tabs wins.
       const phone = [...p.phones].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-      return { username, phone, approach, notes };
+      return { username, phone, approach, notes: [...p.notes].join("\n").slice(0, 4000) || null };
     });
     for (const part of chunk(contactRows, 2000)) {
       await tx
@@ -835,24 +798,8 @@ async function importStaffSheet(input: ImportInput): Promise<ImportResult> {
           },
         });
     }
-    // History from the sheet is replaced as a whole on re-import.
-    await tx.delete(samples).where(eq(samples.source, "staff_sheet"));
-    const sampleRows = [...people].flatMap(([username, p]) =>
-      [...p.codes].map((code) => ({
-        source: "staff_sheet",
-        creator: username,
-        creatorMatch: "sheet",
-        rawCode: code,
-        sellerSku: resolveStaffCode(code),
-        quantity: 1,
-        result: "history",
-        uploadId,
-      })),
-    );
-    sampleLines = sampleRows.length;
-    for (const part of chunk(sampleRows, 2000)) await tx.insert(samples).values(part);
-    await tx.delete(staffVideos);
-    for (const part of chunk(videoRows, 2000)) await tx.insert(staffVideos).values(part);
+    // Earlier versions imported sample history from this sheet – samples now come from orders only.
+    await tx.delete(samples).where(sql`${samples.source} <> 'orders'`);
   });
   const withPhone = [...people.values()].filter((p) => p.phones.size).length;
   return {
@@ -860,9 +807,7 @@ async function importStaffSheet(input: ImportInput): Promise<ImportResult> {
     imported: people.size,
     skipped,
     replacedUploads: 0,
-    notes: [
-      `${people.size} creators (${withPhone} with a WhatsApp number), ${sampleLines} past samples and ${videoRows.length} video links / ad codes.`,
-    ],
+    notes: [`${people.size} creators read, ${withPhone} with a WhatsApp number. Samples are not taken from this sheet.`],
   };
 }
 

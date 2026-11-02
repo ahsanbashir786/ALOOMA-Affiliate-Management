@@ -28,7 +28,7 @@ async function main() {
     }
   }
   const s = await refreshSamples();
-  console.log(`Samples: ${s.matched} buyers matched to creators, ${s.merged} hand-logged samples merged.`);
+  console.log(`Samples: ${s.matched} buyers matched to creators.`);
   const a = await generateActions();
   console.log(`Actions: ${a.created} new of ${a.total} recommendations.`);
   await sql.end();

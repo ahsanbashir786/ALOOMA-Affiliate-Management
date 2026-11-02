@@ -4,28 +4,13 @@ import { db } from "@/db";
 import { getThresholds } from "@/lib/analytics/settings";
 import { AL, rows } from "@/lib/analytics/sql";
 
-/** Effective result: a manual override from the team wins over the automatic check. */
+/** Effective result: a correction made by the team wins over the automatic check. */
 export const RESULT_EXPR = sql.raw(`coalesce(s.result_override, s.result)`);
-
-export const RESULTS = {
-  not_posted: { label: "Not posted – chase", tone: "critical" },
-  in_window: { label: "Waiting to post", tone: "warn" },
-  in_transit: { label: "On the way", tone: "neutral" },
-  posted_video: { label: "Posted video", tone: "good" },
-  did_live: { label: "Did LIVE", tone: "good" },
-  posted_other: { label: "Posted, other product", tone: "brand" },
-  no_creator: { label: "Creator unknown", tone: "warn" },
-  cancelled: { label: "Cancelled", tone: "neutral" },
-  requested: { label: "Requested", tone: "neutral" },
-  history: { label: "From staff sheet", tone: "neutral" },
-} as const;
-export type ResultKey = keyof typeof RESULTS;
-export const POSTED: ResultKey[] = ["posted_video", "did_live", "posted_other"];
 
 // ───────────────────────── Creator matching ─────────────────────────
 
 /**
- * TikTok masks the buyer on sample orders ("p***ha_love"): the first letter and
+ * TikTok masks the receiver on sample orders ("p***ha_love"): the first letter and
  * the end of the handle are visible. Match against known creators, most likely
  * pool first (creators TikTok says received samples), and only accept a single hit.
  */
@@ -43,16 +28,14 @@ export function maskMatcher(masked: string) {
 async function matchSampleCreators(): Promise<number> {
   const pending = await rows<{ masked: string }>(sql`
     select distinct buyer_masked as masked from samples
-    where source = 'orders' and creator is null and buyer_masked is not null and coalesce(creator_match, '') <> 'manual'`);
+    where creator is null and buyer_masked is not null and coalesce(creator_match, '') <> 'manual'`);
   if (!pending.length) return 0;
 
   const pools = await Promise.all([
     rows<{ u: string }>(sql`
       select distinct username as u from sample_snapshots where shipped > 0
       union select distinct username from creator_txn_snapshots where samples_shipped > 0`),
-    rows<{ u: string }>(sql`
-      select username as u from creators where phone is not null
-      union select distinct creator from samples where source = 'staff_sheet' and creator is not null`),
+    rows<{ u: string }>(sql`select username as u from creators where phone is not null`),
     rows<{ u: string }>(sql`
       select distinct username as u from creator_list_snapshots
       union select distinct username from creator_txn_snapshots
@@ -75,56 +58,20 @@ async function matchSampleCreators(): Promise<number> {
     if (!hit) continue;
     await db.execute(sql`
       update samples set creator = ${hit}, creator_match = 'auto', updated_at = now()
-      where buyer_masked = ${masked} and creator is null and source = 'orders'`);
+      where buyer_masked = ${masked} and creator is null`);
     matched++;
   }
   return matched;
 }
 
-/**
- * A sample the team logged by hand (requested/approved before TikTok created the
- * order) is merged into the matching order once it arrives: same creator, same
- * SKU (or no SKU given), order created on/after the request.
- */
-async function mergeManualSamples(): Promise<number> {
-  const pairs = await rows<{ manual_id: number; order_id: number }>(sql`
-    select distinct on (m.id) m.id as manual_id, o.id as order_id
-    from samples m
-    join samples o on o.source = 'orders' and o.creator = m.creator
-      and (m.seller_sku is null or upper(o.seller_sku) = upper(m.seller_sku))
-      and (m.requested_at is null or o.approved_at >= m.requested_at::date - 3)
-      and o.requested_at is null
-    where m.source = 'manual' and m.order_id is null and m.creator is not null
-    order by m.id, o.approved_at asc`);
-  const usedOrders = new Set<number>();
-  let merged = 0;
-  for (const p of pairs) {
-    if (usedOrders.has(p.order_id)) continue;
-    usedOrders.add(p.order_id);
-    await db.execute(sql`
-      update samples o set
-        requested_at = coalesce(o.requested_at, m.requested_at, m.created_at::date),
-        owner_id = coalesce(o.owner_id, m.owner_id),
-        note = coalesce(o.note, m.note),
-        follow_up_at = coalesce(o.follow_up_at, m.follow_up_at),
-        result_override = coalesce(o.result_override, m.result_override),
-        raw_code = coalesce(o.raw_code, m.raw_code),
-        updated_at = now()
-      from samples m where o.id = ${p.order_id} and m.id = ${p.manual_id}`);
-    await db.execute(sql`delete from samples where id = ${p.manual_id}`);
-    merged++;
-  }
-  return merged;
-}
-
 // ───────────────────────── Posting check ─────────────────────────
 
 /**
- * For every delivered sample: did the creator post a video with that product
- * (Video analysis), go LIVE (LIVE orders), or does TikTok's sample analysis
- * report content with samples? Otherwise it's "waiting" until the deadline
- * (delivery + N days) and "not posted" after it. Also records the valid sales
- * the creator made with the sampled product after delivery.
+ * For every sample: did the creator post a video with that product (Video analysis, or a
+ * new video already selling in the orders), go LIVE (LIVE orders), or does TikTok's sample
+ * analysis report content with samples? Otherwise it is "waiting" until the deadline
+ * (delivery + N days) and "not posted" after it. Also records how many videos were posted,
+ * their views, and the valid sales of the sampled product made by that new content.
  */
 async function computeSampleResults(postDays: number): Promise<void> {
   await db.execute(sql`
@@ -141,13 +88,24 @@ async function computeSampleResults(postDays: number): Promise<void> {
           (select o.product_id from order_lines o where s.seller_sku is not null and upper(o.seller_sku) = upper(s.seller_sku) limit 1),
           (select p.product_id from products p where s.product_name is not null and p.name = s.product_name limit 1)
         ) as pid
-      from samples s where s.source in ('orders', 'manual')
+      from samples s where s.source = 'orders'
     ),
     vid as (
       select distinct on (sp.id) sp.id, v.video_id, v.posted_at, v.link, coalesce(sp.pid = any(v.product_ids), false) as prod
       from sp join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day'
       where sp.delivered_at is not null
       order by sp.id, coalesce(sp.pid = any(v.product_ids), false) desc, v.posted_at asc
+    ),
+    vstats as (
+      select sp.id,
+        (count(*) filter (where coalesce(sp.pid = any(v.product_ids), false)))::int as vp,
+        (count(*) filter (where not coalesce(sp.pid = any(v.product_ids), false)))::int as vo,
+        coalesce(sum(vv.views) filter (where coalesce(sp.pid = any(v.product_ids), false)), 0)::int as views
+      from sp
+      join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day'
+      left join lateral (select max(s2.views) as views from video_snapshots s2 where s2.video_id = v.video_id) vv on true
+      where sp.delivered_at is not null
+      group by sp.id
     ),
     ovid as (
       -- A video that only shows up in orders (not yet in the video report) and first sold after delivery is new content.
@@ -158,6 +116,17 @@ async function computeSampleResults(postDays: number): Promise<void> {
       group by sp.id, o.content_id
       having min(o.created_at) >= min(sp.delivered_at)
       order by sp.id, bool_or(o.product_id = sp.pid) desc, min(o.created_at) asc
+    ),
+    ocnt as (
+      select x.id, count(*)::int as n from (
+        select sp.id, o.content_id
+        from sp
+        join order_lines o on o.creator = sp.creator and o.content_type = 'Video' and o.content_id is not null
+          and (sp.pid is null or o.product_id = sp.pid)
+        where sp.delivered_at is not null and not exists (select 1 from videos v where v.video_id = o.content_id)
+        group by sp.id, o.content_id
+        having min(o.created_at) >= min(sp.delivered_at)
+      ) x group by x.id
     ),
     live as (
       select sp.id, min(o.created_at) as at
@@ -189,8 +158,7 @@ async function computeSampleResults(postDays: number): Promise<void> {
     update samples s set
       result = case
         when sp.order_status = 'Canceled' then 'cancelled'
-        when sp.creator is null and s.source = 'orders' then 'no_creator'
-        when s.source = 'manual' and s.order_id is null and sp.delivered_at is null then 'requested'
+        when sp.creator is null then 'no_creator'
         when sp.delivered_at is null then 'in_transit'
         when vid.prod or ovid.prod then 'posted_video'
         when live.at is not null then 'did_live'
@@ -206,26 +174,32 @@ async function computeSampleResults(postDays: number): Promise<void> {
       post_link = case
         when vid.prod or (vid.video_id is not null and not coalesce(ovid.prod, false)) then vid.link
         when ovid.video_id is not null then 'https://www.tiktok.com/@' || sp.creator || '/video/' || ovid.video_id end,
+      video_count = coalesce(vstats.vp, 0) + coalesce(ocnt.n, 0),
+      other_video_count = coalesce(vstats.vo, 0),
+      content_views = coalesce(vstats.views, 0),
       content_gmv = coalesce(gmv.gmv, 0),
       content_orders = coalesce(gmv.n, 0),
       checked_at = now()
     from sp
     cross join ref
     left join vid on vid.id = sp.id
+    left join vstats on vstats.id = sp.id
     left join ovid on ovid.id = sp.id
+    left join ocnt on ocnt.id = sp.id
     left join live on live.id = sp.id
     left join snap on snap.id = sp.id
     left join gmv on gmv.id = sp.id
     where s.id = sp.id`);
 }
 
-/** Matches creators, merges hand-logged samples and re-runs the posting check. Safe to run any time. */
-export async function refreshSamples(): Promise<{ matched: number; merged: number }> {
+/** Matches creators and re-runs the posting check. Safe to run any time. */
+export async function refreshSamples(): Promise<{ matched: number }> {
+  // Earlier versions also kept hand-logged and staff-sheet samples; samples now come from orders only.
+  await db.execute(sql`delete from samples where source <> 'orders'`);
   const t = await getThresholds();
   const matched = await matchSampleCreators();
-  const merged = await mergeManualSamples();
   await computeSampleResults(t.samplePostDays);
-  return { matched, merged };
+  return { matched };
 }
 
 /** Latest date the posting check can see (video/transaction reports or orders). */

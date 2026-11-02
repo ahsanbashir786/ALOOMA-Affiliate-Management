@@ -193,7 +193,7 @@ export function UploadWorkbench() {
                       <p className="text-[13px] text-ink-2">SKU list – single items and bundle contents are added or updated. Upload every SKU workbook you have.</p>
                     ) : it.info.kind === "staff_sheet" ? (
                       <p className="text-[13px] text-ink-2">
-                        Staff sheet – WhatsApp numbers, past samples, LIVE/video approach, notes and video links. Contact details edited in the app are kept.
+                        Staff sheet – WhatsApp numbers, notes and LIVE/video approach only. Contact details edited in the app are kept.
                       </p>
                     ) : (
                       <p className="text-[13px] text-ink-2">

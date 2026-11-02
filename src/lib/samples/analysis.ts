@@ -1,8 +1,9 @@
 import "server-only";
-import { sql, type SQL } from "drizzle-orm";
-import { rows, safeDiv } from "@/lib/analytics/sql";
+import { sql } from "drizzle-orm";
+import { AL, rows, safeDiv } from "@/lib/analytics/sql";
 import { getThresholds, type Thresholds } from "@/lib/analytics/settings";
-import { RESULT_EXPR, type ResultKey } from "./service";
+import { RESULT_EXPR } from "./service";
+import { lineState, type LineState, type ResultKey, type SampleVerdict } from "./states";
 
 // ───────────────────────── Creator content type ─────────────────────────
 
@@ -21,15 +22,6 @@ export function contentType(a: { videoGmv?: number; liveGmv?: number; videos?: n
 
 // ───────────────────────── Scorecard ─────────────────────────
 
-export type SampleVerdict = "more" | "stop" | "chase" | "wait" | "ok";
-export const VERDICTS: Record<SampleVerdict, { label: string; tone: "good" | "critical" | "serious" | "warn" | "neutral" }> = {
-  more: { label: "Send more samples", tone: "good" },
-  stop: { label: "Stop samples", tone: "critical" },
-  chase: { label: "Chase to post", tone: "serious" },
-  wait: { label: "Waiting", tone: "warn" },
-  ok: { label: "OK", tone: "neutral" },
-};
-
 export type ScoreRow = {
   username: string;
   phone: string | null;
@@ -47,33 +39,79 @@ export type ScoreRow = {
   contentGmv: number;
   contentOrders: number;
   oldestUnposted: string | null;
+  firstDelivered: string | null;
   lastSample: string | null;
   products: string;
-  history: number;
+  /** Videos posted since the first sample was delivered (any product). */
+  videosSince: number;
+  newestVideo: string | null;
+  /** Valid sales of the last 14 days of data, from all their videos and LIVEs. */
+  recentGmv14: number;
   videos: number;
   lives: number;
   videoGmv: number;
   liveGmv: number;
   type: ContentType | null;
   verdict: SampleVerdict;
+  advice: string;
+  /** Rough RM at stake / to gain if the manager acts (conservative). */
+  value: number;
 };
 
 const JUDGED = sql.raw(`('posted_video','did_live','posted_other','not_posted')`);
 const POSTED_SET = sql.raw(`('posted_video','did_live','posted_other')`);
 
-export function verdictFor(r: Pick<ScoreRow, "posted" | "judged" | "notPosted" | "waiting" | "delivered" | "contentGmv" | "oldestUnposted">, t: Thresholds, today: string): SampleVerdict {
-  const stale =
-    r.oldestUnposted != null &&
-    (Date.parse(today) - Date.parse(r.oldestUnposted)) / 86_400_000 > t.samplePostDays * 2;
+const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
+const fmtDay = (d: string | null) =>
+  d ? new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : "recently";
+const daysBetween = (later: string, earlier: string) => Math.round((Date.parse(later) - Date.parse(earlier)) / 86_400_000);
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+type VerdictInput = Pick<
+  ScoreRow,
+  "posted" | "judged" | "notPosted" | "waiting" | "delivered" | "contentGmv" | "contentOrders" | "oldestUnposted" | "firstDelivered" | "videosSince" | "newestVideo" | "recentGmv14"
+>;
+
+export function verdictFor(r: VerdictInput, t: Thresholds, today: string): SampleVerdict {
+  const stale = r.oldestUnposted != null && daysBetween(today, r.oldestUnposted) > t.samplePostDays * 2;
   if (r.posted === 0 && (r.judged >= 2 || (r.notPosted >= 1 && stale))) return "stop";
-  if (r.posted >= 1 && r.notPosted === 0 && r.contentGmv >= t.sampleMoreMinGmv) return "more";
   if (r.notPosted >= 1) return "chase";
+  if (r.posted >= 1 && r.contentGmv >= t.sampleMoreMinGmv) {
+    const weeks = Math.max(1, daysBetween(today, r.firstDelivered ?? today) / 7);
+    return r.videosSince / weeks < t.targetVideosPerWeek ? "more_content" : "more";
+  }
+  const oldContent = r.newestVideo != null && daysBetween(today, r.newestVideo) >= t.oldContentDays && r.recentGmv14 >= t.minSellerGmv / 2;
+  if (oldContent) return "refresh";
+  if (r.posted >= 1 && r.contentOrders === 0) return "coach";
   if (r.waiting >= 1 || r.delivered === 0) return "wait";
   return "ok";
 }
 
-/** One row per creator who received samples (TikTok sample orders and hand-logged samples). */
-export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate: string }> {
+function adviceFor(r: ScoreRow, t: Thresholds, today: string): string {
+  switch (r.verdict) {
+    case "chase":
+      return `${plural(r.notPosted, "sample")} delivered (oldest ${fmtDay(r.oldestUnposted)}) – nothing posted after ${t.samplePostDays} days.`;
+    case "stop":
+      return `${plural(r.judged, "sample")} past the posting deadline and nothing posted.`;
+    case "coach":
+      return `${plural(r.videosSince, "video")} posted since the sample, but no orders yet – check the video, add a voucher or a stronger hook.`;
+    case "more_content": {
+      const weeks = Math.max(1, daysBetween(today, r.firstDelivered ?? today) / 7);
+      return `Sample content sold ${rm(r.contentGmv)} but they post only ${(r.videosSince / weeks).toFixed(1)} video/week – ask for more.`;
+    }
+    case "more":
+      return `Posted for ${r.posted} of ${r.judged}; sample content sold ${rm(r.contentGmv)}. Reward with another product.`;
+    case "refresh":
+      return `Newest video is ${daysBetween(today, r.newestVideo!)} days old (${fmtDay(r.newestVideo)}) yet it sold ${rm(r.recentGmv14)} in the last 14 days – ask for a fresh video.`;
+    case "wait":
+      return `${plural(r.waiting, "sample")} on the way or inside the ${t.samplePostDays}-day posting window.`;
+    default:
+      return "";
+  }
+}
+
+/** One row per creator who received samples (free-sample orders), with the next step for the manager. */
+export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate: string; perPosted: number }> {
   const t = await getThresholds();
   const [{ d }] = await rows<{ d: string }>(sql`
     select to_char(greatest(
@@ -82,12 +120,13 @@ export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate
   const data = await rows<{
     creator: string; phone: string | null; approach: string | null; dnc: boolean | null; samples: number; qty: number;
     delivered: number; judged: number; posted: number; not_posted: number; waiting: number; days: number | null;
-    gmv: number; orders: number; oldest: string | null; last: string | null; products: string | null; history: number;
+    gmv: number; orders: number; oldest: string | null; first: string | null; last: string | null; products: string | null;
+    videos_since: number | null; newest: string | null; recent: number | null;
     videos: number | null; lives: number | null; vgmv: number | null; lgmv: number | null;
   }>(sql`
     with s as (
       select s.*, ${RESULT_EXPR} as r from samples s
-      where s.source in ('orders', 'manual') and s.creator is not null
+      where s.source = 'orders' and s.creator is not null
     ),
     agg as (
       select creator,
@@ -96,16 +135,39 @@ export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate
         (count(*) filter (where r in ${JUDGED}))::int as judged,
         (count(*) filter (where r in ${POSTED_SET}))::int as posted,
         (count(*) filter (where r = 'not_posted'))::int as not_posted,
-        (count(*) filter (where r in ('in_window', 'in_transit', 'requested')))::int as waiting,
+        (count(*) filter (where r in ('in_window', 'in_transit')))::int as waiting,
         (avg(extract(epoch from (posted_at - delivered_at)) / 86400) filter (where r in ${POSTED_SET} and posted_at is not null))::float8 as days,
         coalesce(sum(content_gmv), 0)::float8 as gmv, coalesce(sum(content_orders), 0)::int as orders,
         to_char(min(delivered_at) filter (where r = 'not_posted'), 'YYYY-MM-DD') as oldest,
-        to_char(max(coalesce(approved_at, requested_at::timestamp)), 'YYYY-MM-DD') as last,
-        string_agg(distinct coalesce(k.name, s.variation, s.seller_sku, s.raw_code), ', ') as products
+        to_char(min(delivered_at), 'YYYY-MM-DD') as first,
+        to_char(max(approved_at), 'YYYY-MM-DD') as last,
+        string_agg(distinct coalesce(k.name, s.variation, s.seller_sku), ', ') as products
       from s left join sku_items k on upper(k.sku) = upper(s.seller_sku)
       group by creator
     ),
-    hist as (select creator, count(*)::int as n from samples where source = 'staff_sheet' group by creator),
+    first_d as (select creator, min(delivered_at) as d from s where delivered_at is not null group by creator),
+    vids as (
+      select creator, count(distinct vid)::int as n, to_char(max(at), 'YYYY-MM-DD') as last from (
+        select v.creator, v.video_id as vid, v.posted_at as at from videos v
+          join first_d f on f.creator = v.creator and v.posted_at >= f.d - interval '1 day'
+        union
+        -- new videos already selling in orders but not yet in the video report
+        select o.creator, o.content_id, min(o.created_at) from order_lines o join first_d f on f.creator = o.creator
+          where o.content_type = 'Video' and o.content_id is not null
+            and not exists (select 1 from videos v2 where v2.video_id = o.content_id)
+          group by o.creator, o.content_id, f.d having min(o.created_at) >= f.d
+      ) u group by creator
+    ),
+    lastv as (
+      select v.creator, to_char(max(v.posted_at), 'YYYY-MM-DD') as newest
+      from videos v where v.creator in (select creator from agg) group by v.creator
+    ),
+    recent as (
+      select creator, coalesce(sum(pay) filter (where valid), 0)::float8 as gmv
+      from ${AL}
+      where created_at >= (${d}::date - 13) and created_at < (${d}::date + 1) and creator in (select creator from agg)
+      group by creator
+    ),
     snap as (select username, sum(videos)::int as videos, sum(live_streams)::int as lives from creator_txn_snapshots group by username),
     sold as (
       select creator,
@@ -113,16 +175,22 @@ export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate
         coalesce(sum(payment_amount) filter (where content_type = 'Livestream'), 0)::float8 as lgmv
       from order_lines group by creator
     )
-    select agg.*, c.phone, c.approach, c.do_not_contact as dnc, coalesce(hist.n, 0)::int as history,
+    select agg.*, c.phone, c.approach, c.do_not_contact as dnc,
+      vids.n as videos_since, greatest(lastv.newest, vids.last) as newest, recent.gmv as recent,
       snap.videos, snap.lives, sold.vgmv, sold.lgmv
     from agg
     left join creators c on c.username = agg.creator
-    left join hist on hist.creator = agg.creator
+    left join vids on vids.creator = agg.creator
+    left join lastv on lastv.creator = agg.creator
+    left join recent on recent.creator = agg.creator
     left join snap on snap.username = agg.creator
     left join sold on sold.creator = agg.creator`);
 
+  const postedTotal = data.reduce((a, r) => a + r.posted, 0);
+  const perPosted = safeDiv(data.reduce((a, r) => a + (r.posted ? r.gmv : 0), 0), postedTotal);
+
   const out = data.map((r): ScoreRow => {
-    const row = {
+    const row: ScoreRow = {
       username: r.creator,
       phone: r.phone,
       approach: r.approach,
@@ -139,20 +207,177 @@ export async function getSampleScorecard(): Promise<{ rows: ScoreRow[]; dataDate
       contentGmv: r.gmv,
       contentOrders: r.orders,
       oldestUnposted: r.oldest,
+      firstDelivered: r.first,
       lastSample: r.last,
       products: r.products ?? "",
-      history: r.history,
+      videosSince: r.videos_since ?? 0,
+      newestVideo: r.newest,
+      recentGmv14: r.recent ?? 0,
       videos: r.videos ?? 0,
       lives: r.lives ?? 0,
       videoGmv: r.vgmv ?? 0,
       liveGmv: r.lgmv ?? 0,
       type: contentType({ videoGmv: r.vgmv ?? 0, liveGmv: r.lgmv ?? 0, videos: r.videos, lives: r.lives, approach: r.approach }),
-      verdict: "ok" as SampleVerdict,
+      verdict: "ok",
+      advice: "",
+      value: 0,
     };
     row.verdict = verdictFor(row, t, d);
+    row.advice = adviceFor(row, t, d);
+    const weeks = Math.max(1, daysBetween(d, row.firstDelivered ?? d) / 7);
+    switch (row.verdict) {
+      case "chase": row.value = perPosted * row.notPosted * t.upliftHaircut; break;
+      case "more_content": row.value = safeDiv(row.contentGmv, Math.max(1, row.videosSince)) * 2 * t.upliftHaircut; break;
+      case "more": row.value = safeDiv(row.contentGmv, Math.max(1, row.posted)) * t.upliftHaircut; break;
+      case "refresh": row.value = row.recentGmv14 * 2; break; // monthly sales that depend on the old videos
+      default: row.value = 0;
+    }
+    void weeks;
     return row;
   });
-  return { rows: out, dataDate: d };
+  return { rows: out, dataDate: d, perPosted };
+}
+
+// ───────────────────────── Sample lines (tracker) ─────────────────────────
+
+export type BundlePart = { sku: string; name: string; qty: number };
+
+export type SampleLine = {
+  id: number;
+  creator: string | null;
+  buyerMasked: string | null;
+  creatorMatch: string | null;
+  sku: string | null;
+  name: string | null;
+  variation: string | null;
+  /** Contents of a bundle (SET) SKU, from the SKU lists. Empty for single items. */
+  parts: BundlePart[];
+  quantity: number;
+  approvedAt: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  dueAt: string | null;
+  postedAt: string | null;
+  postLink: string | null;
+  result: ResultKey;
+  autoResult: ResultKey | null;
+  overridden: boolean;
+  state: LineState;
+  videoCount: number;
+  otherVideoCount: number;
+  contentViews: number;
+  contentGmv: number;
+  contentOrders: number;
+  ownerId: string | null;
+  ownerName: string | null;
+  followUpAt: string | null;
+  note: string | null;
+  orderSubstatus: string | null;
+  trackingId: string | null;
+};
+
+const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : typeof v === "string" ? v : null);
+const day = (v: unknown) => (iso(v) ? iso(v)!.slice(0, 10) : null);
+const addDays = (d: string, n: number) => new Date(Date.parse(d.slice(0, 10)) + n * 86_400_000).toISOString().slice(0, 10);
+
+async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> {
+  const t = await getThresholds();
+  const list = await rows<Record<string, unknown>>(sql`
+    select s.*, ${RESULT_EXPR} as r, k.name, u.name as owner_name,
+      (select coalesce(jsonb_agg(jsonb_build_object('sku', b.component_sku, 'name', coalesce(ki.name, b.component_sku), 'qty', b.qty) order by b.component_sku), '[]'::jsonb)
+         from sku_bom b left join sku_items ki on ki.sku = b.component_sku where upper(b.set_sku) = upper(s.seller_sku)) as parts
+    from samples s
+    left join sku_items k on upper(k.sku) = upper(s.seller_sku)
+    left join users u on u.id = s.owner_id
+    where s.source = 'orders' and ${where}
+    order by s.approved_at desc nulls last, s.id desc`);
+  return list.map((r) => {
+    const result = ((r.r as ResultKey) ?? "in_transit") as ResultKey;
+    const delivered = day(r.delivered_at);
+    return {
+      id: r.id as number,
+      creator: (r.creator as string) ?? null,
+      buyerMasked: (r.buyer_masked as string) ?? null,
+      creatorMatch: (r.creator_match as string) ?? null,
+      sku: (r.seller_sku as string) ?? null,
+      name: (r.name as string) ?? null,
+      variation: (r.variation as string) ?? null,
+      parts: (r.parts as BundlePart[]) ?? [],
+      quantity: r.quantity as number,
+      approvedAt: day(r.approved_at),
+      shippedAt: day(r.shipped_at),
+      deliveredAt: delivered,
+      dueAt: delivered ? addDays(delivered, t.samplePostDays) : null,
+      postedAt: day(r.posted_at),
+      postLink: (r.post_link as string) ?? null,
+      result,
+      autoResult: (r.result as ResultKey) ?? null,
+      overridden: r.result_override != null,
+      state: lineState(result, Number(r.content_orders ?? 0)),
+      videoCount: Number(r.video_count ?? 0),
+      otherVideoCount: Number(r.other_video_count ?? 0),
+      contentViews: Number(r.content_views ?? 0),
+      contentGmv: Number(r.content_gmv ?? 0),
+      contentOrders: Number(r.content_orders ?? 0),
+      ownerId: (r.owner_id as string) ?? null,
+      ownerName: (r.owner_name as string) ?? null,
+      followUpAt: day(r.follow_up_at),
+      note: (r.note as string) ?? null,
+      orderSubstatus: (r.order_substatus as string) ?? null,
+      trackingId: (r.tracking_id as string) ?? null,
+    };
+  });
+}
+
+/** Sample lines of the given creators, grouped by creator. */
+export async function getSampleLines(creators: string[]): Promise<Map<string, SampleLine[]>> {
+  const out = new Map<string, SampleLine[]>();
+  if (!creators.length) return out;
+  const lines = await queryLines(sql`s.creator in (${sql.join(creators.map((c) => sql`${c}`), sql`, `)})`);
+  for (const l of lines) out.set(l.creator!, [...(out.get(l.creator!) ?? []), l]);
+  return out;
+}
+
+/** Samples whose receiver couldn't be matched to a creator yet, grouped by the masked name TikTok shows. */
+export async function getUnknownLines(): Promise<{ buyer: string; lines: SampleLine[] }[]> {
+  const lines = await queryLines(sql`s.creator is null`);
+  const by = new Map<string, SampleLine[]>();
+  for (const l of lines) by.set(l.buyerMasked ?? "?", [...(by.get(l.buyerMasked ?? "?") ?? []), l]);
+  return [...by].map(([buyer, ls]) => ({ buyer, lines: ls }));
+}
+
+/** Creators with at least one sample that matches the search, owner or follow-up filter. */
+export async function getCreatorsMatching(f: { q?: string; owner?: string | null; due?: boolean }): Promise<Set<string> | null> {
+  if (!f.q && !f.owner && !f.due) return null;
+  const conds = [sql`s.source = 'orders' and s.creator is not null`];
+  if (f.q) {
+    const like = `%${f.q.toLowerCase()}%`;
+    conds.push(sql`(lower(s.creator) like ${like} or coalesce(c.phone, '') like ${like} or lower(coalesce(s.seller_sku, '')) like ${like}
+      or lower(coalesce(k.name, '')) like ${like} or lower(coalesce(s.variation, '')) like ${like})`);
+  }
+  if (f.owner) conds.push(sql`s.owner_id = ${f.owner}`);
+  if (f.due) conds.push(sql`s.follow_up_at <= current_date`);
+  const r = await rows<{ creator: string }>(sql`
+    select distinct s.creator from samples s
+    left join creators c on c.username = s.creator
+    left join sku_items k on upper(k.sku) = upper(s.seller_sku)
+    where ${sql.join(conds, sql` and `)}`);
+  return new Set(r.map((x) => x.creator));
+}
+
+/** Count of samples by line state – used by the KPI strip. */
+export async function getSampleTotals(): Promise<{ sent: number; qty: number; delivered: number; chase: number; noSales: number; selling: number; gmv: number; unknown: number }> {
+  const [r] = await rows<{ sent: number; qty: number; delivered: number; chase: number; nosales: number; selling: number; gmv: number; unknown: number }>(sql`
+    with s as (select s.*, ${RESULT_EXPR} as r from samples s where s.source = 'orders')
+    select count(*)::int as sent, coalesce(sum(quantity), 0)::int as qty,
+      (count(*) filter (where delivered_at is not null))::int as delivered,
+      (count(*) filter (where r = 'not_posted'))::int as chase,
+      (count(*) filter (where r in ('posted_video','did_live','posted_other') and content_orders = 0))::int as nosales,
+      (count(*) filter (where r in ('posted_video','did_live','posted_other') and content_orders > 0))::int as selling,
+      coalesce(sum(content_gmv), 0)::float8 as gmv,
+      (count(*) filter (where creator is null))::int as unknown
+    from s`);
+  return { sent: r.sent, qty: r.qty, delivered: r.delivered, chase: r.chase, noSales: r.nosales, selling: r.selling, gmv: r.gmv, unknown: r.unknown };
 }
 
 // ───────────────────────── Product view ─────────────────────────
@@ -182,8 +407,8 @@ export async function getSampleProducts(): Promise<SampleProductRow[]> {
     qty: number; creators: number; judged: number; posted: number; days: number | null; gmv: number; orders: number;
   }>(sql`
     with s as (
-      select s.*, ${RESULT_EXPR} as r, coalesce(s.seller_sku, s.raw_code, 'Unknown') as key
-      from samples s where s.source in ('orders', 'manual')
+      select s.*, ${RESULT_EXPR} as r, coalesce(s.seller_sku, 'Unknown') as key
+      from samples s where s.source = 'orders'
     )
     select s.key as sku, max(coalesce(k.name, s.variation)) as name, max(k.family) as family, bool_or(k.is_set) as is_set,
       (select string_agg(b.qty || '× ' || coalesce(ki.name, b.component_sku), ', ' order by b.component_sku)
@@ -218,9 +443,9 @@ export async function getSampleProducts(): Promise<SampleProductRow[]> {
 /** Single items sent, with bundles broken down into their contents (needs the SKU list). */
 export async function getSampleItems(): Promise<{ sku: string; name: string; qty: number; creators: number }[]> {
   return rows(sql`
-    with s as (select * from samples where source in ('orders', 'manual') and coalesce(order_status, '') <> 'Canceled'),
+    with s as (select * from samples where source = 'orders' and coalesce(order_status, '') <> 'Canceled'),
     items as (
-      select coalesce(b.component_sku, s.seller_sku, s.raw_code, 'Unknown') as sku, s.quantity * coalesce(b.qty, 1) as qty, s.creator
+      select coalesce(b.component_sku, s.seller_sku, 'Unknown') as sku, s.quantity * coalesce(b.qty, 1) as qty, s.creator
       from s left join sku_bom b on upper(b.set_sku) = upper(s.seller_sku)
     )
     select i.sku, coalesce(max(k.name), i.sku) as name, sum(i.qty)::int as qty, count(distinct i.creator)::int as creators
@@ -228,155 +453,17 @@ export async function getSampleItems(): Promise<{ sku: string; name: string; qty
     group by i.sku order by qty desc`);
 }
 
-// ───────────────────────── Tracker ─────────────────────────
-
-export const STAGES = [
-  { key: "open", label: "To work", where: `r in ('not_posted','in_window','in_transit','requested','no_creator')` },
-  { key: "not_posted", label: "Not posted – chase", where: `r = 'not_posted'` },
-  { key: "in_window", label: "Waiting to post", where: `r = 'in_window'` },
-  { key: "in_transit", label: "Requested / on the way", where: `r in ('in_transit','requested')` },
-  { key: "posted", label: "Posted", where: `r in ('posted_video','did_live','posted_other')` },
-  { key: "no_creator", label: "Creator unknown", where: `r = 'no_creator'` },
-  { key: "cancelled", label: "Cancelled", where: `r = 'cancelled'` },
-  { key: "history", label: "Staff sheet history", where: `r = 'history'` },
-  { key: "all", label: "All", where: `true` },
-] as const;
-export type StageKey = (typeof STAGES)[number]["key"];
-
-export type TrackerRow = {
-  id: number;
-  source: string;
-  creator: string | null;
-  buyerMasked: string | null;
-  creatorMatch: string | null;
-  phone: string | null;
-  sku: string | null;
-  rawCode: string | null;
-  name: string | null;
-  variation: string | null;
-  contents: string | null;
-  quantity: number;
-  requestedAt: string | null;
-  approvedAt: string | null;
-  shippedAt: string | null;
-  deliveredAt: string | null;
-  dueAt: string | null;
-  postedAt: string | null;
-  postLink: string | null;
-  result: ResultKey;
-  autoResult: ResultKey | null;
-  overridden: boolean;
-  contentGmv: number;
-  contentOrders: number;
-  ownerId: string | null;
-  ownerName: string | null;
-  followUpAt: string | null;
-  note: string | null;
-  orderSubstatus: string | null;
-  trackingId: string | null;
-};
-
-export type TrackerFilter = {
-  stage: StageKey;
-  q?: string;
-  owner?: string | null;
-  due?: boolean;
-  page: number;
-  pageSize: number;
-};
-
-export async function getSampleTracker(f: TrackerFilter): Promise<{ rows: TrackerRow[]; total: number; counts: Record<StageKey, number> }> {
-  const t = await getThresholds();
-  const stage = STAGES.find((s) => s.key === f.stage) ?? STAGES[0];
-  const conds: SQL[] = [sql.raw(stage.where)];
-  if (f.q) {
-    const like = `%${f.q.toLowerCase()}%`;
-    conds.push(sql`(lower(coalesce(creator, '')) like ${like} or lower(coalesce(buyer_masked, '')) like ${like}
-      or lower(coalesce(seller_sku, '')) like ${like} or lower(coalesce(raw_code, '')) like ${like}
-      or lower(coalesce(name, '')) like ${like} or lower(coalesce(variation, '')) like ${like} or coalesce(phone, '') like ${like})`);
-  }
-  if (f.owner) conds.push(sql`owner_id = ${f.owner}`);
-  if (f.due) conds.push(sql`follow_up_at <= current_date`);
-  const where = sql.join(conds, sql` and `);
-  const base = sql`
-    select s.*, ${RESULT_EXPR} as r, c.phone, k.name,
-      (select string_agg(b.qty || '× ' || coalesce(ki.name, b.component_sku), ', ' order by b.component_sku)
-         from sku_bom b left join sku_items ki on ki.sku = b.component_sku where upper(b.set_sku) = upper(s.seller_sku)) as contents,
-      u.name as owner_name
-    from samples s
-    left join creators c on c.username = s.creator
-    left join sku_items k on upper(k.sku) = upper(s.seller_sku)
-    left join users u on u.id = s.owner_id`;
-
-  const [list, [{ n }], countRows] = await Promise.all([
-    rows<Record<string, unknown>>(sql`
-      select * from (${base}) x where ${where}
-      order by (r = 'not_posted') desc, follow_up_at asc nulls last, delivered_at asc nulls last, approved_at desc nulls last, id desc
-      limit ${f.pageSize} offset ${(f.page - 1) * f.pageSize}`),
-    rows<{ n: number }>(sql`select count(*)::int as n from (${base}) x where ${where}`),
-    rows<Record<string, number>>(sql`
-      select ${sql.join(STAGES.map((s) => sql`(count(*) filter (where ${sql.raw(s.where)}))::int as ${sql.identifier(s.key)}`), sql`, `)}
-      from (select ${RESULT_EXPR} as r from samples s) x`),
-  ]);
-
-  const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : typeof v === "string" ? v : null);
-  const day = (v: unknown) => (iso(v) ? iso(v)!.slice(0, 10) : null);
-  const addDays = (d: string, n: number) => new Date(Date.parse(d.slice(0, 10)) + n * 86_400_000).toISOString().slice(0, 10);
-
-  return {
-    rows: list.map((r) => ({
-      id: r.id as number,
-      source: r.source as string,
-      creator: (r.creator as string) ?? null,
-      buyerMasked: (r.buyer_masked as string) ?? null,
-      creatorMatch: (r.creator_match as string) ?? null,
-      phone: (r.phone as string) ?? null,
-      sku: (r.seller_sku as string) ?? null,
-      rawCode: (r.raw_code as string) ?? null,
-      name: (r.name as string) ?? null,
-      variation: (r.variation as string) ?? null,
-      contents: (r.contents as string) ?? null,
-      quantity: r.quantity as number,
-      requestedAt: day(r.requested_at),
-      approvedAt: day(r.approved_at),
-      shippedAt: day(r.shipped_at),
-      deliveredAt: day(r.delivered_at),
-      dueAt: day(r.delivered_at) ? addDays(day(r.delivered_at)!, t.samplePostDays) : null,
-      postedAt: day(r.posted_at),
-      postLink: (r.post_link as string) ?? null,
-      result: (r.r as ResultKey) ?? "in_transit",
-      autoResult: (r.result as ResultKey) ?? null,
-      overridden: r.result_override != null,
-      contentGmv: Number(r.content_gmv ?? 0),
-      contentOrders: Number(r.content_orders ?? 0),
-      ownerId: (r.owner_id as string) ?? null,
-      ownerName: (r.owner_name as string) ?? null,
-      followUpAt: day(r.follow_up_at),
-      note: (r.note as string) ?? null,
-      orderSubstatus: (r.order_substatus as string) ?? null,
-      trackingId: (r.tracking_id as string) ?? null,
-    })),
-    total: n,
-    counts: countRows[0] as Record<StageKey, number>,
-  };
-}
-
 /** Samples of one creator (profile page). */
 export async function getCreatorSamples(username: string) {
   return rows<{
-    id: number; source: string; sku: string | null; raw_code: string | null; name: string | null; variation: string | null;
-    approved: string | null; delivered: string | null; posted: string | null; post_link: string | null; r: ResultKey; gmv: number;
+    id: number; sku: string | null; name: string | null; variation: string | null;
+    approved: string | null; delivered: string | null; posted: string | null; post_link: string | null; r: ResultKey; gmv: number; orders: number;
   }>(sql`
-    select s.id, s.source, s.seller_sku as sku, s.raw_code, k.name, s.variation,
+    select s.id, s.seller_sku as sku, k.name, s.variation,
       to_char(s.approved_at, 'YYYY-MM-DD') as approved, to_char(s.delivered_at, 'YYYY-MM-DD') as delivered,
-      to_char(s.posted_at, 'YYYY-MM-DD') as posted, s.post_link, ${RESULT_EXPR} as r, s.content_gmv::float8 as gmv
+      to_char(s.posted_at, 'YYYY-MM-DD') as posted, s.post_link, ${RESULT_EXPR} as r, s.content_gmv::float8 as gmv, s.content_orders as orders
     from samples s left join sku_items k on upper(k.sku) = upper(s.seller_sku)
-    where s.creator = ${username}
-    order by s.source = 'staff_sheet', coalesce(s.approved_at, s.created_at) desc
+    where s.creator = ${username} and s.source = 'orders'
+    order by coalesce(s.approved_at, s.created_at) desc
     limit 50`);
-}
-
-export async function getStaffVideos(username: string) {
-  return rows<{ sample_code: string | null; url: string | null; ad_code: string | null; status: string | null }>(sql`
-    select sample_code, url, ad_code, status from staff_videos where username = ${username} order by id limit 30`);
 }

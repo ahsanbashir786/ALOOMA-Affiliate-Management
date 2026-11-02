@@ -8,7 +8,8 @@ import { SEGMENTS, type SegmentKey } from "@/lib/segments";
 import { classifyCreators, classifyNonSellers, type Classified, type ClassifiedNonSeller, type SegmentContext } from "./classify";
 import { getCreatorMetrics, getNonSellers } from "./creators";
 import { getThresholds, type Thresholds } from "./settings";
-import { getSampleScorecard, type ScoreRow } from "@/lib/samples/analysis";
+import { getSampleScorecard } from "@/lib/samples/analysis";
+import { waMessage, type SampleVerdict } from "@/lib/samples/states";
 
 export type Recommendation = {
   username: string;
@@ -34,6 +35,8 @@ const BASE_PRIORITY: Record<SegmentKey, number> = {
   steady: 10,
   sample_chase: 72,
   more_samples: 60,
+  more_content: 66,
+  refresh_content: 58,
   stop_samples: 38,
 };
 
@@ -263,76 +266,48 @@ export function allRecommendations(a: Analysis): Recommendation[] {
   return recs.sort((x, y) => y.priority - x.priority || y.expectedUplift - x.expectedUplift);
 }
 
-const fmtDay = (d: string | null) =>
-  d ? new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : "recently";
-
-/** Follow-up actions from the sample tracker: chase non-posters, reward converters, stop serial non-posters. */
-export async function sampleRecommendations(t: Thresholds): Promise<Recommendation[]> {
+/** Follow-up actions from the sample tracker, one per creator: chase, coach, ask for more content, reward, fresh video, stop. */
+export async function sampleRecommendations(): Promise<Recommendation[]> {
   const { rows: score } = await getSampleScorecard();
-  const posted = score.filter((r) => r.posted > 0);
-  // Typical sales from one sample that turned into content – used to size the chase.
-  const perPosted = posted.reduce((a, r) => a + r.contentGmv, 0) / Math.max(1, posted.reduce((a, r) => a + r.posted, 0));
+  const TYPE: Partial<Record<SampleVerdict, SegmentKey>> = {
+    chase: "sample_chase",
+    stop: "stop_samples",
+    more: "more_samples",
+    more_content: "more_content",
+    refresh: "refresh_content",
+  };
   const out: Recommendation[] = [];
-  const contact = (r: ScoreRow) => (r.phone ? `\n\nWhatsApp: ${r.phone} · https://wa.me/${r.phone.replace(/\D/g, "")}` : "");
-
   for (const r of score) {
-    if (r.doNotContact) continue;
+    const type = TYPE[r.verdict];
+    if (!type || r.doNotContact) continue;
     const products = r.products || "our product";
-    if (r.verdict === "chase") {
-      const uplift = Math.round(perPosted * r.notPosted * t.upliftHaircut);
-      out.push({
-        username: r.username,
-        type: "sample_chase",
-        priority: priorityScore("sample_chase", r.contentGmv, uplift),
-        title: `Chase ${r.username} to post sample content`,
-        reason: `${r.notPosted} sample${r.notPosted === 1 ? "" : "s"} delivered (since ${fmtDay(r.oldestUnposted)}), nothing posted after ${t.samplePostDays} days. Product: ${products}.`,
-        instruction: [
-          `Hi ${r.username}, hope you're well! 😊 Your free sample (${products}) was delivered on ${fmtDay(r.oldestUnposted)}.`,
-          ``,
-          `We'd love to see your video! Could you let us know when you plan to post?`,
-          `• Show the product in use in the first few seconds.`,
-          `• Tag the product so viewers can tap the yellow basket and buy straight away.`,
-          `Need a brief or any help? Just reply here.`,
-        ].join("\n") + contact(r),
-        expectedUplift: uplift,
-        baselineGmv: Math.round(r.contentGmv),
-      });
-    } else if (r.verdict === "more") {
-      const uplift = Math.round((r.contentGmv / Math.max(1, r.posted)) * t.upliftHaircut);
-      out.push({
-        username: r.username,
-        type: "more_samples",
-        priority: priorityScore("more_samples", r.contentGmv, uplift),
-        title: `Offer ${r.username} another sample`,
-        reason: `Posted for ${r.posted} of ${r.judged} sample${r.judged === 1 ? "" : "s"}; the sampled products sold RM ${Math.round(r.contentGmv).toLocaleString("en-MY")} since.${r.type ? ` ${r.type === "live" ? "LIVE seller" : r.type === "both" ? "Posts videos and goes LIVE" : "Video creator"}.` : ""}`,
-        instruction: [
-          `Hi ${r.username}, thank you for the great content with ${products} – it's already bringing in sales! 🎉`,
-          ``,
-          `We'd like to send you another free sample to keep the momentum going.`,
-          `• Which product or size would you like next?`,
-          `• A matching set (bedsheet + pillowcases) works well for a "room makeover" video${r.type === "live" || r.type === "both" ? " or a LIVE demo" : ""}.`,
-          `Just reply and we'll arrange it.`,
-        ].join("\n") + contact(r),
-        expectedUplift: uplift,
-        baselineGmv: Math.round(r.contentGmv),
-      });
-    } else if (r.verdict === "stop") {
-      out.push({
-        username: r.username,
-        type: "stop_samples",
-        priority: priorityScore("stop_samples", 0, 0),
-        title: `Pause samples for ${r.username}`,
-        reason: `${r.judged} sample${r.judged === 1 ? "" : "s"} past the posting deadline, nothing posted (oldest delivered ${fmtDay(r.oldestUnposted)}).`,
-        instruction: [
-          `Team note: don't approve new sample requests from ${r.username} until they post content for the samples already received (${products}).`,
-          ``,
-          `Last reminder to send:`,
-          `Hi ${r.username}, just checking in on the sample we sent (${products}). We'd love to see your video – once it's up, we'll be happy to send more products your way!`,
-        ].join("\n") + contact(r),
-        expectedUplift: 0,
-        baselineGmv: 0,
-      });
-    }
+    const text = waMessage({
+      username: r.username,
+      products,
+      verdict: r.verdict,
+      deliveredLabel: r.oldestUnposted ? new Date(r.oldestUnposted + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : "recently",
+      contentGmv: r.contentGmv,
+      videosSince: r.videosSince,
+      posted: r.posted,
+      lastVideoLabel: r.newestVideo ? new Date(r.newestVideo + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : null,
+    });
+    const title: Record<string, string> = {
+      sample_chase: `Chase ${r.username} to post sample content`,
+      stop_samples: `Pause samples for ${r.username}`,
+      more_samples: `Offer ${r.username} another sample`,
+      more_content: `Ask ${r.username} for more content`,
+      refresh_content: `Ask ${r.username} for a fresh video`,
+    };
+    out.push({
+      username: r.username,
+      type,
+      priority: priorityScore(type, r.contentGmv, r.value),
+      title: title[type],
+      reason: r.advice,
+      instruction: text + (r.phone ? `\n\nWhatsApp: ${r.phone} · https://wa.me/${r.phone.replace(/\D/g, "")}` : ""),
+      expectedUplift: Math.round(r.value),
+      baselineGmv: Math.round(r.contentGmv),
+    });
   }
   return out;
 }
@@ -355,7 +330,7 @@ export async function generateActions(): Promise<{ created: number; total: numbe
       (r) => r.creator,
     ),
   );
-  const recs = [...allRecommendations(analysis), ...(await sampleRecommendations(analysis.thresholds))].filter(
+  const recs = [...allRecommendations(analysis), ...(await sampleRecommendations())].filter(
     (r) => !dnc.has(r.username) && !(r.type === "sample_no_post" && tracked.has(r.username)),
   );
   await db.execute(sql`delete from actions where status = 'open' and period_end <> ${period.end}::date`);

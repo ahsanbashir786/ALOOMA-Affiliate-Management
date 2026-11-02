@@ -80,6 +80,7 @@ const Thresholds = z.object({
   highCancelRate: z.coerce.number().min(5).max(90).transform((n) => n / 100),
   samplePostDays: z.coerce.number().int().min(1).max(60),
   sampleMoreMinGmv: z.coerce.number().min(0).max(1_000_000),
+  oldContentDays: z.coerce.number().int().min(7).max(365),
 });
 
 export async function saveThresholds(_: Result, fd: FormData): Promise<Result> {

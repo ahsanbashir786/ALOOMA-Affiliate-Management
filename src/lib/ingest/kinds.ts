@@ -68,7 +68,7 @@ export const KIND_META: Record<
   staff_sheet: {
     label: "Staff affiliate sheet",
     description:
-      "The team's own tracking sheet: WhatsApp numbers, samples given, LIVE vs sample approach, video links and ad codes. Imported once to bring history into the app.",
+      "The team's own sheet – used only for WhatsApp numbers (plus notes and LIVE/video approach). Samples themselves come from the All orders export.",
     transactional: false,
     where: "Your internal Google Sheet / Excel (download as .xlsx)",
   },

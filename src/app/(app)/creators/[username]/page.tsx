@@ -12,7 +12,7 @@ import { TrendChart } from "@/components/charts/trend-chart";
 import { SegmentBadge } from "@/components/creators/segment-badge";
 import { ContactForm, NotesForm, QueueActionButton } from "@/components/creators/creator-tools";
 import { ResultBadge } from "@/components/samples/result-badge";
-import { CONTENT_TYPE_LABEL, getCreatorSamples, getStaffVideos } from "@/lib/samples/analysis";
+import { CONTENT_TYPE_LABEL, getCreatorSamples } from "@/lib/samples/analysis";
 import { db } from "@/db";
 import { creators } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -33,10 +33,9 @@ const SERIES = [
 
 /** Contact details, samples and staff-logged videos – shown whether or not the creator sold in this period. */
 async function CreatorExtras({ username, canEdit }: { username: string; canEdit: boolean }) {
-  const [[contact], samples, videos] = await Promise.all([
+  const [[contact], samples] = await Promise.all([
     db.select({ phone: creators.phone, approach: creators.approach }).from(creators).where(eq(creators.username, username)).limit(1),
     getCreatorSamples(username),
-    getStaffVideos(username),
   ]);
   return (
     <section className="grid gap-4 lg:grid-cols-3">
@@ -50,7 +49,7 @@ async function CreatorExtras({ username, canEdit }: { username: string; canEdit:
         <CardHeader
           title="Samples"
           description="Free samples to this creator and whether content followed."
-          action={<Link href={`/samples?q=${encodeURIComponent(username)}&stage=all`} className="text-[13px] font-medium text-brand hover:underline">Open in tracker</Link>}
+          action={<Link href={`/samples?q=${encodeURIComponent(username)}&view=all`} className="text-[13px] font-medium text-brand hover:underline">Open in tracker</Link>}
         />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse">
@@ -61,8 +60,8 @@ async function CreatorExtras({ username, canEdit }: { username: string; canEdit:
               {samples.map((x) => (
                 <tr key={x.id}>
                   <Td className="max-w-[260px]">
-                    <span className="line-clamp-1">{x.name ?? x.variation ?? x.sku ?? x.raw_code}</span>
-                    <span className="text-[11.5px] text-ink-3">{x.sku ?? x.raw_code}</span>
+                    <span className="line-clamp-1">{x.name ?? x.variation ?? x.sku}</span>
+                    <span className="text-[11.5px] text-ink-3">{x.sku}</span>
                   </Td>
                   <Td className="whitespace-nowrap text-ink-2">{x.approved ? fmtDate(x.approved) : "–"}</Td>
                   <Td className="whitespace-nowrap text-ink-2">{x.delivered ? fmtDate(x.delivered) : "–"}</Td>
@@ -77,21 +76,6 @@ async function CreatorExtras({ username, canEdit }: { username: string; canEdit:
             </tbody>
           </table>
         </div>
-        {videos.length > 0 && (
-          <div className="border-t border-line px-5 py-4">
-            <p className="mb-2 text-[12.5px] font-medium text-ink-3">Videos & ad codes from the staff sheet</p>
-            <ul className="space-y-1.5 text-[13px]">
-              {videos.map((v, i) => (
-                <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                  <span className="text-ink-2">{v.sample_code ?? "–"}</span>
-                  {v.url ? <a href={v.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand hover:underline">video <ExternalLink className="size-3" /></a> : null}
-                  {v.ad_code && <code className="max-w-[260px] truncate rounded bg-surface-2 px-1.5 text-[12px] text-ink-2" title={v.ad_code}>{v.ad_code}</code>}
-                  {v.status && <span className="text-ink-3">{v.status}</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </Card>
     </section>
   );

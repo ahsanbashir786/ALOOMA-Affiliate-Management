@@ -386,13 +386,11 @@ export const samples = pgTable(
   "samples",
   {
     id: serial("id").primaryKey(),
-    /** "orders" = free-sample order from the all-orders export, "manual" = added by staff, "staff_sheet" = imported history. */
-    source: text("source").notNull(),
+    /** Always "orders": samples come only from free-sample orders in the all-orders export. */
+    source: text("source").notNull().default("orders"),
     orderId: text("order_id"),
     skuId: text("sku_id"),
     sellerSku: text("seller_sku"),
-    /** Code as written by staff (staff sheet / manual), kept for reference. */
-    rawCode: text("raw_code"),
     productName: text("product_name"),
     variation: text("variation"),
     quantity: integer("quantity").notNull().default(1),
@@ -402,6 +400,9 @@ export const samples = pgTable(
     creatorMatch: text("creator_match"),
     orderStatus: text("order_status"),
     orderSubstatus: text("order_substatus"),
+    /** Deprecated and unused (hand-logged samples were removed). Kept so upgrading never needs a destructive migration. */
+    rawCode: text("raw_code"),
+    /** Deprecated and unused, see rawCode. */
     requestedAt: date("requested_at", { mode: "string" }),
     /** Order created = sample approved in Seller Center. */
     approvedAt: timestamp("approved_at"),
@@ -411,11 +412,17 @@ export const samples = pgTable(
     trackingId: text("tracking_id"),
     shippingProvider: text("shipping_provider"),
     // ── posting check (recomputed after every import) ──
-    /** in_transit | in_window | posted_video | did_live | not_posted | cancelled | no_creator | history */
+    /** in_transit | in_window | posted_video | did_live | posted_other | not_posted | cancelled | no_creator */
     result: text("result"),
     postedAt: timestamp("posted_at"),
     postVideoId: text("post_video_id"),
     postLink: text("post_link"),
+    /** Videos the creator posted after delivery that feature the sampled product (Video analysis + new videos seen in orders). */
+    videoCount: integer("video_count").notNull().default(0),
+    /** Videos posted after delivery that feature other products. */
+    otherVideoCount: integer("other_video_count").notNull().default(0),
+    /** Views of those product videos (best reporting window per video). */
+    contentViews: integer("content_views").notNull().default(0),
     /** Valid GMV / orders the creator made from the sampled product after delivery. */
     contentGmv: doublePrecision("content_gmv").notNull().default(0),
     contentOrders: integer("content_orders").notNull().default(0),
@@ -435,18 +442,4 @@ export const samples = pgTable(
     index("samples_creator_idx").on(t.creator),
     index("samples_result_idx").on(t.result),
   ],
-);
-
-/** Video links and ad authorisation codes collected by staff (staff sheet "Videos" tab). */
-export const staffVideos = pgTable(
-  "staff_videos",
-  {
-    id: serial("id").primaryKey(),
-    username: text("username").notNull(),
-    sampleCode: text("sample_code"),
-    url: text("url"),
-    adCode: text("ad_code"),
-    status: text("status"),
-  },
-  (t) => [index("staff_videos_user_idx").on(t.username)],
 );

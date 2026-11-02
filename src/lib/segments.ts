@@ -13,7 +13,9 @@ export type SegmentKey =
   // Sample follow-up actions (from the sample tracker, not creator segments)
   | "sample_chase"
   | "more_samples"
-  | "stop_samples";
+  | "stop_samples"
+  | "more_content"
+  | "refresh_content";
 
 export type SegmentTone = "good" | "brand" | "neutral" | "warn" | "serious" | "critical";
 
@@ -105,6 +107,20 @@ export const SEGMENTS: Record<
     summary: "Posts with samples and the content sells.",
     playbook: "Offer the next product (a matching set or a new size) and keep them posting.",
   },
+  more_content: {
+    label: "Performing – ask for more content",
+    short: "More content",
+    tone: "brand",
+    summary: "Sample content sells well but they post too little.",
+    playbook: "Ask for a regular posting rhythm and point them at the product that converts.",
+  },
+  refresh_content: {
+    label: "Old content still selling",
+    short: "Fresh video",
+    tone: "warn",
+    summary: "Their newest video is old but still brings sales.",
+    playbook: "Ask for a fresh video or a sequel before the old one fades.",
+  },
   stop_samples: {
     label: "Stop samples",
     short: "Stop samples",
@@ -115,7 +131,7 @@ export const SEGMENTS: Record<
 };
 
 /** Action types that come from the sample tracker. */
-export const SAMPLE_ACTIONS: SegmentKey[] = ["sample_chase", "more_samples", "stop_samples"];
+export const SAMPLE_ACTIONS: SegmentKey[] = ["sample_chase", "more_content", "more_samples", "refresh_content", "stop_samples"];
 
 export const SEGMENT_ORDER: SegmentKey[] = [
   "underposting",

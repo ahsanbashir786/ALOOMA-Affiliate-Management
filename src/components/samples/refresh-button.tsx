@@ -16,9 +16,7 @@ export function RefreshSamplesButton() {
         onClick={() =>
           start(async () => {
             const r = await refreshSampleChecks();
-            setMsg(
-              `Checked. ${r.matched ? `${r.matched} creator${r.matched === 1 ? "" : "s"} matched. ` : ""}${r.merged ? `${r.merged} logged sample${r.merged === 1 ? "" : "s"} linked to orders. ` : ""}${r.created} new action${r.created === 1 ? "" : "s"}.`,
-            );
+            setMsg(`Checked. ${r.matched ? `${r.matched} receiver${r.matched === 1 ? "" : "s"} matched. ` : ""}${r.created} new action${r.created === 1 ? "" : "s"}.`);
           })
         }
       >

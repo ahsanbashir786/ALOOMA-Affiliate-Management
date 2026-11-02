@@ -4,11 +4,10 @@ import { revalidatePath } from "next/cache";
 import { eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import { db } from "@/db";
-import { creators, samples, skuItems } from "@/db/schema";
+import { creators, samples } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { generateActions } from "@/lib/analytics/recommendations";
 import { refreshSamples } from "@/lib/samples/service";
-import { resolveStaffCode } from "@/lib/samples/sku";
 import { normalisePhone } from "@/lib/ingest/import";
 
 const done = () => {
@@ -17,19 +16,22 @@ const done = () => {
 };
 
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
-const Username = z.string().trim().toLowerCase().transform((s) => s.replace(/^@/, "")).pipe(z.string().regex(/^[a-z0-9._]{2,40}$/, "Enter a valid TikTok username."));
+const Username = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .transform((s) => s.replace(/^@/, ""))
+  .pipe(z.string().regex(/^[a-z0-9._]{2,40}$/, "Enter a valid TikTok username."));
 
 const Patch = z.object({
   ownerId: z.uuid().nullable().optional(),
   followUpAt: Day.optional(),
   note: z.string().max(2000).nullable().optional(),
   resultOverride: z.enum(["posted_video", "did_live", "not_posted"]).nullable().optional(),
-  creator: Username.nullable().optional(),
-  requestedAt: Day.optional(),
 });
 export type SamplePatch = z.input<typeof Patch>;
 
-/** Staff edits on one sample: owner, follow-up date, note, manual result, creator (when TikTok's masked name couldn't be matched). */
+/** Team notes on one sample: person in charge, follow-up date, note, and a corrected result. */
 export async function updateSample(id: number, patch: SamplePatch): Promise<{ ok?: true; error?: string }> {
   await requireUser("manager");
   const p = Patch.safeParse(patch);
@@ -42,13 +44,9 @@ export async function updateSample(id: number, patch: SamplePatch): Promise<{ ok
       ...(v.followUpAt !== undefined ? { followUpAt: v.followUpAt } : {}),
       ...(v.note !== undefined ? { note: v.note?.trim() || null } : {}),
       ...(v.resultOverride !== undefined ? { resultOverride: v.resultOverride } : {}),
-      ...(v.creator !== undefined ? { creator: v.creator, creatorMatch: v.creator ? "manual" : null } : {}),
-      ...(v.requestedAt !== undefined ? { requestedAt: v.requestedAt } : {}),
       updatedAt: new Date(),
     })
     .where(eq(samples.id, id));
-  // A new creator changes the posting check for this sample.
-  if (v.creator !== undefined) await refreshSamples();
   // Confirmed as posted: close the open, untouched chase for this creator if nothing else is outstanding.
   if (v.resultOverride === "posted_video" || v.resultOverride === "did_live") {
     await db.execute(sql`
@@ -63,56 +61,34 @@ export async function updateSample(id: number, patch: SamplePatch): Promise<{ ok
   return { ok: true };
 }
 
-const NewSample = z.object({
-  creator: Username,
-  code: z.string().trim().min(2, "Enter a SKU or sample code.").max(80),
-  quantity: z.coerce.number().int().min(1).max(50),
-  requestedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the request date."),
-  phone: z.string().trim().max(30).optional(),
-  note: z.string().trim().max(2000).optional(),
-});
-
-export type FormResult = { ok?: string; error?: string } | undefined;
-
 /**
- * Log a sample before TikTok creates the order (request received / approved).
- * When the free-sample order arrives in the all-orders export, it is merged into this row.
+ * TikTok hides the receiver's name on sample orders. When the app can't match it, staff pick
+ * the TikTok username once – it applies to every sample with the same masked name.
  */
-export async function addManualSample(_: FormResult, fd: FormData): Promise<FormResult> {
-  const user = await requireUser("manager");
-  const p = NewSample.safeParse(Object.fromEntries(fd));
-  if (!p.success) return { error: p.error.issues[0].message };
-  const { creator, code, quantity, requestedAt, phone, note } = p.data;
-  const [known] = await db.select({ sku: skuItems.sku }).from(skuItems).where(sql`upper(${skuItems.sku}) = upper(${code})`).limit(1);
-  const sku = known?.sku ?? resolveStaffCode(code);
-  await db.insert(samples).values({
-    source: "manual",
-    creator,
-    creatorMatch: "manual",
-    rawCode: code,
-    sellerSku: sku,
-    quantity,
-    requestedAt,
-    note: note || null,
-    ownerId: user.id,
-    result: "requested",
-  });
-  const tel = normalisePhone(phone ?? null);
-  await db
-    .insert(creators)
-    .values({ username: creator, phone: tel })
-    .onConflictDoUpdate({
-      target: creators.username,
-      set: tel ? { phone: tel, contactEdited: true, updatedAt: new Date() } : { updatedAt: new Date() },
-    });
+export async function setBuyerCreator(buyerMasked: string, creator: string): Promise<{ ok?: true; error?: string }> {
+  await requireUser("manager");
+  const u = Username.safeParse(creator);
+  if (!u.success) return { error: u.error.issues[0].message };
+  await db.execute(sql`
+    update samples set creator = ${u.data}, creator_match = 'manual', updated_at = now()
+    where buyer_masked = ${buyerMasked} and creator is null`);
+  await refreshSamples();
   done();
-  return { ok: `Logged ${quantity}× ${sku ?? code} for ${creator}.${sku ? "" : " (Code not found in the SKU list – kept as written.)"}` };
+  return { ok: true };
 }
 
-export async function deleteManualSample(id: number) {
+/** The one thing staff must add: the creator's WhatsApp number. */
+export async function saveCreatorPhone(username: string, phone: string): Promise<{ ok?: true; error?: string }> {
   await requireUser("manager");
-  await db.delete(samples).where(sql`${samples.id} = ${id} and ${samples.source} = 'manual'`);
+  const tel = phone.trim() ? normalisePhone(phone) : null;
+  if (phone.trim() && !tel) return { error: "Enter the number with country code, e.g. 60123456789." };
+  await db
+    .insert(creators)
+    .values({ username, phone: tel, contactEdited: true })
+    .onConflictDoUpdate({ target: creators.username, set: { phone: tel, contactEdited: true, updatedAt: new Date() } });
+  revalidatePath(`/creators/${encodeURIComponent(username)}`);
   done();
+  return { ok: true };
 }
 
 const Contact = z.object({
@@ -139,7 +115,7 @@ export async function saveCreatorContact(username: string, input: z.input<typeof
 }
 
 /** Re-run creator matching, the posting check and the follow-up actions. */
-export async function refreshSampleChecks(): Promise<{ matched: number; merged: number; created: number }> {
+export async function refreshSampleChecks(): Promise<{ matched: number; created: number }> {
   await requireUser("manager");
   const r = await refreshSamples();
   const a = await generateActions();

@@ -32,6 +32,8 @@ export type Thresholds = {
   samplePostDays: number;
   /** Sales (RM) from sample content above which a creator earns more samples. */
   sampleMoreMinGmv: number;
+  /** A creator whose newest video is older than this many days, but still sells, gets a "fresh video" nudge. */
+  oldContentDays: number;
 };
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
@@ -48,6 +50,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   highCancelRate: 0.2,
   samplePostDays: 7,
   sampleMoreMinGmv: 300,
+  oldContentDays: 30,
 };
 
 export const getThresholds = cache(async (): Promise<Thresholds> => {
