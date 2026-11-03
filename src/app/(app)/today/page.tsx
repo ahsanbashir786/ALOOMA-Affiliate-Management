@@ -32,7 +32,22 @@ function toItem(r: TodayRow): TodayItem {
     status: r.status,
     nextLabel: r.nextOn ? fmtDayLabel(r.nextOn) : null,
     lastContacted: r.lastContactedAt ? `${fmtDateTimeKL(r.lastContactedAt)}${r.lastContactedBy ? ` by ${r.lastContactedBy}` : ""}` : null,
-    commitment: c ? { id: c.id, promisedLabel: fmtDayLabel(c.promisedOn), state: c.state, details: c.details } : null,
+    commitment: c
+      ? {
+          id: c.id,
+          dueLabel: fmtDayLabel(c.dueOn),
+          originalLabel: c.dueOn !== c.promisedOn ? fmtDayLabel(c.promisedOn) : null,
+          state: c.state,
+          done: c.done,
+          needed: c.needed,
+          contentType: c.contentType,
+          productName: c.productName,
+          details: c.details,
+          candidates: c.candidates.map((x) => ({ contentId: x.contentId, kind: x.kind, link: x.link, postedLabel: x.postedOn ? fmtDayLabel(x.postedOn) : null })),
+        }
+      : null,
+    otherCommitments: r.otherCommitments,
+    suggest: r.suggest,
     attempts: r.attempts,
     suggestPause: r.suggestPause,
     samples: r.samples.map((s) => ({

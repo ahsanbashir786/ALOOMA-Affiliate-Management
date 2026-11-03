@@ -75,14 +75,12 @@ export async function queryAffiliates(
       where s.source = 'orders' and s.creator is not null and s.creator <> all(${own}) ${rangeSql(f.range)}
       group by s.creator
     ),
-    -- Sizes of one product share the same sales, so each product is counted once per affiliate.
+    -- Every qualifying sale line is credited to exactly one sample (sample_sales), so plain sums cannot double count.
     fs as (
-      select creator, coalesce(sum(g), 0)::float8 as gmv, coalesce(sum(o), 0)::int as orders from (
-        select s.creator, max(s.content_gmv) as g, max(s.content_orders) as o
-        from samples s
-        where s.source = 'orders' and s.creator is not null ${rangeSql(f.range)}
-        group by s.creator, coalesce(s.product_id, s.id::text)
-      ) x group by creator
+      select s.creator, coalesce(sum(s.content_gmv), 0)::float8 as gmv, coalesce(sum(s.content_orders), 0)::int as orders
+      from samples s
+      where s.source = 'orders' and s.creator is not null ${rangeSql(f.range)}
+      group by s.creator
     ),
     people as (
       select creator from sales
@@ -244,8 +242,8 @@ function groupSampleSkus(lines: SampleLine[], skus: SkuSales[]): SampleSku[] {
     const cur = out.get(key);
     if (cur) {
       cur.qty += l.quantity;
-      cur.afterGmv = Math.max(cur.afterGmv, l.contentGmv);
-      cur.afterOrders = Math.max(cur.afterOrders, l.contentOrders);
+      cur.afterGmv += l.contentGmv;
+      cur.afterOrders += l.contentOrders;
       continue;
     }
     const x = sales.get(key);

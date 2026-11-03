@@ -441,6 +441,9 @@ export const samples = pgTable(
     /** Valid GMV / orders the creator made from the sampled product after delivery. */
     contentGmv: doublePrecision("content_gmv").notNull().default(0),
     contentOrders: integer("content_orders").notNull().default(0),
+    /** Sales of the sampled product seen after delivery but not tied to content proven to be new (undated or older content). */
+    observedGmv: doublePrecision("observed_gmv").notNull().default(0),
+    observedOrders: integer("observed_orders").notNull().default(0),
     checkedAt: timestamp("checked_at"),
     // ── staff work ──
     /** Manual result that overrides the automatic check (posted_video | did_live | not_posted). */
@@ -494,8 +497,12 @@ export const commitments = pgTable(
     /** The "promised" event that created it; if that event is undone the commitment is cancelled. */
     eventId: integer("event_id").notNull().references(() => staffEvents.id, { onDelete: "cascade" }),
     promisedOn: date("promised_on", { mode: "string" }).notNull(),
-    /** Optional deliverable details typed by staff. */
+    /** Free text typed by staff. Kept for reading only – never parsed for quantities or products. */
     details: text("details"),
+    /** Structured deliverable: "video" | "live" | null (not specified). */
+    contentType: text("content_type"),
+    /** Required number of distinct qualifying content pieces; null = not specified (one piece is enough). */
+    quantity: integer("quantity"),
     /** Sample lines this promise is about (the open samples of the creator when it was recorded). */
     sampleIds: integer("sample_ids").array().notNull().default([]),
     productId: text("product_id"),
@@ -534,6 +541,8 @@ export const contentDecisions = pgTable(
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
     note: text("note"),
+    /** Deliberate "this content also counts for this commitment even though another one uses it". */
+    shared: boolean("shared").notNull().default(false),
     synthetic: boolean("synthetic").notNull().default(false),
     revertedAt: timestamp("reverted_at", { withTimezone: true }),
     revertedBy: uuid("reverted_by").references(() => users.id, { onDelete: "set null" }),
@@ -563,3 +572,103 @@ export const recommendations = pgTable(
   },
   (t) => [uniqueIndex("recommendations_uq").on(t.username, t.type), index("recommendations_active_idx").on(t.active)],
 );
+
+
+/** A deadline change for a commitment. The original deadline stays on `commitments`; the current one is the latest non-undone change. */
+export const commitmentChanges = pgTable(
+  "commitment_changes",
+  {
+    id: serial("id").primaryKey(),
+    commitmentId: integer("commitment_id").notNull().references(() => commitments.id, { onDelete: "cascade" }),
+    /** The "rescheduled" staff event; undoing that event removes the change from the current state. */
+    eventId: integer("event_id").notNull().references(() => staffEvents.id, { onDelete: "cascade" }),
+    fromOn: date("from_on", { mode: "string" }).notNull(),
+    toOn: date("to_on", { mode: "string" }).notNull(),
+  },
+  (t) => [uniqueIndex("commitment_changes_event_uq").on(t.eventId), index("commitment_changes_commitment_idx").on(t.commitmentId)],
+);
+
+/** Derived, rebuilt on every refresh: how far each commitment is. Staff data is never stored here. */
+export const commitmentStatus = pgTable("commitment_status", {
+  commitmentId: integer("commitment_id").primaryKey().references(() => commitments.id, { onDelete: "cascade" }),
+  /** open | partial | review | fulfilled */
+  state: text("state").notNull(),
+  needed: integer("needed").notNull().default(1),
+  done: integer("done").notNull().default(0),
+  originalOn: date("original_on", { mode: "string" }).notNull(),
+  /** The current deadline – the only one that drives reminders and sample deadlines. */
+  dueOn: date("due_on", { mode: "string" }).notNull(),
+  /** Posting date of the piece that completed it (null while unknown or incomplete). */
+  completedOn: date("completed_on", { mode: "string" }),
+  /** on_time | late | unknown – unknown when a verified piece has no known posting date. */
+  timing: text("timing"),
+  contentIds: text("content_ids").array().notNull().default([]),
+  candidateIds: text("candidate_ids").array().notNull().default([]),
+  computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One row per creator video / LIVE, whether or not a sample exists. Rebuilt from the reports; manual decisions live in content_decisions. */
+export const contentItems = pgTable(
+  "content_items",
+  {
+    contentId: text("content_id").primaryKey(),
+    creator: text("creator").notNull(),
+    /** video | live */
+    kind: text("kind").notNull(),
+    productIds: text("product_ids").array().notNull().default([]),
+    /** When it was posted, only if a report says so. Unknown stays null. */
+    postedAt: timestamp("posted_at"),
+    /** First day we saw it (earliest report period or order). Never used as a posting date. */
+    firstObservedOn: date("first_observed_on", { mode: "string" }),
+    link: text("link"),
+    views: integer("views").notNull().default(0),
+    /** video_report | orders | manual */
+    source: text("source").notNull(),
+  },
+  (t) => [index("content_items_creator_idx").on(t.creator)],
+);
+
+/** The single attribution record: each qualifying sale line is credited to exactly one sample. Every sample sales figure reads this. */
+export const sampleSales = pgTable(
+  "sample_sales",
+  {
+    orderId: text("order_id").notNull(),
+    skuId: text("sku_id").notNull(),
+    sampleId: integer("sample_id").notNull().references(() => samples.id, { onDelete: "cascade" }),
+    creator: text("creator").notNull(),
+    productId: text("product_id").notNull(),
+    contentId: text("content_id"),
+    /** content = from content proven to be posted after delivery; observed = sold after delivery from other / undated content. */
+    basis: text("basis").notNull(),
+    pay: doublePrecision("pay").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.orderId, t.skuId] }), index("sample_sales_sample_idx").on(t.sampleId)],
+);
+
+/** Lines where an import could not prove which version is newer. The stored version is kept until a person decides. */
+export const importConflicts = pgTable(
+  "import_conflicts",
+  {
+    id: serial("id").primaryKey(),
+    /** affiliate_orders | all_orders */
+    kind: text("kind").notNull(),
+    orderId: text("order_id").notNull(),
+    skuId: text("sku_id").notNull(),
+    uploadId: integer("upload_id").references(() => uploads.id, { onDelete: "set null" }),
+    reason: text("reason").notNull(),
+    stored: jsonb("stored").notNull(),
+    incoming: jsonb("incoming").notNull(),
+    /** pending | accepted | dismissed */
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [uniqueIndex("import_conflicts_line_uq").on(t.kind, t.orderId, t.skuId, t.status), index("import_conflicts_status_idx").on(t.status)],
+);
+
+/** Written by `npm run db:migrate`. Declared here so `drizzle-kit push` never offers to drop it. */
+export const schemaMigrations = pgTable("schema_migrations", {
+  name: text("name").primaryKey(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+});

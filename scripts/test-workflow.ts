@@ -77,7 +77,7 @@ async function main() {
   const overlap = [orders1[3], orders1[4], aff({ id: mk(7), pid: P2, pname: N2, creator: "zz_test_charlie", amt: 50, created: d(-1), contentId: "830001" })];
   const r1c = await imp("affiliate_orders", AFF_HEADER, overlap);
   const after = await sum();
-  check("1c overlapping file: only the new line added", after.n === base.n + 1 && r1c.added === 1 && (r1c.updated ?? 0) + (r1c.skippedOlder ?? 0) === 2, JSON.stringify({ after, r1c }));
+  check("1c overlapping file: only the new line added", after.n === base.n + 1 && r1c.added === 1 && (r1c.updated ?? 0) + (r1c.skippedOlder ?? 0) + (r1c.unchanged ?? 0) === 2, JSON.stringify({ after, r1c }));
 
   // shop orders: free samples (RM 0, no payment method)
   const shop = [
@@ -131,11 +131,13 @@ async function main() {
   // ───── (3) Promise survives imports and recommendation refreshes ─────
   const pEv = await addEvent({ username: "zz_test_bravo", kind: "promised", userId: null, details: { promisedOn: d(0) }, synthetic: true, at: new Date(Date.now() - 2 * 86400_000) });
   // bravo's own video was posted yesterday — the promise is recorded 2 days ago, so it is satisfied by content seen since
-  const bIds = await createCommitment({ username: "zz_test_bravo", eventId: pEv, promisedOn: d(0) });
+  const bIds = (await createCommitment({ username: "zz_test_bravo", eventId: pEv, promisedOn: d(0) })).sampleIds;
   check("3a promise is tied to the creator's open sample", bIds.length === 1, JSON.stringify(bIds));
   const cEv = await addEvent({ username: "zz_test_charlie", kind: "promised", userId: null, details: { promisedOn: d(-1) }, synthetic: true, at: new Date(Date.now() - 2 * 86400_000) });
   await createCommitment({ username: "zz_test_charlie", eventId: cEv, promisedOn: d(-1) });
   await refreshSamples();
+  const agreedBefore = await res("zz_test_bravo");
+  check("3b while the promise is outstanding, the agreed date replaces the default post-by date", agreedBefore[0]?.ps === "agreed", JSON.stringify(agreedBefore));
   const beforeC = (await getCommitments()).map((c) => `${c.username}:${c.promisedOn}`).sort();
   // later uploads: bravo's video and its sale now appear, plus a repeat of earlier files
   await imp("affiliate_orders", AFF_HEADER, [...orders1, bravoSale]);
@@ -144,15 +146,12 @@ async function main() {
   await generateActions();
   const afterC = (await getCommitments()).map((c) => `${c.username}:${c.promisedOn}`).sort();
   check("3 promises survive re-imports and recommendation refresh", JSON.stringify(beforeC) === JSON.stringify(afterC) && beforeC.length === 2 && (await one<{ n: number }>(sql`select count(*)::int n from staff_events where kind = 'promised' and reverted_at is null`)).n === 2, JSON.stringify({ beforeC, afterC }));
-  const stB = (await getWorkflowStates(["zz_test_bravo"])).get("zz_test_bravo")!;
-  check("3b agreed date overrides the default post-by date", (await res("zz_test_bravo"))[0]?.ps === "agreed" && stB.promiseOn === d(0), JSON.stringify(await res("zz_test_bravo")));
-
   // ───── (4) Matching content updates the correct commitment; unrelated does not ─────
   const comms = await getCommitments();
   const cb = comms.find((c) => c.username === "zz_test_bravo")!;
   const cc = comms.find((c) => c.username === "zz_test_charlie")!;
-  check("4a bravo's video of the sampled product fulfils bravo's promise", cb.state === "fulfilled" && cb.contentId === "820001" && cb.contentSource === "system", JSON.stringify(cb));
-  check("4b charlie's video of a different product does NOT fulfil charlie's promise", cc.state === "open" && cc.contentId === null, JSON.stringify(cc));
+  check("4a bravo's video of the sampled product fulfils bravo's promise", cb.state === "fulfilled" && cb.contentIds.includes("820001") && cb.contentSource === "system", JSON.stringify(cb));
+  check("4b charlie's video of a different product does NOT fulfil charlie's promise", cc.state === "open" && cc.contentIds.length === 0, JSON.stringify(cc));
   const charlieRes = await res("zz_test_charlie");
   check("4c unrelated video does not mark charlie's sample as posted", charlieRes[0]?.r === "not_posted", JSON.stringify(charlieRes));
   const dueRows = (await getToday("due")).rows.map((r) => r.username);
@@ -180,7 +179,7 @@ async function main() {
   const stale = [aff({ id: mk(1), pid: P1, pname: N1, creator: "zz_test_veteran", amt: 1, created: d(-30), status: "Canceled", contentId: "800001" })];
   const rOld = await imp("affiliate_orders", AFF_HEADER, stale);
   const row1 = await one<{ s: string; p: number }>(sql`select status s, payment_amount::float8 p from order_lines where order_id = ${mk(1)}`);
-  check("6a older export does not overwrite a newer record", row1.s === "Completed" && row1.p === 100 && (rOld.skippedOlder ?? 0) >= 1, JSON.stringify({ row1, rOld }));
+  check("6a a conflicting file cannot overwrite the stored line; it is flagged instead", row1.s === "Completed" && row1.p === 100 && ((rOld.skippedOlder ?? 0) + (rOld.conflicts ?? 0)) >= 1, JSON.stringify({ row1, rOld }));
   const before6 = await sum();
   let threw = false;
   try {
@@ -213,12 +212,12 @@ async function main() {
   const prog = await getProgress(28);
   const rawContacts = await one<{ n: number; u: number }>(sql`select count(*)::int n, count(distinct username)::int u from staff_events where kind = 'contacted' and reverted_at is null and (at at time zone 'Asia/Kuala_Lumpur')::date between ${prog.window.start}::date and ${prog.window.end}::date`);
   check("8a contacted actions and unique creators match the event log", prog.staff.contactActions === rawContacts.n && prog.staff.creatorsContacted === rawContacts.u, JSON.stringify({ prog: prog.staff, rawContacts }));
-  check("8b follow-up buckets add up", prog.staff.onTime + prog.staff.late + prog.staff.overdueOpen <= prog.staff.followUpsDue);
+  check("8b follow-up buckets add up", prog.followUps.onTime + prog.followUps.late + prog.followUps.overdueOpen + prog.followUps.rescheduled + prog.followUps.pausedOrCancelled + prog.followUps.resolvedAutomatically + prog.followUps.notYetDue === prog.followUps.due);
   const rawPromises = await getCommitments();
-  const inWin = rawPromises.filter((c) => c.promisedOn >= prog.window.start && c.promisedOn <= prog.window.end);
-  check("8c promises due/fulfilled match the commitments", prog.promises.due === inWin.length && prog.promises.fulfilledOnTime + prog.promises.fulfilledLate === inWin.filter((c) => c.state === "fulfilled").length);
-  check("8d content pieces are counted once", prog.content.allVerified <= (await one<{ n: number }>(sql`select count(distinct content_id)::int n from sample_content where confidence = 'confirmed'`)).n + 1);
-  check("8e sales comparison hidden when history does not cover the earlier period", prog.sales.previousCovered === (prog.sales.managedNow !== null));
+  const inWin = rawPromises.filter((c) => c.dueOn >= prog.window.start && c.dueOn <= prog.window.end);
+  check("8c promises due/fulfilled match the commitments", prog.promises.due === inWin.length && prog.promises.fulfilledOnTime + prog.promises.fulfilledLate + prog.promises.fulfilledTimingUnknown === inWin.filter((c) => c.state === "fulfilled").length);
+  check("8d content pieces are counted once", prog.content.total <= (await one<{ n: number }>(sql`select count(*)::int n from content_items`)).n);
+  check("8e sales comparison only when coverage allows", (prog.sales.comparison.current !== null) === (prog.sales.managedNow !== null));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await client.end();

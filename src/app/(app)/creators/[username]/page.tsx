@@ -190,7 +190,7 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
         <div className="grid gap-3 px-5 pb-4 sm:grid-cols-2 lg:grid-cols-4 text-[13px]">
           <p><span className="text-ink-3">Last contact</span><br />{ws.summary.lastContactedAt ? fmtDateTimeKL(ws.summary.lastContactedAt) : "–"}</p>
           <p><span className="text-ink-3">Next action</span><br />{ws.summary.nextOn ? fmtDayLabel(ws.summary.nextOn) : "–"}{ws.summary.status === "paused" ? " (paused)" : ""}</p>
-          <p><span className="text-ink-3">Promised date</span><br />{ws.summary.promiseOn ? `${fmtDayLabel(ws.summary.promiseOn)} · ${ws.summary.promiseState === "fulfilled" ? "content seen" : ws.summary.promiseState === "review" ? "possible match to review" : "not seen yet"}` : "–"}</p>
+          <p><span className="text-ink-3">Promised date</span><br />{ws.summary.promiseOn ? `${fmtDayLabel(ws.summary.promiseOn)} · ${(() => { const [st, prog] = (ws.summary.promiseState ?? "").split(":"); return st === "fulfilled" ? `content seen${prog ? ` (${prog})` : ""}` : st === "partial" ? `partly done (${prog})` : st === "review" ? "possible match to review" : "not seen yet"; })()}` : "–"}</p>
           <p><span className="text-ink-3">Samples · confirmed content</span><br />{ws.summary.samples} · {ws.summary.verifiedContent}</p>
           <p className="sm:col-span-2"><span className="text-ink-3">Sales since last contact (context only)</span><br />{ws.summary.gmvSinceContact == null ? "–" : fmtRM(ws.summary.gmvSinceContact)}</p>
           <p className="sm:col-span-2"><span className="text-ink-3">Sales, last 28 days of data</span><br />{fmtRM(ws.summary.gmv28)}</p>

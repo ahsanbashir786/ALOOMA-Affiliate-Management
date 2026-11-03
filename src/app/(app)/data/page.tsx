@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { desc, eq } from "drizzle-orm";
 import { AlertTriangle, CheckCircle2, CircleDashed } from "lucide-react";
 import { db } from "@/db";
-import { uploads, users } from "@/db/schema";
+import { importConflicts, uploads, users } from "@/db/schema";
 import { mayEditContacts, requireUser } from "@/lib/auth";
 import { queryAffiliates } from "@/lib/affiliates/service";
 import { KINDS, KIND_META, REFERENCE_KINDS, type Kind } from "@/lib/ingest/kinds";
 import { Badge, buttonClasses, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/primitives";
 import { UploadWorkbench } from "@/components/data/upload-workbench";
+import { ConflictsCard } from "@/components/data/conflicts-card";
 import { DeleteUploadButton } from "@/components/data/delete-upload-button";
 import { fmtDate, fmtInt } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ export default async function DataPage() {
     .leftJoin(users, eq(users.id, uploads.uploadedBy))
     .orderBy(desc(uploads.createdAt))
     .limit(100);
+  const conflicts = await db.select().from(importConflicts).where(eq(importConflicts.status, "pending")).orderBy(desc(importConflicts.createdAt)).limit(500);
   const today = new Date().toISOString().slice(0, 10);
   const { withoutPhone } = await queryAffiliates({ scope: "active" }, "gmv", "desc", 1, 0);
 
@@ -64,6 +66,22 @@ export default async function DataPage() {
           The file needs two columns, <b>Username</b> and <b>WhatsApp</b> (e.g. 60123456789 or 012-345 6789). Other columns are ignored.
         </p>
       </Card>
+
+      {conflicts.length > 0 && (
+        <Card className="border-warn/40">
+          <CardHeader title={`${conflicts.length} order line${conflicts.length === 1 ? "" : "s"} to review`} description="A file changed these lines, but nothing proves the file is newer than what is stored (same timestamps, different values). The stored version is being used until you decide." />
+          <ConflictsCard
+            items={conflicts.map((c) => ({
+              id: c.id,
+              kind: c.kind,
+              orderId: c.orderId,
+              reason: c.reason,
+              storedStatus: ((c.stored as Record<string, unknown>)?.status as string) ?? null,
+              incomingStatus: ((c.incoming as Record<string, unknown>)?.status as string) ?? null,
+            }))}
+          />
+        </Card>
+      )}
 
       <Card>
         <CardHeader title="Coverage" description="What's loaded, and where to export each report." />

@@ -8,7 +8,7 @@ import type { TimelineEntry } from "@/lib/workflow/timeline";
 import { fmtDateTimeKL } from "@/lib/time";
 
 const TONE: Record<string, "brand" | "good" | "warn" | "neutral" | "serious"> = {
-  contacted: "brand", promised: "good", needs_help: "serious", paused: "warn", resumed: "brand", sample: "neutral", content: "good", promise_kept: "good",
+  contacted: "brand", promised: "good", rescheduled: "warn", legacy: "neutral", needs_help: "serious", paused: "warn", resumed: "brand", sample: "neutral", content: "good", promise_kept: "good",
 };
 
 export function CreatorTimeline({ entries, canUndo }: { entries: TimelineEntry[]; canUndo: boolean }) {
@@ -19,7 +19,7 @@ export function CreatorTimeline({ entries, canUndo }: { entries: TimelineEntry[]
       {entries.map((e, i) => (
         <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line py-2 text-[13.5px] first:border-t-0">
           <span className="tnum w-28 shrink-0 text-[12.5px] text-ink-3">{fmtDateTimeKL(e.at)}</span>
-          <Badge tone={TONE[e.kind]}>{e.kind === "content" ? "Content" : e.kind === "sample" ? "Sample" : "Staff"}</Badge>
+          <Badge tone={TONE[e.kind]}>{e.kind === "content" ? "Content" : e.kind === "sample" ? "Sample" : e.kind === "legacy" ? "Earlier" : "Staff"}</Badge>
           <span className={e.undone ? "text-ink-3 line-through" : "text-ink"}>{e.text}</span>
           {e.undone && <span className="text-[12px] text-ink-3">(undone – kept in history)</span>}
           {e.synthetic && <Badge tone="warn">test record</Badge>}

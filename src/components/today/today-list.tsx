@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { ChevronDown, Clock, ExternalLink, Loader2, Pause, Play, Undo2, UserCheck } from "lucide-react";
-import { markContacted, markNeedsHelp, markPromised, pauseCreator, resumeCreator, undoEvent } from "@/app/actions/workflow";
+import { addCommitmentLink, decideCommitmentContent, markContacted, markNeedsHelp, markPromised, pauseCreator, rescheduleCommitmentAction, resumeCreator, undoEvent } from "@/app/actions/workflow";
 import { HELP_REASONS_LIST } from "@/lib/workflow/reasons";
 import { Badge, Button, Input, Select } from "@/components/ui/primitives";
 import { MessageBox } from "@/components/ui/message-box";
@@ -19,7 +19,21 @@ export type TodayItem = {
   status: "active" | "paused";
   nextLabel: string | null;
   lastContacted: string | null;
-  commitment: { id: number; promisedLabel: string; state: string; details: string | null } | null;
+  commitment: {
+    id: number;
+    dueLabel: string;
+    /** Set only when the deadline was moved. */
+    originalLabel: string | null;
+    state: string;
+    done: number;
+    needed: number;
+    contentType: "video" | "live" | null;
+    productName: string | null;
+    details: string | null;
+    candidates: { contentId: string; kind: string; link: string | null; postedLabel: string | null }[];
+  } | null;
+  otherCommitments: number;
+  suggest: { products: { id: string; name: string }[]; kind: "video" | "live" | null };
   attempts: number;
   suggestPause: boolean;
   samples: { id: number; product: string; deliveredLabel: string | null; postByLabel: string | null; agreed: boolean; result: string }[];
@@ -28,7 +42,7 @@ export type TodayItem = {
   followKind: "promise" | "follow_up" | "help" | "resume";
 };
 
-type Panel = null | "promise" | "help" | "pause" | "message";
+type Panel = null | "promise" | "help" | "pause" | "message" | "content";
 const TIER: Record<number, { label: string; tone: "critical" | "serious" | "warn" | "brand" }> = {
   1: { label: "Promise overdue", tone: "critical" },
   2: { label: "Follow-up due", tone: "serious" },
@@ -115,13 +129,18 @@ function Row({
   const [promiseDate, setPromiseDate] = useState("");
   const [promiseDetails, setPromiseDetails] = useState("");
   const [showDetails, setShowDetails] = useState(false);
+  const [mode, setMode] = useState<"reschedule" | "new">(it.commitment ? "reschedule" : "new");
+  const [kind, setKind] = useState<string>(it.suggest.kind ?? "");
+  const [product, setProduct] = useState("");
+  const [qty, setQty] = useState("");
+  const [link, setLink] = useState("");
   const [helpReason, setHelpReason] = useState<string>(HELP_REASONS_LIST[0]);
   const [helpDate, setHelpDate] = useState(addDays(today, helpDays));
   const [pauseReason, setPauseReason] = useState("");
   const [resumeOn, setResumeOn] = useState("");
   const tier = TIER[it.tier];
   const rec = it.recs[0];
-  const fallback = followUpMessage(it.username, it.followKind, it.commitment?.promisedLabel);
+  const fallback = followUpMessage(it.username, it.followKind, it.commitment?.dueLabel);
   const en = rec?.instruction ?? fallback.en;
   const ms = rec?.instructionMs ?? fallback.ms;
   const tiktok = `https://www.tiktok.com/@${encodeURIComponent(it.username)}`;
@@ -137,7 +156,14 @@ function Row({
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/creators/${encodeURIComponent(it.username)}`} className="text-[16px] font-semibold hover:underline">@{it.username}</Link>
             {it.held ? <Badge tone="neutral">{it.status === "paused" ? "Paused" : "Scheduled"}</Badge> : <Badge tone={tier.tone}>{tier.label}</Badge>}
-            {it.commitment && <Badge tone="brand">Promised {it.commitment.promisedLabel}</Badge>}
+            {it.commitment && (
+              <Badge tone="brand">
+                Promised {it.commitment.dueLabel}
+                {it.commitment.originalLabel ? ` (moved from ${it.commitment.originalLabel})` : ""}
+                {it.commitment.needed > 1 || it.commitment.done > 0 ? ` · ${it.commitment.done}/${it.commitment.needed}${it.commitment.contentType === "live" ? " LIVE" : it.commitment.contentType === "video" ? " video" : ""}` : ""}
+              </Badge>
+            )}
+            {it.otherCommitments > 0 && <span className="text-[12.5px] text-ink-3">+{it.otherCommitments} more promise{it.otherCommitments === 1 ? "" : "s"}</span>}
             {it.lastContacted && <span className="text-[12.5px] text-ink-3">Last contacted {it.lastContacted}</span>}
             {it.nextLabel && <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3"><Clock className="size-3.5" /> Next: {it.nextLabel}</span>}
           </div>
@@ -185,6 +211,9 @@ function Row({
                 {pending ? <Loader2 className="size-3.5 animate-spin" /> : <UserCheck className="size-3.5" />} Contacted
               </Button>
               <Button size="sm" variant="secondary" onClick={() => toggle("promise")}>Promised date</Button>
+              {it.commitment && it.commitment.candidates.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={() => toggle("content")}>Check possible content ({it.commitment.candidates.length})</Button>
+              )}
               <Button size="sm" variant="secondary" onClick={() => toggle("help")}>Needs help</Button>
               <Button size="sm" variant="secondary" onClick={() => toggle("pause")}><Pause className="size-3.5" /> Pause</Button>
             </>
@@ -204,15 +233,62 @@ function Row({
         </div>
       )}
       {panel === "promise" && (
-        <form className="mt-3 flex flex-wrap items-end gap-2 rounded-lg bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); run(() => markPromised(it.username, promiseDate, promiseDetails), `Promise saved for @${it.username}.`); setPanel(null); }}>
-          <label className="text-[13px]">Promised date<Input type="date" required min={today} value={promiseDate} onChange={(e) => setPromiseDate(e.target.value)} className="mt-1 block w-44" /></label>
-          {showDetails ? (
-            <label className="min-w-56 flex-1 text-[13px]">Details (optional)<Input value={promiseDetails} onChange={(e) => setPromiseDetails(e.target.value)} maxLength={300} placeholder="e.g. 2 videos of the bedsheet" className="mt-1 block w-full" /></label>
-          ) : (
-            <button type="button" className="text-[13px] text-ink-3 underline" onClick={() => setShowDetails(true)}>Add details</button>
+        <form
+          className="mt-3 space-y-2 rounded-lg bg-surface-2 p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (it.commitment && mode === "reschedule") run(() => rescheduleCommitmentAction(it.commitment!.id, promiseDate), `Deadline moved to ${promiseDate}. The original date is kept.`);
+            else
+              run(
+                () => markPromised(it.username, promiseDate, { details: promiseDetails || undefined, productId: product || undefined, contentType: (kind || undefined) as "video" | "live" | undefined, quantity: qty ? Number(qty) : undefined }),
+                `Promise saved for @${it.username}.`,
+              );
+            setPanel(null);
+          }}
+        >
+          {it.commitment && (
+            <div role="group" aria-label="What changed" className="flex flex-wrap items-center gap-2 text-[13px]">
+              <span className="text-ink-3">Current promise: {it.commitment.dueLabel}.</span>
+              <button type="button" aria-pressed={mode === "reschedule"} onClick={() => setMode("reschedule")} className={cn("rounded-lg border px-2.5 py-1", mode === "reschedule" ? "border-brand bg-brand-soft text-brand-strong" : "border-line-strong")}>Move this date</button>
+              <button type="button" aria-pressed={mode === "new"} onClick={() => setMode("new")} className={cn("rounded-lg border px-2.5 py-1", mode === "new" ? "border-brand bg-brand-soft text-brand-strong" : "border-line-strong")}>Add another promise</button>
+            </div>
           )}
-          <Button size="sm" type="submit" disabled={pending || !promiseDate}>Save promise</Button>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-[13px]">{mode === "reschedule" && it.commitment ? "New date" : "Promised date"}<Input type="date" required min={today} value={promiseDate} onChange={(e) => setPromiseDate(e.target.value)} className="mt-1 block w-44" /></label>
+            {!(it.commitment && mode === "reschedule") && !showDetails && (
+              <button type="button" className="text-[13px] text-ink-3 underline" onClick={() => setShowDetails(true)}>Add details (video / product / how many)</button>
+            )}
+            <Button size="sm" type="submit" disabled={pending || !promiseDate}>{it.commitment && mode === "reschedule" ? "Move date" : "Save promise"}</Button>
+          </div>
+          {showDetails && !(it.commitment && mode === "reschedule") && (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-[13px]">Type<Select value={kind} onChange={(e) => setKind(e.target.value)} className="mt-1 block w-32"><option value="">Not sure</option><option value="video">Video</option><option value="live">LIVE</option></Select></label>
+              <label className="text-[13px]">Product<Select value={product} onChange={(e) => setProduct(e.target.value)} className="mt-1 block w-56"><option value="">Not sure</option>{it.suggest.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>
+              <label className="text-[13px]">How many<Input type="number" min={1} max={50} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" className="mt-1 block w-20" /></label>
+              <label className="min-w-40 flex-1 text-[13px]">Note (optional)<Input value={promiseDetails} onChange={(e) => setPromiseDetails(e.target.value)} maxLength={300} className="mt-1 block w-full" /></label>
+              <p className="w-full text-[12px] text-ink-3">Without a product the system cannot match videos reliably, so it will ask you to confirm instead of completing it automatically.</p>
+            </div>
+          )}
         </form>
+      )}
+      {panel === "content" && it.commitment && (
+        <div className="mt-3 space-y-2 rounded-lg bg-surface-2 p-3">
+          <ul className="space-y-1.5 text-[13px]">
+            {it.commitment.candidates.map((c) => (
+              <li key={c.contentId} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium">{c.kind === "live" ? "LIVE" : "Video"}</span>
+                <span className="text-ink-3">{c.postedLabel ? `posted ${c.postedLabel}` : "posting date unknown"}</span>
+                {c.link && <a href={c.link} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">Open</a>}
+                <Button size="sm" variant="secondary" disabled={pending} onClick={() => run(() => decideCommitmentContent(it.commitment!.id, c.contentId, "verified"), "Confirmed – counted for this promise.")}>This is it</Button>
+                <Button size="sm" variant="secondary" disabled={pending} onClick={() => run(() => decideCommitmentContent(it.commitment!.id, c.contentId, "rejected"), "Rejected – will not be suggested again.")}>Not this</Button>
+              </li>
+            ))}
+          </ul>
+          <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); run(() => addCommitmentLink(it.commitment!.id, link), "Link saved and counted."); setLink(""); }}>
+            <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Or paste a video link" className="h-8 max-w-sm text-[13px]" aria-label="Video link" />
+            <Button size="sm" type="submit" disabled={pending || link.trim().length < 8}>Confirm link</Button>
+          </form>
+        </div>
       )}
       {panel === "help" && (
         <form className="mt-3 flex flex-wrap items-end gap-2 rounded-lg bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); run(() => markNeedsHelp(it.username, helpReason, helpDate), `@${it.username} flagged for help. Next action ${helpDate}.`); setPanel(null); }}>

@@ -120,6 +120,9 @@ function Content({ l }: { l: SampleLine }) {
           <p className={cn("tnum", l.contentOrders > 0 ? "font-medium text-good" : "text-ink-2")}>
             {l.contentOrders > 0 ? `${fmtRM(l.contentGmv)} from ${l.contentOrders} order${l.contentOrders === 1 ? "" : "s"}` : "No orders yet"}
           </p>
+          {l.observedOrders > 0 && (
+            <p className="text-[12px] text-ink-3">Also sold since delivery: {fmtRM(l.observedGmv)} from older or undated content (not counted as sample content).</p>
+          )}
           {l.result !== "did_live" && shown.length > 0 && <VideoLinks videos={shown} />}
           {l.result !== "did_live" && shown.length === 0 && l.postLink && (
             <a href={l.postLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-brand hover:underline">

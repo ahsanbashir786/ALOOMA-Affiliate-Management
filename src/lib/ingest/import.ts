@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   creatorListSnapshots,
@@ -18,6 +18,10 @@ import {
   videos,
 } from "@/db/schema";
 import { SNAPSHOT_KINDS, type Kind } from "./kinds";
+import {
+  AFFILIATE_DATES, AFFILIATE_FIELDS, AFFILIATE_NUM, SHOP_DATES, SHOP_FIELDS, SHOP_NUM, affiliateDirection, classify, latest, shopDirection, toVersion,
+  type Direction, type Version,
+} from "./freshness";
 import {
   chunk,
   idStr,
@@ -66,6 +70,10 @@ export type ImportResult = {
   updated?: number;
   /** rows ignored because the file is older than the data already loaded for them */
   skippedOlder?: number;
+  /** rows identical to what is stored (nothing to change) */
+  unchanged?: number;
+  /** rows whose freshness could not be ranked: stored version kept, listed for a decision */
+  conflicts?: number;
   /** invalid rows, by reason */
   rejected?: Record<string, number>;
   warnings?: string[];
@@ -144,6 +152,8 @@ export async function importFile(input: ImportInput): Promise<ImportResult> {
             added: result.added,
             updated: result.updated,
             skippedOlder: result.skippedOlder,
+            unchanged: result.unchanged ?? 0,
+            conflicts: result.conflicts ?? 0,
             rejected: result.rejected,
             warnings: result.warnings,
           },
@@ -186,6 +196,64 @@ function requirePeriod(input: ImportInput): { start: string; end: string } {
 }
 
 // ───────────────────────── Affiliate orders ─────────────────────────
+
+/**
+ * Writes order lines under the freshness rules of ./freshness.ts: new lines are added, provably newer information replaces,
+ * provably older information is skipped, identical lines are left alone, and information that cannot be ranked is kept as stored
+ * and recorded in import_conflicts (nothing is silently overwritten).
+ */
+async function versionedWrite(cfg: {
+  kind: "affiliate_orders" | "all_orders";
+  table: typeof orderLines | typeof shopOrderLines;
+  rows: (Record<string, unknown> & { orderId: string; skuId: string; asof: Date | null })[];
+  fields: readonly string[];
+  numeric: readonly string[];
+  dates: readonly string[];
+  direction: (s: Version, i: Version) => Direction;
+  uploadId: number;
+  width: number;
+}): Promise<{ written: Set<string>; added: number; updated: number; unchanged: number; skippedOlder: number; conflicts: number }> {
+  const t = cfg.table;
+  const cols = getTableColumns(t) as unknown as Record<string, { name: string }>;
+  const toWrite: typeof cfg.rows = [];
+  const conflicts: { orderId: string; skuId: string; reason: string; stored: unknown; incoming: unknown }[] = [];
+  const written = new Set<string>();
+  let added = 0, updated = 0, unchanged = 0, skippedOlder = 0;
+  for (const part of chunk(cfg.rows, 1500)) {
+    const existing = (await D()
+      .select()
+      .from(t as typeof orderLines)
+      .where(sql`(${t.orderId}, ${t.skuId}) in (${sql.join(part.map((r) => sql`(${r.orderId}, ${r.skuId})`), sql`, `)})`)) as unknown as Record<string, unknown>[];
+    const by = new Map(existing.map((e) => [`${e.orderId}|${e.skuId}`, e]));
+    for (const r of part) {
+      const ex = by.get(`${r.orderId}|${r.skuId}`);
+      const verdict = classify(
+        ex ? { asof: (ex.asof as Date | null) ?? null, v: toVersion(ex, cfg.fields, cfg.numeric, cfg.dates) } : undefined,
+        { asof: r.asof, v: toVersion(r, cfg.fields, cfg.numeric, cfg.dates) },
+        cfg.direction,
+      );
+      if (verdict.kind === "new") { toWrite.push(r); added++; written.add(`${r.orderId}|${r.skuId}`); }
+      else if (verdict.kind === "apply") { toWrite.push(r); updated++; written.add(`${r.orderId}|${r.skuId}`); }
+      else if (verdict.kind === "identical") unchanged++;
+      else if (verdict.kind === "older") skippedOlder++;
+      else {
+        conflicts.push({ orderId: r.orderId, skuId: r.skuId, reason: `${verdict.why} (${verdict.changed.join(", ")})`, stored: { ...ex, _asof: ex?.asof ?? null }, incoming: r });
+      }
+    }
+  }
+  const setCols = Object.fromEntries([...cfg.fields, "asof", "uploadId"].map((f) => [f, sql.raw(`excluded.${cols[f].name}`)]));
+  for (const part of chunk(toWrite, chunkSizeFor(cfg.width))) {
+    await D().insert(t as typeof orderLines).values(part as never).onConflictDoUpdate({ target: [t.orderId, t.skuId] as never, set: setCols as never });
+  }
+  for (const c of conflicts) {
+    await D().execute(sql`
+      insert into import_conflicts (kind, order_id, sku_id, upload_id, reason, stored, incoming)
+      values (${cfg.kind}, ${c.orderId}, ${c.skuId}, ${cfg.uploadId}, ${c.reason}, ${JSON.stringify(c.stored)}::jsonb, ${JSON.stringify(c.incoming)}::jsonb)
+      on conflict (kind, order_id, sku_id, status) do update set reason = excluded.reason, incoming = excluded.incoming, upload_id = excluded.upload_id, created_at = now()`);
+  }
+  return { written, added, updated, unchanged, skippedOlder, conflicts: conflicts.length };
+}
+
 async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> {
   const objs = toObjects(input.header, dataRows(input.rows));
   const notes: string[] = [];
@@ -247,6 +315,8 @@ async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> 
       paidAt: parseDMY(r["Payment time"]),
       deliveredAt: parseDMY(r["Order Delivery Time"]),
       commissionPaidAt: parseDMY(r["Time Commission Paid"]),
+      // this line's own freshness: the latest of its lifecycle timestamps
+      asof: latest(createdAt, parseDMY(r["Payment time"]), parseDMY(r["Order Delivery Time"]), parseDMY(r["Time Commission Paid"])),
     });
     for (const t of [createdAt, parseDMY(r["Payment time"]), parseDMY(r["Order Delivery Time"]), parseDMY(r["Time Commission Paid"])]) {
       if (t && (!asof || t > asof)) asof = t;
@@ -263,14 +333,6 @@ async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> 
     rejected,
     products: productNames.size,
   });
-  // Is this file older than what is already loaded?
-  const [known] = (await D().execute(sql`select max(asof) as latest from order_lines`)) as unknown as { latest: Date | string | null }[];
-  if (known?.latest && asof && new Date(known.latest) > asof) {
-    warnings.push(
-      `This file looks older than the orders already loaded (its latest activity is ${asof.toISOString().slice(0, 10)}, the loaded data goes to ${new Date(known.latest).toISOString().slice(0, 10)}). Lines that already have newer information were left unchanged.`,
-    );
-  }
-
   // Products seen in orders (names also come from the product list).
   const brand = commonBrand([...productNames.values()]);
   if (productNames.size) {
@@ -289,59 +351,25 @@ async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> 
       });
   }
 
-  const rows = [...lines.values()].map((l) => ({ ...l, uploadId, asof }));
-  let added = 0;
-  let updated = 0;
-  let skippedOlder = 0;
-  const size = chunkSizeFor(30);
-  for (const part of chunk(rows, size)) {
-    const res = await D()
-      .insert(orderLines)
-      .values(part)
-      .onConflictDoUpdate({
-        target: [orderLines.orderId, orderLines.skuId],
-        set: {
-          productId: sql`excluded.product_id`,
-          price: sql`excluded.price`,
-          paymentAmount: sql`excluded.payment_amount`,
-          quantity: sql`excluded.quantity`,
-          fullyRefunded: sql`excluded.fully_refunded`,
-          cod: sql`excluded.cod`,
-          status: sql`excluded.status`,
-          creator: sql`excluded.creator`,
-          contentType: sql`excluded.content_type`,
-          contentId: sql`excluded.content_id`,
-          commissionModel: sql`excluded.commission_model`,
-          commissionRate: sql`excluded.commission_rate`,
-          estCommission: sql`excluded.est_commission`,
-          actualCommission: sql`excluded.actual_commission`,
-          estAdsCommission: sql`excluded.est_ads_commission`,
-          actualAdsCommission: sql`excluded.actual_ads_commission`,
-          paidAt: sql`excluded.paid_at`,
-          deliveredAt: sql`excluded.delivered_at`,
-          commissionPaidAt: sql`excluded.commission_paid_at`,
-          asof: sql`excluded.asof`,
-          uploadId: sql`excluded.upload_id`,
-        },
-        // never let an older export overwrite newer information
-        setWhere: sql`${orderLines.asof} is null or excluded.asof >= ${orderLines.asof}`,
-      })
-      .returning({ inserted: sql<boolean>`(xmax = 0)` });
-    const ins = res.filter((r) => r.inserted).length;
-    added += ins;
-    updated += res.length - ins;
-    skippedOlder += part.length - res.length;
-  }
+  const w = await versionedWrite({
+    kind: "affiliate_orders", table: orderLines, rows: [...lines.values()].map((l) => ({ ...l, uploadId })) as never,
+    fields: AFFILIATE_FIELDS, numeric: AFFILIATE_NUM, dates: AFFILIATE_DATES, direction: affiliateDirection, uploadId, width: 30,
+  });
+  const { added, updated, unchanged, skippedOlder, conflicts } = w;
+  if (skippedOlder) warnings.push(`${skippedOlder} line${skippedOlder === 1 ? "" : "s"} in this file were older than what is already stored and were left unchanged.`);
+  if (conflicts) warnings.push(`${conflicts} line${conflicts === 1 ? "" : "s"} changed in a way that cannot be proven newer (same timestamps, different values). The stored version was kept – review them in the Data hub.`);
   notes.push(`Orders from ${start} to ${end}. Existing lines are updated in place (status, commission).`);
   const rej = sumOf(rejected);
   return {
     uploadId,
     imported: added + updated,
-    skipped: rej + skippedOlder,
+    skipped: rej + skippedOlder + conflicts,
     replacedUploads: 0,
     notes,
     added,
     updated,
+    unchanged,
+    conflicts,
     skippedOlder,
     rejected,
     warnings,
@@ -423,6 +451,7 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
       trackingId: str(r["Tracking ID"]),
       rtsAt: parseDMY(r["RTS Time"]),
       isSample: isSampleLine(r),
+      asof: latest(createdAt, parseDMY(r["Paid Time"]), parseDMY(r["Shipped Time"]), parseDMY(r["Delivered Time"]), parseDMY(r["Cancelled Time"]), parseDMY(r["RTS Time"])),
     });
     for (const k of ["Created Time", "Paid Time", "Shipped Time", "Delivered Time", "Cancelled Time"]) {
       const t = parseDMY(r[k]);
@@ -436,66 +465,19 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
   const start = input.periodStart ?? minT!.toISOString().slice(0, 10);
   const end = input.periodEnd ?? maxT!.toISOString().slice(0, 10);
   const uploadId = await createUpload({ ...input, periodStart: start, periodEnd: end }, lines.size, { rejected });
-  const [known] = (await D().execute(sql`select max(asof) as latest from shop_order_lines`)) as unknown as { latest: Date | string | null }[];
-  if (known?.latest && asof && new Date(known.latest) > asof) {
-    warnings.push(
-      `This file looks older than the shop orders already loaded (its latest activity is ${asof.toISOString().slice(0, 10)}, the loaded data goes to ${new Date(known.latest).toISOString().slice(0, 10)}). Lines that already have newer statuses were left unchanged.`,
-    );
-  }
-  const rows = [...lines.values()].map((l) => ({ ...l, uploadId, asof }));
-  let added = 0;
-  let updated = 0;
-  let skippedOlder = 0;
-  const written = new Set<string>();
-  for (const part of chunk(rows, chunkSizeFor(41))) {
-    const res = await D()
-      .insert(shopOrderLines)
-      .values(part)
-      .onConflictDoUpdate({
-        target: [shopOrderLines.orderId, shopOrderLines.skuId],
-        set: {
-          status: sql`excluded.status`,
-          substatus: sql`excluded.substatus`,
-          cancelType: sql`excluded.cancel_type`,
-          cancelBy: sql`excluded.cancel_by`,
-          cancelReason: sql`excluded.cancel_reason`,
-          returnQty: sql`excluded.return_qty`,
-          subtotalAfter: sql`excluded.subtotal_after`,
-          platformDiscount: sql`excluded.platform_discount`,
-          sellerDiscount: sql`excluded.seller_discount`,
-          orderAmount: sql`excluded.order_amount`,
-          refundAmount: sql`excluded.refund_amount`,
-          paidAt: sql`excluded.paid_at`,
-          shippedAt: sql`excluded.shipped_at`,
-          deliveredAt: sql`excluded.delivered_at`,
-          cancelledAt: sql`excluded.cancelled_at`,
-          shippingProvider: sql`excluded.shipping_provider`,
-          paymentMethod: sql`excluded.payment_method`,
-          orderChannel: sql`excluded.order_channel`,
-          creator: sql`excluded.creator`,
-          buyerUsername: sql`excluded.buyer_username`,
-          trackingId: sql`excluded.tracking_id`,
-          rtsAt: sql`excluded.rts_at`,
-          isSample: sql`excluded.is_sample`,
-          asof: sql`excluded.asof`,
-          uploadId: sql`excluded.upload_id`,
-        },
-        // never let an older export overwrite a newer status
-        setWhere: sql`${shopOrderLines.asof} is null or excluded.asof >= ${shopOrderLines.asof}`,
-      })
-      .returning({ orderId: shopOrderLines.orderId, skuId: shopOrderLines.skuId, inserted: sql<boolean>`(xmax = 0)` });
-    const ins = res.filter((r) => r.inserted).length;
-    added += ins;
-    updated += res.length - ins;
-    skippedOlder += part.length - res.length;
-    for (const r of res) written.add(`${r.orderId}|${r.skuId}`);
-  }
+  const w = await versionedWrite({
+    kind: "all_orders", table: shopOrderLines, rows: [...lines.values()].map((l) => ({ ...l, uploadId })) as never,
+    fields: SHOP_FIELDS, numeric: SHOP_NUM, dates: SHOP_DATES, direction: shopDirection, uploadId, width: 41,
+  });
+  const { added, updated, unchanged, skippedOlder, conflicts, written } = w;
+  if (skippedOlder) warnings.push(`${skippedOlder} line${skippedOlder === 1 ? "" : "s"} in this file were older than what is already stored and were left unchanged.`);
+  if (conflicts) warnings.push(`${conflicts} line${conflicts === 1 ? "" : "s"} changed in a way that cannot be proven newer (same timestamps, different values). The stored version was kept – review them in the Data hub.`);
   const sampleCount = await upsertSampleOrders([...lines.values()].filter((l) => l.isSample && written.has(`${l.orderId}|${l.skuId}`)), uploadId);
   const rej = sumOf(rejected);
   return {
     uploadId,
     imported: added + updated,
-    skipped: rej + skippedOlder,
+    skipped: rej + skippedOlder + conflicts,
     replacedUploads: 0,
     notes: [
       `Shop orders from ${start} to ${end}. Existing lines are updated in place.`,
@@ -503,6 +485,8 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
     ],
     added,
     updated,
+    unchanged,
+    conflicts,
     skippedOlder,
     rejected,
     warnings,

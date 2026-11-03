@@ -2,14 +2,14 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { recommendations } from "@/db/schema";
-import { rows } from "@/lib/analytics/sql";
+import { AL, rows } from "@/lib/analytics/sql";
 import { daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { getCommitments, type CommitmentRow } from "./commitments";
 import { getWorkflowStates } from "./events";
 import { unansweredAttempts, type FollowupKind } from "./replay";
 import { getWorkflowSettings, type WorkflowSettings } from "./settings";
 
-export type ReasonKind = "promise_overdue" | "followup_due" | "help_due" | "resume_due" | "sample" | "development";
+export type ReasonKind = "promise_overdue" | "promise_review" | "followup_due" | "help_due" | "resume_due" | "sample" | "development";
 
 export type TodayRow = {
   username: string;
@@ -25,10 +25,15 @@ export type TodayRow = {
   lastContactedAt: string | null;
   lastContactedBy: string | null;
   help: { reason: string; nextOn: string } | null;
+  /** The outstanding promise with the earliest CURRENT deadline – the same one sample deadlines use. */
   commitment: CommitmentRow | null;
+  /** Other outstanding promises of this creator. */
+  otherCommitments: number;
+  /** Suggestions for the optional deliverable controls, from the creator's own activity. */
+  suggest: { products: { id: string; name: string }[]; kind: "video" | "live" | null };
   attempts: number;
   suggestPause: boolean;
-  samples: { id: number; product: string; deliveredOn: string | null; postBy: string | null; postBySource: string | null; result: string }[];
+  samples: { id: number; pid?: string | null; product: string; deliveredOn: string | null; postBy: string | null; postBySource: string | null; result: string }[];
   /** Why the system is NOT asking for outreach now (set only on scheduled / paused rows). */
   held: string | null;
   priority: number;
@@ -57,11 +62,17 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
     db.select().from(recommendations).where(sql`${recommendations.active}`),
   ]);
 
+  // Outstanding = not fulfilled. The earliest current deadline wins, exactly as for sample deadlines.
   const openComm = new Map<string, CommitmentRow>();
+  const otherCount = new Map<string, number>();
   for (const c of comms) {
     if (c.state === "fulfilled") continue;
     const prev = openComm.get(c.username);
-    if (!prev || c.promisedOn < prev.promisedOn) openComm.set(c.username, c);
+    if (!prev) openComm.set(c.username, c);
+    else {
+      otherCount.set(c.username, (otherCount.get(c.username) ?? 0) + 1);
+      if (c.dueOn < prev.dueOn) openComm.set(c.username, c);
+    }
   }
   const recBy = new Map<string, typeof recRows>();
   for (const r of recRows) recBy.set(r.username, [...(recBy.get(r.username) ?? []), r]);
@@ -70,12 +81,12 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
   for (const [u, st] of states) if (st.nextOn || st.status === "paused") names.add(u);
   const list = [...names];
 
-  const [info, smp, latest, userNames] = list.length
+  const [info, smp, latest, userNames, acts] = list.length
     ? await Promise.all([
         rows<{ username: string; phone: string | null; dnc: boolean }>(sql`
           select username, phone, do_not_contact as dnc from creators where username in (${sql.join(list.map((u) => sql`${u}`), sql`, `)})`),
-        rows<{ id: number; creator: string; product: string; delivered: string | null; post_by: string | null; post_by_source: string | null; r: string }>(sql`
-          select s.id, s.creator, coalesce(k.name, s.variation, s.seller_sku, s.product_name, 'Sample') as product,
+        rows<{ id: number; creator: string; product: string; pid: string | null; delivered: string | null; post_by: string | null; post_by_source: string | null; r: string }>(sql`
+          select s.id, s.creator, coalesce(k.name, s.variation, s.seller_sku, s.product_name, 'Sample') as product, s.product_id as pid,
             to_char(s.delivered_at, 'YYYY-MM-DD') as delivered, to_char(s.post_by, 'YYYY-MM-DD') as post_by, s.post_by_source,
             coalesce(s.result_override, s.result) as r
           from samples s left join sku_items k on upper(k.sku) = upper(s.seller_sku)
@@ -86,8 +97,15 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
           select s.creator, max(sc.posted_at) as at from sample_content sc join samples s on s.id = sc.sample_id
           where sc.confidence = 'confirmed' and s.creator in (${sql.join(list.map((u) => sql`${u}`), sql`, `)}) group by s.creator`),
         rows<{ id: string; name: string }>(sql`select id::text, name from users`),
+        rows<{ creator: string; pid: string; name: string | null; gmv: number; vgmv: number; lgmv: number }>(sql`
+          select al.creator, al.product_id as pid, max(p.short_name) as name, coalesce(sum(al.pay) filter (where al.valid), 0)::float8 as gmv,
+            coalesce(sum(al.pay) filter (where al.valid and al.content_type = 'Video'), 0)::float8 as vgmv,
+            coalesce(sum(al.pay) filter (where al.valid and al.content_type = 'Livestream'), 0)::float8 as lgmv
+          from ${AL} left join products p on p.product_id = al.product_id
+          where al.creator in (${sql.join(list.map((u) => sql`${u}`), sql`, `)})
+          group by al.creator, al.product_id order by gmv desc`),
       ])
-    : [[], [], [], []];
+    : [[], [], [], [], []];
   const infoBy = new Map(info.map((i) => [i.username, i]));
   const latestBy = new Map(latest.map((l) => [l.creator, l.at ? new Date(l.at) : null]));
   const userBy = new Map(userNames.map((u) => [u.id, u.name]));
@@ -95,8 +113,11 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
   for (const s of smp)
     samplesBy.set(s.creator, [
       ...(samplesBy.get(s.creator) ?? []),
-      { id: s.id, product: s.product, deliveredOn: s.delivered, postBy: s.post_by, postBySource: s.post_by_source, result: s.r },
+      { id: s.id, pid: s.pid, product: s.product, deliveredOn: s.delivered, postBy: s.post_by, postBySource: s.post_by_source, result: s.r },
     ]);
+
+  const actBy = new Map<string, typeof acts>();
+  for (const a of acts) actBy.set(a.creator, [...(actBy.get(a.creator) ?? []), a]);
 
   const out: TodayRow[] = [];
   for (const u of list) {
@@ -119,13 +140,19 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
     } else {
       // an overdue promise is chased once: after staff act (contacted / needs help) the next date they set decides
       const scheduledAhead = !!st?.nextOn && st.nextOn > today;
-      if (comm && comm.promisedOn < today && !scheduledAhead) {
-        const late = daysBetweenISO(comm.promisedOn, today);
+      if (comm && comm.dueOn < today && !scheduledAhead) {
+        const late = daysBetweenISO(comm.dueOn, today);
+        const parts = comm.needed > 1 ? ` – ${comm.done}/${comm.needed} done` : "";
         reasons.push({
           kind: "promise_overdue",
-          text: `Promised ${fmtDayLabel(comm.promisedOn)} (${late} day${late === 1 ? "" : "s"} ago) – no matching content seen yet${comm.state === "review" ? "; possible match to review" : ""}.`,
+          text: `Promised ${fmtDayLabel(comm.dueOn)}${comm.rescheduled ? " (moved)" : ""} (${late} day${late === 1 ? "" : "s"} ago)${parts} – no matching content seen yet${comm.state === "review" ? "; possible match to review" : ""}.`,
         });
         tier = 1;
+      }
+      // Possible content for a promise needs a quick yes/no, whatever the date.
+      if (comm && comm.candidates.length && tier == null) {
+        reasons.push({ kind: "promise_review", text: `Possible content for the promise (${comm.candidates.length}) – confirm or reject it.` });
+        tier = 2;
       }
       if (st?.nextOn && st.nextOn <= today && st.nextKind && st.nextKind !== "resume") {
         // a promise follow-up whose promise is already fulfilled needs no chasing
@@ -146,7 +173,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
         // System recommendations only appear when nothing already covers this creator: no scheduled follow-up,
         // no promise still to come, no pause (so the same person is never chased twice for the same thing).
         const future = st?.nextOn && st.nextOn > today ? st.nextOn : null;
-        const promiseAhead = comm && comm.promisedOn >= today ? comm.promisedOn : null;
+        const promiseAhead = comm && comm.dueOn >= today ? comm.dueOn : null;
         if (future || promiseAhead) {
           held = promiseAhead ? `Promised ${fmtDayLabel(promiseAhead)} – waiting` : `Follow-up on ${fmtDayLabel(future!)}`;
         } else if (recs.length) {
@@ -173,6 +200,16 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
       lastContactedBy: st?.lastContactedBy ? (userBy.get(st.lastContactedBy) ?? null) : null,
       help: st?.help ? { reason: st.help.reason, nextOn: st.help.nextOn } : null,
       commitment: comm,
+      otherCommitments: otherCount.get(u) ?? 0,
+      suggest: (() => {
+        const mine = actBy.get(u) ?? [];
+        const open = (samplesBy.get(u) ?? []).filter((x) => x.pid).map((x) => ({ id: x.pid!, name: x.product }));
+        const seen = new Set<string>();
+        const products = [...open, ...mine.filter((m) => m.gmv > 0).map((m) => ({ id: m.pid, name: m.name ?? "Product" }))].filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true))).slice(0, 4);
+        const v = mine.reduce((a, m) => a + m.vgmv, 0);
+        const l = mine.reduce((a, m) => a + m.lgmv, 0);
+        return { products, kind: v > 0 && l === 0 ? ("video" as const) : l > 0 && v === 0 ? ("live" as const) : null };
+      })(),
       attempts,
       suggestPause: !paused && attempts >= cfg.maxUnanswered,
       samples: samplesBy.get(u) ?? [],
@@ -193,7 +230,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
   const dev = active.filter((r) => r.tier === 4);
   const focus = [...due, ...samples.slice(0, Math.max(0, cfg.todayLimit - due.length)), ...dev.slice(0, cfg.developmentLimit)];
 
-  const [{ n: exceptions }] = await rows<{ n: number }>(sql`
+  const [{ n: exceptionsSamples }] = await rows<{ n: number }>(sql`
     select count(*)::int as n from (
       select s.id from samples s join sample_content sc on sc.sample_id = s.id and sc.confidence = 'uncertain'
       where coalesce(s.result_override, s.result) = 'uncertain'
@@ -201,6 +238,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
       union all select s.id from samples s where s.source = 'orders' and s.creator is null and s.order_status <> 'Canceled'
     ) x`);
 
+  const exceptions = exceptionsSamples + comms.filter((c) => c.state !== "fulfilled" && c.candidates.length > 0 && c.sampleIds.length === 0).length;
   const pick: Record<TodayView, TodayRow[]> = { focus, due, samples, development: dev, scheduled, paused };
   return {
     today,

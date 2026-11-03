@@ -101,7 +101,10 @@ See `docs/DATA-AUDIT.md`, `docs/UPLOAD-GUIDE.md` and `docs/STAFF-GUIDE.md`.
 createdb affiliate_test
 DATABASE_URL=postgres://…/affiliate_test npx drizzle-kit push --force
 DATABASE_URL=postgres://…/affiliate_test npm run test:workflow
+DATABASE_URL=postgres://…/affiliate_test npm run test:regressions   # run against a freshly created test database
 ```
+
+Upgrading a database that already has data: see `docs/UPGRADE.md` (`npm run db:migrate`, never `db:push`).
 
 The script refuses to run unless the database name ends in `_test` (it wipes it) and only creates clearly labelled
 synthetic records (`zz_test_*`). Never point it at production.

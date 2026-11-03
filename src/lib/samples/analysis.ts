@@ -154,24 +154,19 @@ export async function getSampleScorecard(range?: DateRange): Promise<{ rows: Sco
       from s left join sku_items k on upper(k.sku) = upper(s.seller_sku)
       group by creator
     ),
-    -- Sizes of one product share the same sales, so count each product once per creator.
+    -- Every qualifying sale line is already credited to exactly one sample (sample_sales), so plain sums cannot double count.
     gm as (
-      select creator, coalesce(sum(g), 0)::float8 as gmv, coalesce(sum(o), 0)::int as orders from (
-        select creator, max(content_gmv) as g, max(content_orders) as o from s group by creator, coalesce(product_id, id::text)
-      ) x group by creator
+      select creator, coalesce(sum(content_gmv), 0)::float8 as gmv, coalesce(sum(content_orders), 0)::int as orders
+      from s group by creator
     ),
     first_d as (select creator, min(delivered_at) as d from s where delivered_at is not null group by creator),
+    -- Videos with a KNOWN posting date on/after the first delivery (calendar-day rule for date-only exports; no one-day allowance).
+    -- Videos seen only in orders have no posting date, so they are not counted as new here.
     vids as (
-      select creator, count(distinct vid)::int as n, to_char(max(at), 'YYYY-MM-DD') as last from (
-        select v.creator, v.video_id as vid, v.posted_at as at from videos v
-          join first_d f on f.creator = v.creator and v.posted_at >= f.d - interval '1 day'
-        union
-        -- new videos already selling in orders but not yet in the video report
-        select o.creator, o.content_id, min(o.created_at) from order_lines o join first_d f on f.creator = o.creator
-          where o.content_type = 'Video' and o.content_id is not null
-            and not exists (select 1 from videos v2 where v2.video_id = o.content_id)
-          group by o.creator, o.content_id, f.d having min(o.created_at) >= f.d
-      ) u group by creator
+      select v.creator, count(distinct v.video_id)::int as n, to_char(max(v.posted_at), 'YYYY-MM-DD') as last
+      from videos v join first_d f on f.creator = v.creator
+        and (case when v.posted_at::time = time '00:00' then v.posted_at::date >= f.d::date else v.posted_at >= f.d end)
+      group by v.creator
     ),
     lastv as (
       select v.creator, to_char(max(v.posted_at), 'YYYY-MM-DD') as newest
@@ -294,6 +289,9 @@ export type SampleLine = {
   contentViews: number;
   contentGmv: number;
   contentOrders: number;
+  /** Sold after delivery from older or undated content (shown separately; never mixed into content sales). */
+  observedGmv: number;
+  observedOrders: number;
   ownerId: string | null;
   ownerName: string | null;
   followUpAt: string | null;
@@ -349,6 +347,8 @@ async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> 
       contentViews: Number(r.content_views ?? 0),
       contentGmv: Number(r.content_gmv ?? 0),
       contentOrders: Number(r.content_orders ?? 0),
+      observedGmv: Number(r.observed_gmv ?? 0),
+      observedOrders: Number(r.observed_orders ?? 0),
       ownerId: (r.owner_id as string) ?? null,
       ownerName: (r.owner_name as string) ?? null,
       followUpAt: day(r.follow_up_at),
@@ -395,15 +395,8 @@ async function attachVideos(lines: SampleLine[]): Promise<void> {
     select sp.id as sid, v.video_id as vid, v.link, to_char(v.posted_at, 'YYYY-MM-DD') as posted,
       coalesce((select max(s2.views) from video_snapshots s2 where s2.video_id = v.video_id), 0)::int as views,
       coalesce(sp.pid = any(v.product_ids), false) as prod
-    from sp join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day'
-    union all
-    -- new videos that already sell in orders but are not in the video report yet
-    select sp.id, o.content_id, 'https://www.tiktok.com/@' || sp.creator || '/video/' || o.content_id,
-      to_char(min(o.created_at), 'YYYY-MM-DD'), 0, bool_or(sp.pid is null or o.product_id = sp.pid)
-    from sp join order_lines o on o.creator = sp.creator and o.content_type = 'Video' and o.content_id is not null
-    where not exists (select 1 from videos v2 where v2.video_id = o.content_id)
-    group by sp.id, o.content_id, sp.creator, sp.delivered_at
-    having min(o.created_at) >= sp.delivered_at
+    from sp join videos v on v.creator = sp.creator
+      and (case when v.posted_at::time = time '00:00' then v.posted_at::date >= sp.delivered_at::date else v.posted_at >= sp.delivered_at end)
     order by posted`);
   if (!vids.length) return;
   const sales = await rows<{ content_id: string; gmv: number; n: number }>(sql`
@@ -469,7 +462,7 @@ export async function getSampleTotals(range?: DateRange): Promise<{ sent: number
       (count(*) filter (where r = 'not_posted'))::int as chase,
       (count(*) filter (where r in ('posted_video','did_live') and content_orders = 0))::int as nosales,
       (count(*) filter (where r in ('posted_video','did_live') and content_orders > 0))::int as selling,
-      (select coalesce(sum(g), 0) from (select max(content_gmv) as g from s group by creator, coalesce(product_id, id::text)) x)::float8 as gmv,
+      coalesce(sum(content_gmv), 0)::float8 as gmv,
       (count(*) filter (where creator is null))::int as unknown
     from s`);
   return { sent: r.sent, qty: r.qty, delivered: r.delivered, chase: r.chase, noSales: r.nosales, selling: r.selling, gmv: r.gmv, unknown: r.unknown };

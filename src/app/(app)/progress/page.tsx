@@ -27,15 +27,18 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
   const sp = (await searchParams) as SP;
   const days = PROGRESS_RANGES.find((d) => String(d) === one(sp.days)) ?? 28;
   const p = await getProgress(days);
+  const f = p.followUps;
   const s = p.staff;
-  const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "–");
-  const noCoverage = "Not enough order history to compare";
+  const c = p.content;
+  const pr = p.promises;
+  const cmp = p.sales.comparison;
+  const pct = (x: number | null) => (x == null ? "–" : `${Math.round(x * 100)}%`);
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Progress"
-        description={`${fmtDayLabel(p.window.start)} – ${fmtDayLabel(p.window.end)} (${days} days, Malaysia time), compared with the ${days} days before it.`}
+        description={`${fmtDayLabel(p.window.start)} – ${fmtDayLabel(p.window.end)} (${days} days, Malaysia time).`}
         actions={
           <div role="group" aria-label="Period" className="inline-flex overflow-hidden rounded-lg border border-line-strong text-[13px] font-medium">
             {PROGRESS_RANGES.map((d) => (
@@ -48,12 +51,17 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
       />
 
       <section aria-label="Staff work" className="space-y-2">
-        <h2 className="text-[15px] font-semibold">Staff work</h2>
+        <h2 className="text-[15px] font-semibold">Follow-ups</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat kind="staff" label="Follow-ups due" value={s.followUpsDue} sub={`${s.onTime} on time · ${s.late} late · ${s.overdueOpen} still overdue`} />
-          <Stat kind="staff" label="Completed on time" value={pct(s.onTime, s.followUpsDue)} sub="of follow-ups whose due date fell in this period" />
+          <Stat kind="staff" label="On-time rate" value={pct(f.onTimeRate)} sub={`${f.onTime} on time ÷ (${f.onTime} on time + ${f.late} late + ${f.overdueOpen} still overdue)`} />
+          <Stat kind="staff" label="Follow-ups due" value={f.due} sub={`${f.notYetDue} not due yet`} />
+          <Stat kind="staff" label="Set aside, not done" value={f.rescheduled + f.pausedOrCancelled} sub={`${f.rescheduled} rescheduled · ${f.pausedOrCancelled} paused or cancelled – earn no credit`} />
+          <Stat kind="system" label="Resolved automatically" value={f.resolvedAutomatically} sub="the promised content appeared, so nothing was left to chase" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat kind="staff" label="Different creators contacted" value={s.creatorsContacted} sub={`${s.contactActions} “Contacted” actions in total`} />
-          <Stat kind="staff" label="Promises recorded" value={s.promisesRecorded} sub="creator gave a date" />
+          <Stat kind="staff" label="Promises recorded" value={s.promisesRecorded} sub="new promises only" />
+          <Stat kind="staff" label="Deadlines moved" value={s.deadlinesMoved} sub="not counted as new promises" />
         </div>
         {s.byPerson.length > 0 && (
           <Card>
@@ -73,39 +81,54 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
       <section aria-label="Promises and content" className="space-y-2">
         <h2 className="text-[15px] font-semibold">Promises and content</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat kind="staff" label="Promises due" value={p.promises.due} sub="promised date fell in this period" />
-          <Stat kind="system" label="Fulfilled" value={p.promises.fulfilledOnTime + p.promises.fulfilledLate} sub={`${p.promises.fulfilledOnTime} on time · ${p.promises.fulfilledLate} late · ${p.promises.bySystem} found by the system · ${p.promises.byStaff} confirmed by staff`} />
-          <Stat kind="system" label="Not fulfilled yet" value={p.promises.open} sub="no matching content seen" />
-          <Stat kind="system" label="New content after outreach" value={p.content.afterContact} sub={`${p.content.allVerified} confirmed pieces in total this period · each piece counted once · appeared after a contact, not proven to be caused by it`} />
+          <Stat kind="staff" label="Promises due" value={pr.due} sub={`current deadline in this period · ${pr.withoutSample} without a sample`} />
+          <Stat kind="system" label="Fulfilled" value={pr.fulfilledOnTime + pr.fulfilledLate + pr.fulfilledTimingUnknown} sub={`${pr.fulfilledOnTime} on time · ${pr.fulfilledLate} late · ${pr.fulfilledTimingUnknown} posting date unknown · ${pr.bySystem} found by the system · ${pr.byStaff} confirmed by staff`} />
+          <Stat kind="system" label="In progress" value={pr.partial + pr.toReview} sub={`${pr.partial} partly done (e.g. 1 of 2) · ${pr.toReview} need a quick check`} />
+          <Stat kind="system" label="Overdue" value={pr.overdueOpen} sub={`${pr.notYetDue} not due yet · fulfilled promises are never counted overdue`} />
         </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat kind="system" label="New content after outreach" value={c.total} sub={`distinct pieces, each counted once · ${c.postedAfterContact} posted after the first contact · ${c.undatedSeenAfterContact} first seen after it (posting date unknown) · ${c.confirmedByStaff} confirmed by staff · ${c.fromCreatorsWithoutSamples} from creators without samples`} />
+        </div>
+        {c.videoReportCoverage.covered < c.videoReportCoverage.total && (
+          <p className="text-[12.5px] text-warn">Video analysis covers only {c.videoReportCoverage.covered} of {c.videoReportCoverage.total} days here, so content counts are a minimum.</p>
+        )}
       </section>
 
       <section aria-label="Sales" className="space-y-2">
         <h2 className="text-[15px] font-semibold">Sales movement</h2>
+        {cmp.current && cmp.previous ? (
+          <p className="text-[13px] text-ink-2">
+            Comparing {fmtDayLabel(cmp.current.start)} – {fmtDayLabel(cmp.current.end)} with {fmtDayLabel(cmp.previous.start)} – {fmtDayLabel(cmp.previous.end)} ({cmp.current.days} days each).
+            {cmp.shortened && <> Order data only reaches {fmtDayLabel(cmp.current.end)}, so both periods were shortened equally.</>}
+          </p>
+        ) : (
+          <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-[13px] text-ink">Comparison withheld. {cmp.withheld}</p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat kind="system" label="Newly selling creators" value={p.sales.newlySelling ?? "–"} sub={p.sales.newlySelling == null ? noCoverage : `first sale we can see (order history starts ${fmtDayLabel(p.sales.coverageStart!)}) · none in the 28 days before`} />
-          <Stat kind="system" label="Reactivated creators" value={p.sales.reactivated ?? "–"} sub={p.sales.reactivated == null ? noCoverage : "sold earlier, nothing in the 28 days before, selling again"} />
+          <Stat kind="system" label="Newly selling creators" value={p.sales.newlySelling ?? "–"} sub={p.sales.newlySelling == null ? "not enough covered history" : "first observed sale in this period"} />
+          <Stat kind="system" label="Reactivated creators" value={p.sales.reactivated ?? "–"} sub={p.sales.reactivated == null ? "not enough covered history" : "sold earlier, nothing in the 28 days before, selling again"} />
           <Stat kind="system" label="Managed creators" value={p.sales.managed} sub="contacted at least once" />
           <Stat
             kind="system"
             label="Their sales vs previous period"
             value={p.sales.managedNow == null ? "–" : fmtRM(p.sales.managedNow)}
-            sub={p.sales.managedNow == null ? noCoverage : `was ${fmtRM(p.sales.managedBefore ?? 0)} · ${p.sales.managedGrowing} growing · ${p.sales.managedFalling} falling`}
+            sub={p.sales.managedNow == null ? "withheld (see above)" : `was ${fmtRM(p.sales.managedBefore ?? 0)} · ${p.sales.managedGrowing} growing · ${p.sales.managedFalling} falling`}
           />
         </div>
+        {p.sales.historyNote && <p className="text-[12.5px] text-ink-3">{p.sales.historyNote}</p>}
+        <p className="text-[12.5px] text-ink-3">Order files cover {p.sales.coverage.affiliate} (affiliate) and {p.sales.coverage.shop} (shop) of the {p.sales.coverage.total} days in this period.</p>
       </section>
 
       <Card>
         <CardHeader title="How these numbers are defined" />
         <ul className="list-disc space-y-1.5 px-9 pb-5 text-[13.5px] text-ink-2">
-          <li><b>Staff-confirmed</b> = a person pressed a button (Contacted, Promised date, …). Opening WhatsApp or copying a message is never counted.</li>
-          <li><b>System-detected</b> = found in the uploaded TikTok files (content, sales). Staff can confirm or reject uncertain matches.</li>
-          <li><b>Follow-up</b> = the next-action date set when staff press Contacted / Promised / Needs help. “On time” = done on or before the due date (Malaysia time).</li>
-          <li><b>Different creators contacted</b> counts each creator once. Undone actions are excluded.</li>
-          <li><b>Promise fulfilled</b> = content for the sample the promise was about appeared on or after the day it was recorded (or staff confirmed a link). Other videos never count.</li>
-          <li><b>New content after outreach</b> = confirmed videos/LIVEs, each counted once, first seen after the creator’s first recorded contact. It shows timing only – it does not prove the contact caused it, and sales after contact are not credited to staff.</li>
-          <li><b>Newly selling</b> = first sale visible in the order history; only shown when the history reaches back 28 days before the period. Order data: {p.sales.coverageStart ? `${fmtDayLabel(p.sales.coverageStart)} – ${fmtDayLabel(p.sales.coverageEnd!)}` : "none uploaded"}.</li>
-          <li>Sales movement compares equal-length periods and is hidden when the earlier period isn’t covered by uploaded orders. No reply rate is measured: replies are not logged.</li>
+          <li><b>Staff-confirmed</b> = a person pressed a button. Opening WhatsApp or copying a message is never counted. <b>System-detected</b> = found in the uploaded TikTok files.</li>
+          <li><b>On-time rate</b> = follow-ups completed on or before their due day (through Contacted, or a promised date the creator gave) ÷ (completed on time + completed late + still overdue). Rescheduling, pausing, cancelling and automatic resolution are shown separately and earn no credit.</li>
+          <li><b>Promise</b> = a creator’s date, optionally with video/LIVE, product and quantity. Moving the date keeps the original and changes only the current deadline; it is not a new promise.</li>
+          <li><b>Fulfilled</b> = the agreed number of distinct pieces of the right type and product, with a known posting date on or after the day the promise was recorded (or confirmed by staff). “On time” uses the posting date; if it is unknown the promise is shown as fulfilled with unknown timing. Without an agreed product the system only suggests matches for you to confirm.</li>
+          <li><b>New content after outreach</b> = distinct videos/LIVEs (samples or not) posted after the creator’s first recorded contact, plus pieces first seen after it whose posting date is unknown, plus pieces staff confirmed in the period. A confirmation date is never used as a posting date. This shows timing only – it does not show the contact caused it.</li>
+          <li><b>Sales comparisons</b> use the recorded period of each uploaded order file. Equal-length periods are compared only where both are fully covered by both order files; a missing upload is never read as zero sales. <b>First observed sale</b> = the earliest sale in the uploaded history.</li>
+          <li>No reply rate is measured: replies are not logged.</li>
         </ul>
       </Card>
     </div>

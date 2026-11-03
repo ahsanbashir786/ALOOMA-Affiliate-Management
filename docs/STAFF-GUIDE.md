@@ -13,13 +13,17 @@ Buttons on every row:
 
 * **Open TikTok / WhatsApp message** – opens the app or shows a ready EN/BM message. This does **not** count as contact.
 * **Contacted** – press it after you really sent a message. Saves who and when; next follow-up in 3 days.
-* **Promised date** – the creator told you when they will post. Pick a date, nothing else needed.
+* **Promised date** – the creator told you when they will post. Pick a date, nothing else needed. Optional **Add details**: video or LIVE, which product, how many (e.g. 2). Suggestions come from what the creator already sells. Works for creators who got no sample.
+  If they already have a promise, choose **Move this date** (the creator changed the date – the first date is kept) or **Add another promise** (a separate promise).
+  Two videos promised = it shows **1/2** after the first and finishes after the second.
 * **Needs help** – pick a reason and the next date.
 * **Pause** – type a short reason (e.g. holiday); optional date to come back.
 * **Undo** – appears after each action; the history still shows it was undone.
 * Tick several rows → **Mark selected as contacted** → confirm the count.
 
 After 3 contacts with no new content the row suggests pausing. It never labels a creator as unsuccessful.
+
+**Check possible content** (on a row) appears when the system found a video that *might* be the promised one (for example no product is listed, or its posting date is unknown). Press *This is it* or *Not this*, or paste a link.
 
 You never record "content posted" – the system finds it in the next upload. If a video is not recognised, open
 **Samples → Needs review**: press *This is it* / *Not this*, or paste the video link.

@@ -28,6 +28,8 @@ type Result = {
   added?: number;
   updated?: number;
   skippedOlder?: number;
+  unchanged?: number;
+  conflicts?: number;
   rejected?: Record<string, number>;
   warnings?: string[];
   coverage?: { start: string | null; end: string | null };
@@ -183,6 +185,8 @@ export function UploadWorkbench() {
                       <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
                       <span>
                         <b>{fmtInt(it.result.added ?? it.result.imported)}</b> added · <b>{fmtInt(it.result.updated ?? 0)}</b> updated
+                        {it.result.unchanged ? <> · <b>{fmtInt(it.result.unchanged)}</b> unchanged</> : null}
+                        {it.result.conflicts ? <> · <b>{fmtInt(it.result.conflicts)}</b> to review</> : null}
                         {it.result.skippedOlder ? <> · <b>{fmtInt(it.result.skippedOlder)}</b> skipped (older than what is already known)</> : null}
                         {Object.values(it.result.rejected ?? {}).reduce((a, b) => a + b, 0) > 0 ? <> · <b>{fmtInt(Object.values(it.result.rejected ?? {}).reduce((a, b) => a + b, 0))}</b> rejected</> : null}
                         {it.result.coverage?.start ? <span className="text-ink-3"> · covers {fmtDate(it.result.coverage.start)} – {fmtDate(it.result.coverage.end)}</span> : null}

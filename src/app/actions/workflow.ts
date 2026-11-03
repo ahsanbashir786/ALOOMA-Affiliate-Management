@@ -3,13 +3,14 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { contentDecisions, staffEvents } from "@/db/schema";
+import { commitmentChanges, commitments, contentDecisions, staffEvents } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { refreshSamples } from "@/lib/samples/service";
 import { todayKL } from "@/lib/time";
-import { createCommitment } from "@/lib/workflow/commitments";
+import { createCommitment, refreshCommitments, rescheduleCommitment } from "@/lib/workflow/commitments";
 import { addEvent, revertBatch, revertEvent } from "@/lib/workflow/events";
 
 type R = { ok?: true; error?: string; eventId?: number; batchId?: string; count?: number };
@@ -40,16 +41,64 @@ export async function markContacted(usernames: string[], confirmCount?: number):
   return { ok: true, eventId: last, batchId: batchId ?? undefined, count: names.length };
 }
 
-/** The creator promised to post by a date. Only a date is needed; details are optional. */
-export async function markPromised(username: string, promisedOn: string, details?: string): Promise<R> {
+const Deliverable = z
+  .object({
+    details: z.string().trim().max(300).optional(),
+    productId: z.string().regex(/^\d{5,30}$/).optional(),
+    contentType: z.enum(["video", "live"]).optional(),
+    quantity: z.number().int().min(1).max(50).optional(),
+  })
+  .optional();
+export type PromiseOptions = z.input<typeof Deliverable>;
+
+/** Derived state (commitment progress, sample deadlines) must follow every change to promises or decisions. */
+async function afterChange(sampleIds?: number[]) {
+  if (sampleIds?.length) await refreshSamples({ sampleIds });
+  else await refreshCommitments();
+}
+
+/**
+ * The creator promised to post by a date. Only the date is needed. Optional, structured: content type, product, quantity.
+ * (Free text "details" is kept for reading and is never interpreted as a quantity or product.)
+ */
+export async function markPromised(username: string, promisedOn: string, opts?: PromiseOptions): Promise<R> {
   const user = await requireUser("manager");
   const u = Name.parse(username);
   const p = Day.safeParse(promisedOn);
   if (!p.success) return { error: p.error.issues[0].message };
-  const eventId = await addEvent({ username: u, kind: "promised", userId: user.id, details: { promisedOn: p.data, details: details?.trim() || null } });
-  const sampleIds = await createCommitment({ username: u, eventId, promisedOn: p.data, details });
-  // The agreed date replaces the default posting deadline for these samples.
-  if (sampleIds.length) await refreshSamples({ sampleIds });
+  const o = Deliverable.safeParse(opts);
+  if (!o.success) return { error: "Check the optional details (quantity 1–50, product, video or LIVE)." };
+  const v = o.data ?? {};
+  const eventId = await addEvent({
+    username: u,
+    kind: "promised",
+    userId: user.id,
+    details: { promisedOn: p.data, details: v.details || null, productId: v.productId ?? null, contentType: v.contentType ?? null, quantity: v.quantity ?? null },
+  });
+  const { sampleIds } = await createCommitment({ username: u, eventId, promisedOn: p.data, details: v.details, productId: v.productId, contentType: v.contentType, quantity: v.quantity });
+  // The agreed date replaces the default posting deadline for the samples this promise is about.
+  await afterChange(sampleIds);
+  done();
+  return { ok: true, eventId };
+}
+
+/**
+ * Move the deadline of an existing promise. This is NOT a new commitment: the original date and every change stay on record,
+ * only the current deadline drives reminders, and Progress does not count it as another promise secured.
+ */
+export async function rescheduleCommitmentAction(commitmentId: number, toOn: string): Promise<R> {
+  const user = await requireUser("manager");
+  const p = Day.safeParse(toOn);
+  if (!p.success) return { error: p.error.issues[0].message };
+  const [c] = await db.select().from(commitments).where(eq(commitments.id, commitmentId));
+  if (!c) return { error: "That promise no longer exists." };
+  const [origin] = await db.select({ reverted: staffEvents.revertedAt }).from(staffEvents).where(eq(staffEvents.id, c.eventId));
+  if (!origin || origin.reverted) return { error: "That promise was undone." };
+  const eventId = await addEvent({ username: c.username, kind: "rescheduled", userId: user.id, details: { commitmentId, promiseEventId: c.eventId, toOn: p.data } });
+  const res = await rescheduleCommitment({ commitmentId, eventId, toOn: p.data });
+  if (!res) return { error: "That promise no longer exists." };
+  await db.update(staffEvents).set({ details: { commitmentId, promiseEventId: c.eventId, fromOn: res.fromOn, toOn: p.data } }).where(eq(staffEvents.id, eventId));
+  await afterChange(c.sampleIds);
   done();
   return { ok: true, eventId };
 }
@@ -84,14 +133,25 @@ export async function resumeCreator(username: string): Promise<R> {
   return { ok: true, eventId };
 }
 
-/** Undo one action, or a whole bulk batch. The history keeps who did it, when, and who undid it. */
+/** Undo one action, or a whole bulk batch. The history keeps who did it, when, and who undid it; derived state is rebuilt. */
 export async function undoEvent(eventId: number): Promise<R> {
   const user = await requireUser("manager");
   const [ev] = await db.select({ kind: staffEvents.kind, username: staffEvents.username, batchId: staffEvents.batchId }).from(staffEvents).where(eq(staffEvents.id, eventId));
   if (!ev) return { error: "That action no longer exists." };
+  // samples whose deadline depended on the promise (found before the event stops counting)
+  let sampleIds: number[] = [];
+  if (ev.kind === "promised" || ev.kind === "rescheduled") {
+    const direct = await db.select({ s: commitments.sampleIds }).from(commitments).where(eq(commitments.eventId, eventId));
+    const viaChange = await db
+      .select({ s: commitments.sampleIds })
+      .from(commitmentChanges)
+      .innerJoin(commitments, eq(commitments.id, commitmentChanges.commitmentId))
+      .where(eq(commitmentChanges.eventId, eventId));
+    sampleIds = [...direct, ...viaChange].flatMap((x) => x.s);
+  }
   if (ev.batchId) await revertBatch(ev.batchId, user.id);
   else await revertEvent(eventId, user.id);
-  if (ev.kind === "promised") await refreshSamples(); // the agreed date no longer applies
+  if (ev.kind === "promised" || ev.kind === "rescheduled") await afterChange(sampleIds);
   done();
   return { ok: true };
 }
@@ -123,6 +183,45 @@ export async function decideContent(input: z.input<typeof Decision>, username: s
   return { ok: true };
 }
 
+/**
+ * Staff decide on possible content for a commitment (works with or without a sample).
+ * "verified" counts the piece for this commitment only; pass shared = true to deliberately let it ALSO count where another
+ * commitment already uses it. "rejected" stops it being suggested for this commitment.
+ */
+export async function decideCommitmentContent(commitmentId: number, contentId: string, decision: "verified" | "rejected", shared = false): Promise<R> {
+  const user = await requireUser("manager");
+  const [c] = await db.select().from(commitments).where(eq(commitments.id, commitmentId));
+  if (!c) return { error: "That promise no longer exists." };
+  const cid = z.string().trim().min(1).max(200).parse(contentId);
+  const [item] = (await db.execute(sql`select link from content_items where content_id = ${cid}`)) as unknown as { link: string | null }[];
+  await db.insert(contentDecisions).values({
+    username: c.username,
+    commitmentId,
+    contentId: cid,
+    link: item?.link ?? null,
+    decision,
+    userId: user.id,
+    shared: decision === "verified" && shared,
+  });
+  await afterChange(c.sampleIds);
+  done();
+  return { ok: true };
+}
+
+/** Paste a video link for a promise when the reports do not have it yet. Counted by staff verification; its posting date stays unknown. */
+export async function addCommitmentLink(commitmentId: number, link: string): Promise<R> {
+  const l = z.string().trim().min(8, "Paste the video link.").max(500).safeParse(link);
+  if (!l.success) return { error: l.error.issues[0].message };
+  const user = await requireUser("manager");
+  const [c] = await db.select().from(commitments).where(eq(commitments.id, commitmentId));
+  if (!c) return { error: "That promise no longer exists." };
+  const id = l.data.match(/video\/(\d+)/)?.[1] ?? `link:${l.data}`;
+  await db.insert(contentDecisions).values({ username: c.username, commitmentId, contentId: id, link: l.data, decision: "verified", userId: user.id });
+  await afterChange(c.sampleIds);
+  done();
+  return { ok: true };
+}
+
 /** Add a content link by hand when the system found nothing (e.g. the video is not in the reports yet). */
 export async function addManualContent(username: string, sampleId: number, link: string): Promise<R> {
   const l = z.string().trim().min(8, "Paste the video link.").max(500).safeParse(link);
@@ -137,8 +236,12 @@ export async function undoDecision(decisionId: number): Promise<R> {
     .update(contentDecisions)
     .set({ revertedAt: new Date(), revertedBy: user.id })
     .where(and(eq(contentDecisions.id, decisionId), isNull(contentDecisions.revertedAt)))
-    .returning({ sampleId: contentDecisions.sampleId });
+    .returning({ sampleId: contentDecisions.sampleId, commitmentId: contentDecisions.commitmentId });
   if (d?.sampleId) await refreshSamples({ sampleIds: [d.sampleId] });
+  else if (d?.commitmentId) {
+    const [c] = await db.select({ s: commitments.sampleIds }).from(commitments).where(eq(commitments.id, d.commitmentId));
+    await afterChange(c?.s);
+  }
   done();
   return { ok: true };
 }
