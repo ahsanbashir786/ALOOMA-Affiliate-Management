@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { actions, creators, products } from "@/db/schema";
+import { creators, products, recommendations } from "@/db/schema";
 import { resolvePeriod } from "@/lib/period";
 import type { Period } from "@/lib/period-core";
 import { SEGMENTS, type SegmentKey } from "@/lib/segments";
@@ -396,9 +396,9 @@ export async function sampleRecommendations(): Promise<Recommendation[]> {
 }
 
 /**
- * Persist recommendations for the latest 28 days. Safe to run repeatedly:
- * rows the team has touched (status ≠ open) are never overwritten, and stale
- * open rows from earlier windows are removed.
+ * Refresh the system's recommendations (latest 28 days). They live in their own table and carry no staff state:
+ * refreshing only adds, updates or retires recommendations. Contacts, promises, pauses and follow-ups are
+ * staff events and are never touched here.
  */
 export async function generateActions(): Promise<{ created: number; total: number }> {
   const period = await resolvePeriod({ range: "28d" });
@@ -409,19 +409,18 @@ export async function generateActions(): Promise<{ created: number; total: numbe
   // Creators in the sample tracker get precise per-sample follow-ups instead of the
   // coarser "sample, no content" signal from TikTok's sample analysis summary.
   const tracked = new Set(
-    (await db.execute<{ creator: string }>(sql`select distinct creator from samples where source in ('orders','manual') and creator is not null`)).map(
+    (await db.execute<{ creator: string }>(sql`select distinct creator from samples where source = 'orders' and creator is not null`)).map(
       (r) => r.creator,
     ),
   );
   const recs = [...allRecommendations(analysis), ...(await sampleRecommendations())].filter(
     (r) => !dnc.has(r.username) && !(r.type === "sample_no_post" && tracked.has(r.username)),
   );
-  await db.execute(sql`delete from actions where status = 'open' and period_end <> ${period.end}::date`);
   let created = 0;
   for (let i = 0; i < recs.length; i += 200) {
     const part = recs.slice(i, i + 200);
     const res = await db
-      .insert(actions)
+      .insert(recommendations)
       .values(
         part.map((r) => ({
           username: r.username,
@@ -431,35 +430,31 @@ export async function generateActions(): Promise<{ created: number; total: numbe
           reason: r.reason,
           instruction: r.instruction,
           instructionMs: r.instructionMs,
-          expectedUplift: r.expectedUplift,
-          baselineGmv: r.baselineGmv,
-          periodStart: period.start,
-          periodEnd: period.end,
+          scenarioValue: r.expectedUplift,
         })),
       )
       .onConflictDoUpdate({
-        target: [actions.username, actions.type, actions.periodEnd],
+        target: [recommendations.username, recommendations.type],
         set: {
           priority: sql`excluded.priority`,
           title: sql`excluded.title`,
           reason: sql`excluded.reason`,
           instruction: sql`excluded.instruction`,
           instructionMs: sql`excluded.instruction_ms`,
-          expectedUplift: sql`excluded.expected_uplift`,
-          baselineGmv: sql`excluded.baseline_gmv`,
-          updatedAt: sql`now()`,
+          scenarioValue: sql`excluded.scenario_value`,
+          active: sql`true`,
+          lastSeenAt: sql`now()`,
+          resolvedAt: sql`null`,
         },
-        setWhere: sql`${actions.status} = 'open'`,
       })
-      .returning({ id: actions.id, created: sql<boolean>`(xmax = 0)` });
+      .returning({ created: sql<boolean>`(xmax = 0)` });
     created += res.filter((r) => r.created).length;
   }
-  // Open, untouched recommendations that no longer apply (e.g. the creator has since posted) are removed.
+  // Recommendations that no longer apply (e.g. the creator has since posted) are retired, not deleted.
   const keep = recs.map((r) => `${r.username}|${r.type}`);
   await db.execute(sql`
-    delete from actions
-    where status = 'open' and period_end = ${period.end}::date and note is null and assignee_id is null
-      and not (username || '|' || type = any(${keep.length ? sql`array[${sql.join(keep.map((k) => sql`${k}`), sql`, `)}]::text[]` : sql`'{}'::text[]`}))`);
+    update recommendations set active = false, resolved_at = now()
+    where active and not (username || '|' || type = any(${keep.length ? sql`array[${sql.join(keep.map((k) => sql`${k}`), sql`, `)}]::text[]` : sql`'{}'::text[]`}))`);
   return { created, total: recs.length };
 }
 

@@ -24,7 +24,7 @@ export async function login(_: FormState, formData: FormData): Promise<FormState
   const ok = user && user.active && (await bcrypt.compare(parsed.data.password, user.passwordHash));
   if (!ok) return { error: "Incorrect email or password.", values };
   await createSession(user.id);
-  redirect("/");
+  redirect("/today");
 }
 
 export async function logout() {
@@ -55,5 +55,5 @@ export async function setupAdmin(_: FormState, formData: FormData): Promise<Form
     })
     .returning({ id: users.id });
   await createSession(created.id);
-  redirect("/");
+  redirect("/today");
 }

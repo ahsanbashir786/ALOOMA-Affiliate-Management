@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -16,7 +17,7 @@ import {
   videoSnapshots,
   videos,
 } from "@/db/schema";
-import type { Kind } from "./kinds";
+import { SNAPSHOT_KINDS, type Kind } from "./kinds";
 import {
   chunk,
   idStr,
@@ -36,6 +37,11 @@ import {
 import type { Cell, RawTab } from "./read-xlsx";
 import { parseSkuWorkbook } from "@/lib/samples/sku";
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/** The database transaction of the import in progress – importers write through it so a failed import changes nothing. */
+const txStore = new AsyncLocalStorage<Tx>();
+const D = () => (txStore.getStore() ?? db) as typeof db;
+
 export type ImportInput = {
   kind: Kind;
   filename: string;
@@ -50,11 +56,23 @@ export type ImportInput = {
 
 export type ImportResult = {
   uploadId: number;
+  /** added + updated */
   imported: number;
+  /** rows not used: rejected (invalid) rows plus rows older than what is already known */
   skipped: number;
   replacedUploads: number;
   notes: string[];
+  added?: number;
+  updated?: number;
+  /** rows ignored because the file is older than the data already loaded for them */
+  skippedOlder?: number;
+  /** invalid rows, by reason */
+  rejected?: Record<string, number>;
+  warnings?: string[];
+  coverage?: { start: string | null; end: string | null };
 };
+
+const sumOf = (r: Record<string, number> | undefined) => Object.values(r ?? {}).reduce((a, b) => a + b, 0);
 
 const PARAM_LIMIT = 60_000;
 const chunkSizeFor = (cols: number) => Math.max(1, Math.floor(PARAM_LIMIT / cols));
@@ -66,7 +84,7 @@ function dataRows(rows: Cell[][]): Cell[][] {
 
 /** A snapshot for the same kind + period replaces the previous one. */
 async function replaceExisting(kind: Kind, start: string, end: string): Promise<number> {
-  const res = await db
+  const res = await D()
     .delete(uploads)
     .where(and(eq(uploads.kind, kind), eq(uploads.periodStart, start), eq(uploads.periodEnd, end)))
     .returning({ id: uploads.id });
@@ -74,7 +92,7 @@ async function replaceExisting(kind: Kind, start: string, end: string): Promise<
 }
 
 async function createUpload(input: ImportInput, rowCount: number, summary: object) {
-  const [u] = await db
+  const [u] = await D()
     .insert(uploads)
     .values({
       kind: input.kind,
@@ -89,7 +107,54 @@ async function createUpload(input: ImportInput, rowCount: number, summary: objec
   return u.id;
 }
 
+/**
+ * Imports one file as a single all-or-nothing transaction: if anything fails, nothing is changed
+ * (including the replacement of an earlier snapshot of the same period).
+ */
 export async function importFile(input: ImportInput): Promise<ImportResult> {
+  return db.transaction(async (tx) =>
+    txStore.run(tx as unknown as Tx, async () => {
+      const res = await runImporter(input);
+      const warnings = [...(res.warnings ?? [])];
+      if (res.replacedUploads > 0) {
+        warnings.push(`Replaced ${res.replacedUploads} earlier upload${res.replacedUploads === 1 ? "" : "s"} of the same report and period (the most recent file wins).`);
+      }
+      if (SNAPSHOT_KINDS.includes(input.kind) && input.periodStart && input.periodEnd) {
+        const overlaps = (await D().execute(sql`
+          select to_char(period_start, 'YYYY-MM-DD') as s, to_char(period_end, 'YYYY-MM-DD') as e from uploads
+          where kind = ${input.kind} and id <> ${res.uploadId} and period_start <= ${input.periodEnd}::date and period_end >= ${input.periodStart}::date
+            and not (period_start = ${input.periodStart}::date and period_end = ${input.periodEnd}::date)`)) as unknown as { s: string; e: string }[];
+        if (overlaps.length) {
+          warnings.push(`This period overlaps ${overlaps.map((o) => `${o.s} – ${o.e}`).join(", ")} from earlier uploads of the same report. Reports use the best-matching file and never add overlapping reports together.`);
+        }
+      }
+      const result: ImportResult = {
+        ...res,
+        added: res.added ?? res.imported,
+        updated: res.updated ?? 0,
+        skippedOlder: res.skippedOlder ?? 0,
+        rejected: res.rejected ?? (res.skipped ? { "rows without the required fields": res.skipped } : {}),
+        warnings,
+        coverage: res.coverage ?? { start: input.periodStart, end: input.periodEnd },
+      };
+      await D()
+        .update(uploads)
+        .set({
+          summary: {
+            added: result.added,
+            updated: result.updated,
+            skippedOlder: result.skippedOlder,
+            rejected: result.rejected,
+            warnings: result.warnings,
+          },
+        })
+        .where(eq(uploads.id, result.uploadId));
+      return result;
+    }),
+  );
+}
+
+async function runImporter(input: ImportInput): Promise<ImportResult> {
   switch (input.kind) {
     case "affiliate_orders":
       return importAffiliateOrders(input);
@@ -122,12 +187,15 @@ function requirePeriod(input: ImportInput): { start: string; end: string } {
 
 // ───────────────────────── Affiliate orders ─────────────────────────
 async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> {
-  const objs = toObjects(input.header, input.rows);
+  const objs = toObjects(input.header, dataRows(input.rows));
   const notes: string[] = [];
+  const warnings: string[] = [];
+  const rejected: Record<string, number> = {};
+  const reject = (why: string) => { rejected[why] = (rejected[why] ?? 0) + 1; };
+  let asof: Date | null = null;
   type Line = typeof orderLines.$inferInsert;
   const lines = new Map<string, Line>();
   const productNames = new Map<string, string>();
-  let skipped = 0;
   let minT: Date | null = null;
   let maxT: Date | null = null;
 
@@ -137,9 +205,16 @@ async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> 
     const productId = idStr(r["Product ID"]);
     const creator = str(r["Creator Username"]);
     const createdAt = parseDMY(r["Time Created"]);
-    // The row under the header is a definition, not an order.
-    if (!orderId || !/^\d+$/.test(orderId) || !productId || !createdAt) {
-      skipped++;
+    if (!orderId || !/^\d+$/.test(orderId)) {
+      reject("missing or invalid order ID");
+      continue;
+    }
+    if (!productId) {
+      reject("missing product ID");
+      continue;
+    }
+    if (!createdAt) {
+      reject("unreadable order date");
       continue;
     }
     if (!minT || createdAt < minT) minT = createdAt;
@@ -173,20 +248,33 @@ async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> 
       deliveredAt: parseDMY(r["Order Delivery Time"]),
       commissionPaidAt: parseDMY(r["Time Commission Paid"]),
     });
+    for (const t of [createdAt, parseDMY(r["Payment time"]), parseDMY(r["Order Delivery Time"]), parseDMY(r["Time Commission Paid"])]) {
+      if (t && (!asof || t > asof)) asof = t;
+    }
   }
-  if (!lines.size) throw new Error("No valid order lines found in this file.");
+  if (!lines.size) {
+    const why = Object.entries(rejected).map(([k, v]) => `${v} × ${k}`).join(", ");
+    throw new Error(`No valid order lines found in this file${why ? ` (${why})` : ""}. Nothing was imported.`);
+  }
 
   const start = input.periodStart ?? minT!.toISOString().slice(0, 10);
   const end = input.periodEnd ?? maxT!.toISOString().slice(0, 10);
   const uploadId = await createUpload({ ...input, periodStart: start, periodEnd: end }, lines.size, {
-    skipped,
+    rejected,
     products: productNames.size,
   });
+  // Is this file older than what is already loaded?
+  const [known] = (await D().execute(sql`select max(asof) as latest from order_lines`)) as unknown as { latest: Date | string | null }[];
+  if (known?.latest && asof && new Date(known.latest) > asof) {
+    warnings.push(
+      `This file looks older than the orders already loaded (its latest activity is ${asof.toISOString().slice(0, 10)}, the loaded data goes to ${new Date(known.latest).toISOString().slice(0, 10)}). Lines that already have newer information were left unchanged.`,
+    );
+  }
 
   // Products seen in orders (names also come from the product list).
   const brand = commonBrand([...productNames.values()]);
   if (productNames.size) {
-    await db
+    await D()
       .insert(products)
       .values(
         [...productNames].map(([productId, name]) => ({
@@ -201,10 +289,13 @@ async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> 
       });
   }
 
-  const rows = [...lines.values()].map((l) => ({ ...l, uploadId }));
-  const size = chunkSizeFor(26);
+  const rows = [...lines.values()].map((l) => ({ ...l, uploadId, asof }));
+  let added = 0;
+  let updated = 0;
+  let skippedOlder = 0;
+  const size = chunkSizeFor(30);
   for (const part of chunk(rows, size)) {
-    await db
+    const res = await D()
       .insert(orderLines)
       .values(part)
       .onConflictDoUpdate({
@@ -229,12 +320,33 @@ async function importAffiliateOrders(input: ImportInput): Promise<ImportResult> 
           paidAt: sql`excluded.paid_at`,
           deliveredAt: sql`excluded.delivered_at`,
           commissionPaidAt: sql`excluded.commission_paid_at`,
+          asof: sql`excluded.asof`,
           uploadId: sql`excluded.upload_id`,
         },
-      });
+        // never let an older export overwrite newer information
+        setWhere: sql`${orderLines.asof} is null or excluded.asof >= ${orderLines.asof}`,
+      })
+      .returning({ inserted: sql<boolean>`(xmax = 0)` });
+    const ins = res.filter((r) => r.inserted).length;
+    added += ins;
+    updated += res.length - ins;
+    skippedOlder += part.length - res.length;
   }
-  notes.push(`Orders from ${start} to ${end}. Existing lines were updated in place (status, commission).`);
-  return { uploadId, imported: lines.size, skipped, replacedUploads: 0, notes };
+  notes.push(`Orders from ${start} to ${end}. Existing lines are updated in place (status, commission).`);
+  const rej = sumOf(rejected);
+  return {
+    uploadId,
+    imported: added + updated,
+    skipped: rej + skippedOlder,
+    replacedUploads: 0,
+    notes,
+    added,
+    updated,
+    skippedOlder,
+    rejected,
+    warnings,
+    coverage: { start, end },
+  };
 }
 
 function commonBrand(names: string[]): string | null {
@@ -253,15 +365,21 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
   const objs = toObjects(input.header, dataRows(input.rows));
   type Line = typeof shopOrderLines.$inferInsert;
   const lines = new Map<string, Line>();
-  let skipped = 0;
+  const warnings: string[] = [];
+  const rejected: Record<string, number> = {};
+  const reject = (why: string) => { rejected[why] = (rejected[why] ?? 0) + 1; };
+  let asof: Date | null = null;
   let minT: Date | null = null;
   let maxT: Date | null = null;
   for (const r of objs) {
     const orderId = idStr(r["Order ID"]);
     const createdAt = parseDMY(r["Created Time"]);
-    // Row under the header is a definition, not an order.
-    if (!orderId || !/^\d+$/.test(orderId) || !createdAt) {
-      skipped++;
+    if (!orderId || !/^\d+$/.test(orderId)) {
+      reject("missing or invalid order ID");
+      continue;
+    }
+    if (!createdAt) {
+      reject("unreadable order date");
       continue;
     }
     const skuId = idStr(r["SKU ID"]) ?? "";
@@ -306,14 +424,31 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
       rtsAt: parseDMY(r["RTS Time"]),
       isSample: isSampleLine(r),
     });
+    for (const k of ["Created Time", "Paid Time", "Shipped Time", "Delivered Time", "Cancelled Time"]) {
+      const t = parseDMY(r[k]);
+      if (t && (!asof || t > asof)) asof = t;
+    }
   }
-  if (!lines.size) throw new Error("No valid order lines found in this file.");
+  if (!lines.size) {
+    const why = Object.entries(rejected).map(([k, v]) => `${v} × ${k}`).join(", ");
+    throw new Error(`No valid order lines found in this file${why ? ` (${why})` : ""}. Nothing was imported.`);
+  }
   const start = input.periodStart ?? minT!.toISOString().slice(0, 10);
   const end = input.periodEnd ?? maxT!.toISOString().slice(0, 10);
-  const uploadId = await createUpload({ ...input, periodStart: start, periodEnd: end }, lines.size, { skipped });
-  const rows = [...lines.values()].map((l) => ({ ...l, uploadId }));
-  for (const part of chunk(rows, chunkSizeFor(40))) {
-    await db
+  const uploadId = await createUpload({ ...input, periodStart: start, periodEnd: end }, lines.size, { rejected });
+  const [known] = (await D().execute(sql`select max(asof) as latest from shop_order_lines`)) as unknown as { latest: Date | string | null }[];
+  if (known?.latest && asof && new Date(known.latest) > asof) {
+    warnings.push(
+      `This file looks older than the shop orders already loaded (its latest activity is ${asof.toISOString().slice(0, 10)}, the loaded data goes to ${new Date(known.latest).toISOString().slice(0, 10)}). Lines that already have newer statuses were left unchanged.`,
+    );
+  }
+  const rows = [...lines.values()].map((l) => ({ ...l, uploadId, asof }));
+  let added = 0;
+  let updated = 0;
+  let skippedOlder = 0;
+  const written = new Set<string>();
+  for (const part of chunk(rows, chunkSizeFor(41))) {
+    const res = await D()
       .insert(shopOrderLines)
       .values(part)
       .onConflictDoUpdate({
@@ -342,20 +477,36 @@ async function importAllOrders(input: ImportInput): Promise<ImportResult> {
           trackingId: sql`excluded.tracking_id`,
           rtsAt: sql`excluded.rts_at`,
           isSample: sql`excluded.is_sample`,
+          asof: sql`excluded.asof`,
           uploadId: sql`excluded.upload_id`,
         },
-      });
+        // never let an older export overwrite a newer status
+        setWhere: sql`${shopOrderLines.asof} is null or excluded.asof >= ${shopOrderLines.asof}`,
+      })
+      .returning({ orderId: shopOrderLines.orderId, skuId: shopOrderLines.skuId, inserted: sql<boolean>`(xmax = 0)` });
+    const ins = res.filter((r) => r.inserted).length;
+    added += ins;
+    updated += res.length - ins;
+    skippedOlder += part.length - res.length;
+    for (const r of res) written.add(`${r.orderId}|${r.skuId}`);
   }
-  const sampleCount = await upsertSampleOrders([...lines.values()].filter((l) => l.isSample), uploadId);
+  const sampleCount = await upsertSampleOrders([...lines.values()].filter((l) => l.isSample && written.has(`${l.orderId}|${l.skuId}`)), uploadId);
+  const rej = sumOf(rejected);
   return {
     uploadId,
-    imported: lines.size,
-    skipped,
+    imported: added + updated,
+    skipped: rej + skippedOlder,
     replacedUploads: 0,
     notes: [
-      `Shop orders from ${start} to ${end}. Existing lines were updated in place.`,
-      ...(sampleCount ? [`${sampleCount} free-sample lines added to the sample tracker.`] : []),
+      `Shop orders from ${start} to ${end}. Existing lines are updated in place.`,
+      ...(sampleCount ? [`${sampleCount} free-sample line${sampleCount === 1 ? "" : "s"} in the sample tracker were added or updated.`] : []),
     ],
+    added,
+    updated,
+    skippedOlder,
+    rejected,
+    warnings,
+    coverage: { start, end },
   };
 }
 
@@ -400,9 +551,9 @@ async function importCreatorList(input: ImportInput): Promise<ImportResult> {
     });
   }
   for (const part of chunk([...byUser.values()], chunkSizeFor(23))) {
-    await db.insert(creatorListSnapshots).values(part);
+    await D().insert(creatorListSnapshots).values(part);
   }
-  await db.update(uploads).set({ rowCount: byUser.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
+  await D().update(uploads).set({ rowCount: byUser.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
   return { uploadId, imported: byUser.size, skipped, replacedUploads: replaced, notes: [] };
 }
 
@@ -446,9 +597,9 @@ async function importCreatorTransactions(input: ImportInput): Promise<ImportResu
     });
   }
   for (const part of chunk([...byUser.values()], chunkSizeFor(22))) {
-    await db.insert(creatorTxnSnapshots).values(part);
+    await D().insert(creatorTxnSnapshots).values(part);
   }
-  await db.update(uploads).set({ rowCount: byUser.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
+  await D().update(uploads).set({ rowCount: byUser.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
   return { uploadId, imported: byUser.size, skipped, replacedUploads: replaced, notes: [] };
 }
 
@@ -506,7 +657,7 @@ async function importVideoList(input: ImportInput): Promise<ImportResult> {
   }
 
   for (const part of chunk([...master.values()], chunkSizeFor(6))) {
-    await db
+    await D()
       .insert(videos)
       .values(part)
       .onConflictDoUpdate({
@@ -521,9 +672,9 @@ async function importVideoList(input: ImportInput): Promise<ImportResult> {
       });
   }
   for (const part of chunk([...snaps.values()], chunkSizeFor(19))) {
-    await db.insert(videoSnapshots).values(part);
+    await D().insert(videoSnapshots).values(part);
   }
-  await db.update(uploads).set({ rowCount: snaps.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
+  await D().update(uploads).set({ rowCount: snaps.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
   return { uploadId, imported: snaps.size, skipped, replacedUploads: replaced, notes: [] };
 }
 
@@ -555,9 +706,9 @@ async function importSampleAnalysis(input: ImportInput): Promise<ImportResult> {
     });
   }
   for (const part of chunk([...byUser.values()], chunkSizeFor(10))) {
-    await db.insert(sampleSnapshots).values(part);
+    await D().insert(sampleSnapshots).values(part);
   }
-  await db.update(uploads).set({ rowCount: byUser.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
+  await D().update(uploads).set({ rowCount: byUser.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
   return { uploadId, imported: byUser.size, skipped, replacedUploads: replaced, notes: [] };
 }
 
@@ -594,7 +745,7 @@ async function importProductList(input: ImportInput): Promise<ImportResult> {
   }
   const brand = commonBrand([...names.values()]);
   if (names.size) {
-    await db
+    await D()
       .insert(products)
       .values([...names].map(([productId, name]) => ({ productId, name, shortName: shortProductName(name, brand) })))
       .onConflictDoUpdate({
@@ -603,9 +754,9 @@ async function importProductList(input: ImportInput): Promise<ImportResult> {
       });
   }
   for (const part of chunk([...rows.values()], chunkSizeFor(11))) {
-    await db.insert(productSnapshots).values(part);
+    await D().insert(productSnapshots).values(part);
   }
-  await db.update(uploads).set({ rowCount: rows.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
+  await D().update(uploads).set({ rowCount: rows.size, summary: { skipped } }).where(eq(uploads.id, uploadId));
   return { uploadId, imported: rows.size, skipped, replacedUploads: replaced, notes: [] };
 }
 
@@ -642,7 +793,7 @@ async function upsertSampleOrders(lines: (typeof shopOrderLines.$inferInsert)[],
     uploadId,
   }));
   for (const part of chunk(rows, chunkSizeFor(25))) {
-    await db
+    await D()
       .insert(samples)
       .values(part)
       .onConflictDoUpdate({
@@ -674,7 +825,7 @@ async function importSkuCatalog(input: ImportInput): Promise<ImportResult> {
   const { items, bom } = parseSkuWorkbook(input.tabs ?? [{ name: "Sheet", rows: [input.header, ...input.rows] }]);
   if (!items.length) throw new Error("No SKUs found. Expected columns such as “Variation Name” and “SKU” or “Set SKU”.");
   const uploadId = await createUpload(input, items.length, { sets: items.filter((i) => i.isSet).length, bomLines: bom.length });
-  await db.transaction(async (tx) => {
+  await D().transaction(async (tx) => {
     for (const part of chunk(items, 1000)) {
       await tx
         .insert(skuItems)
@@ -778,7 +929,7 @@ async function importStaffSheet(input: ImportInput): Promise<ImportResult> {
   if (!people.size) throw new Error("No creators found. Expected tabs with “Username” and “WhatsApp” columns.");
 
   const uploadId = await createUpload(input, people.size, { skipped });
-  await db.transaction(async (tx) => {
+  await D().transaction(async (tx) => {
     const contactRows = [...people].map(([username, p]) => {
       const approach = p.approach.size === 2 ? "both" : p.approach.size === 1 ? [...p.approach][0] : null;
       // The number written most often across tabs wins.
@@ -840,7 +991,7 @@ async function importContactList(input: ImportInput): Promise<ImportResult> {
   const names = [...wanted.keys()];
   const have = new Set<string>();
   for (const part of chunk(names, 2000)) {
-    const found = await db
+    const found = await D()
       .select({ u: creators.username })
       .from(creators)
       .where(sql`${creators.username} in (${sql.join(part.map((x) => sql`${x}`), sql`, `)}) and ${creators.phone} is not null`);
@@ -849,7 +1000,7 @@ async function importContactList(input: ImportInput): Promise<ImportResult> {
   const toAdd = names.filter((u) => !have.has(u));
   const uploadId = await createUpload(input, input.rows.length, { added: toAdd.length, kept: have.size, invalid, blank });
   for (const part of chunk(toAdd, 2000)) {
-    await db
+    await D()
       .insert(creators)
       .values(part.map((username) => ({ username, phone: wanted.get(username)! })))
       .onConflictDoUpdate({

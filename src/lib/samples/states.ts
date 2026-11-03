@@ -6,16 +6,17 @@ export const RESULTS = {
   in_transit: { label: "On the way", tone: "neutral" },
   posted_video: { label: "Posted video", tone: "good" },
   did_live: { label: "Did LIVE", tone: "good" },
-  posted_other: { label: "Posted (other product)", tone: "brand" },
+  uncertain: { label: "Needs review", tone: "warn" },
   no_creator: { label: "Creator unknown", tone: "warn" },
   cancelled: { label: "Cancelled", tone: "neutral" },
 } as const;
 export type ResultKey = keyof typeof RESULTS;
-export const POSTED_RESULTS: ResultKey[] = ["posted_video", "did_live", "posted_other"];
+export const POSTED_RESULTS: ResultKey[] = ["posted_video", "did_live"];
 
 /** What staff see for one sample line, combining the posting check with sales. */
-export type LineState = "chase" | "waiting" | "transit" | "posted_no_sales" | "selling" | "cancelled" | "unknown";
+export type LineState = "review" | "chase" | "waiting" | "transit" | "posted_no_sales" | "selling" | "cancelled" | "unknown";
 export const LINE_STATES: Record<LineState, { label: string; tone: "critical" | "warn" | "neutral" | "brand" | "good" }> = {
+  review: { label: "Needs review", tone: "warn" },
   chase: { label: "Not posted – chase", tone: "critical" },
   waiting: { label: "Waiting to post", tone: "warn" },
   transit: { label: "On the way", tone: "neutral" },
@@ -29,6 +30,7 @@ export function lineState(result: ResultKey, contentOrders: number): LineState {
   if (result === "cancelled") return "cancelled";
   if (result === "no_creator") return "unknown";
   if (result === "in_transit") return "transit";
+  if (result === "uncertain") return "review";
   if (result === "in_window") return "waiting";
   if (result === "not_posted") return "chase";
   return contentOrders > 0 ? "selling" : "posted_no_sales";
@@ -36,12 +38,13 @@ export function lineState(result: ResultKey, contentOrders: number): LineState {
 
 // ───────── creator-level verdict: what should the affiliate manager do next? ─────────
 
-export type SampleVerdict = "chase" | "stop" | "coach" | "more_content" | "more" | "refresh" | "wait" | "ok";
+export type SampleVerdict = "review" | "chase" | "stop" | "coach" | "more_content" | "more" | "refresh" | "wait" | "ok";
 
 export const VERDICTS: Record<
   SampleVerdict,
   { label: string; short: string; tone: "good" | "critical" | "serious" | "warn" | "neutral" | "brand"; todo: string }
 > = {
+  review: { label: "Check possible content", short: "Review", tone: "warn", todo: "A video or LIVE might be the sample content but the system is not sure. Confirm or reject it on the Samples page." },
   chase: { label: "Chase to post", short: "Chase", tone: "serious", todo: "Delivered, nothing posted after the deadline. Send a WhatsApp reminder." },
   coach: { label: "Posted, not selling yet", short: "Coach", tone: "brand", todo: "The video is up but has no orders. Check the video, add a voucher or a stronger hook." },
   more_content: { label: "Performing – ask for more content", short: "More content", tone: "brand", todo: "Their sample content sells but they post little. Ask for more videos." },
@@ -53,7 +56,7 @@ export const VERDICTS: Record<
 };
 
 /** Tabs on the tracker, in the order a manager should work them. */
-export const QUEUES: SampleVerdict[] = ["chase", "coach", "more_content", "more", "refresh", "stop", "wait", "ok"];
+export const QUEUES: SampleVerdict[] = ["review", "chase", "coach", "more_content", "more", "refresh", "stop", "wait", "ok"];
 
 export type MessageInput = {
   username: string;

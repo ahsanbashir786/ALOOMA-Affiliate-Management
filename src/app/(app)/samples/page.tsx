@@ -51,7 +51,6 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
   ]);
 
   const count = (v: SampleVerdict) => all.filter((r) => r.verdict === v).length;
-  const worth = (v: SampleVerdict) => all.filter((r) => r.verdict === v).reduce((a, r) => a + r.value, 0);
   const missingPhone = all.filter((r) => !r.phone && r.verdict !== "ok").length;
 
   // Default view: the first queue that has work in it.
@@ -67,7 +66,7 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
   if (view !== "all" && view !== "unknown") list = list.filter((r) => r.verdict === view);
   if (matching) list = list.filter((r) => matching.has(r.username));
   if (noPhone) list = list.filter((r) => !r.phone);
-  list = [...list].sort((a, b) => b.value - a.value || b.notPosted - a.notPosted || b.contentGmv - a.contentGmv || b.samples - a.samples);
+  list = [...list].sort((a, b) => b.notPosted - a.notPosted || b.review - a.review || b.contentGmv - a.contentGmv || b.samples - a.samples);
   const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
   const cur = Math.min(page, pages);
   const shown = list.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
@@ -111,7 +110,6 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
                 const m = VERDICTS[v];
                 const n = count(v);
                 const on = view === v;
-                const w = worth(v);
                 return (
                   <Link
                     key={v}
@@ -129,7 +127,6 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
                       <span className="tnum text-[22px] leading-none font-semibold text-ink">{n}</span>
                     </div>
                     <p className="mt-1.5 line-clamp-2 text-[12.5px] text-ink-3">{m.todo}</p>
-                    {w > 0 && <p className="tnum mt-2 text-[12.5px] font-medium text-good">≈ {v === "refresh" ? `${fmtRM(w)} / month at stake` : `+${fmtRM(w)} est.`}</p>}
                   </Link>
                 );
               })}

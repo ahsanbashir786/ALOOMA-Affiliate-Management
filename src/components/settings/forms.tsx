@@ -3,7 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { Button, Input, Label, Select } from "@/components/ui/primitives";
-import { createUser, resetPassword, saveOwnAccounts, saveThresholds, updateUser, type Result } from "@/app/actions/settings";
+import { createUser, resetPassword, saveOwnAccounts, saveThresholds, saveWorkflowSettings, updateUser, type Result } from "@/app/actions/settings";
 
 function Feedback({ state }: { state: Result }) {
   if (!state) return null;
@@ -151,6 +151,39 @@ export function OwnAccountsForm({ accounts, auto }: { accounts: string; auto: bo
         </p>
       </div>
       <Button type="submit" disabled={pending}>{pending && <Loader2 className="size-4 animate-spin" />} Save</Button>
+      <Feedback state={state} />
+    </form>
+  );
+}
+
+type W = { followUpDays: number; promiseFollowUpDays: number; helpDays: number; maxUnanswered: number; todayLimit: number; developmentLimit: number; stuckTransitDays: number };
+const W_FIELDS: { name: keyof W; label: string; help: string }[] = [
+  { name: "followUpDays", label: "Follow up after “Contacted” (days)", help: "Calendar days, Malaysia time. Default 3." },
+  { name: "promiseFollowUpDays", label: "Follow up after a promised date (days)", help: "Checked the day after the promised date if no matching content is seen. Default 1." },
+  { name: "helpDays", label: "“Needs help” next action (days)", help: "Pre-filled date when staff flag a creator. Default 2." },
+  { name: "maxUnanswered", label: "Suggest pausing after (contact attempts)", help: "Attempts with no new content or promise. Only a suggestion – nothing is labelled automatically. Default 3." },
+  { name: "todayLimit", label: "Today's Work list size", help: "Due and overdue items are always shown; this caps the extra sample cases. Default 15." },
+  { name: "developmentLimit", label: "Development ideas on the main list", help: "Others stay one click away under “Ideas”. Default 5." },
+  { name: "stuckTransitDays", label: "Sample stuck on the way after (days)", help: "Reserved for delivery checks. Default 10." },
+];
+
+export function WorkflowForm({ w }: { w: W }) {
+  const [state, action, pending] = useActionState(saveWorkflowSettings, undefined);
+  return (
+    <form action={action} className="space-y-5">
+      <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
+        {W_FIELDS.map((f) => (
+          <div key={f.name}>
+            <Label htmlFor={`w-${f.name}`}>{f.label}</Label>
+            <Input id={`w-${f.name}`} name={f.name} type="number" step="1" defaultValue={w[f.name]} required />
+            <p className="mt-1 text-[12px] leading-snug text-ink-3">{f.help}</p>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="primary" disabled={pending}>{pending && <Loader2 className="size-4 animate-spin" />} Save</Button>
+        <Button type="submit" name="reset" value="1" formNoValidate disabled={pending}>Restore defaults</Button>
+      </div>
       <Feedback state={state} />
     </form>
   );

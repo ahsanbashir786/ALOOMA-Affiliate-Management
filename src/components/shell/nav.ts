@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Database,
   LayoutDashboard,
+  LineChart,
   Package,
   ShoppingCart,
   Settings,
@@ -23,23 +24,25 @@ export type NavItem = {
 };
 export type NavGroup = { label: string; items: NavItem[] };
 
+/** Four main places for the affiliate manager; analysis pages are secondary. */
 export const NAV: NavGroup[] = [
   {
-    label: "Analyse",
+    label: "Work",
     items: [
-      { href: "/", label: "Overview", icon: LayoutDashboard, usesPeriod: true },
-      { href: "/affiliates", label: "Affiliates Overview", icon: Contact, usesPeriod: true },
-      { href: "/content", label: "Content", icon: Video, usesPeriod: true },
-      { href: "/products", label: "Products", icon: Package, usesPeriod: true },
+      { href: "/today", label: "Today's Work", icon: ClipboardList, badge: "actions" },
+      { href: "/affiliates", label: "Affiliates", icon: Contact, usesPeriod: true },
       { href: "/samples", label: "Samples", icon: Beaker, usesPeriod: true },
-      { href: "/orders", label: "Orders", icon: ShoppingCart, usesPeriod: true },
+      { href: "/progress", label: "Progress", icon: LineChart, min: "admin" },
     ],
   },
   {
-    label: "Improve",
+    label: "Analysis",
     items: [
+      { href: "/", label: "Overview", icon: LayoutDashboard, usesPeriod: true },
+      { href: "/content", label: "Content", icon: Video, usesPeriod: true },
+      { href: "/products", label: "Products", icon: Package, usesPeriod: true },
       { href: "/opportunities", label: "Opportunities", icon: Target, usesPeriod: true },
-      { href: "/actions", label: "Action centre", icon: ClipboardList, badge: "actions" },
+      { href: "/orders", label: "Shop orders (detail)", icon: ShoppingCart, usesPeriod: true },
     ],
   },
   {

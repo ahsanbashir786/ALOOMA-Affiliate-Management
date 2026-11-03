@@ -9,7 +9,7 @@ import { PeriodPicker } from "./period-picker";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
-const NO_PERIOD = ["/data", "/settings", "/actions"];
+const NO_PERIOD = ["/data", "/settings", "/today", "/progress"];
 
 export function AppShell({
   user,

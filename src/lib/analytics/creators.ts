@@ -139,6 +139,19 @@ export async function getCreatorMetrics(period: Period): Promise<{ rows: Creator
         select username, videos, live_streams as lives, impressions, views, ctr, ctor, samples_shipped as shipped
         from creator_txn_snapshots where upload_id = ${snapshots.txn.uploadId}`)
     : [];
+  // Without a Transaction analysis export, videos per week and views are derived from Video analysis
+  // (videos posted in the period, and their views in the snapshot window) when it covers the period.
+  const derive = !snapshots.txn && !!snapshots.video && snapshots.video.coverage >= 0.5;
+  const derived = derive
+    ? await rows<{ username: string; videos: number; views: number }>(sql`
+        select v.creator as username,
+          (count(distinct v.video_id) filter (where v.posted_at >= ${period.start}::date and v.posted_at < (${period.end}::date + 1)))::int as videos,
+          coalesce(sum(vs.views), 0)::float8 as views
+        from video_snapshots vs join videos v on v.video_id = vs.video_id
+        where vs.upload_id = ${snapshots.video!.uploadId} and v.creator <> all(${ownArr})
+        group by v.creator`)
+    : [];
+  const derivedMap = new Map(derived.map((d) => [d.username, d]));
   const list = snapshots.list
     ? await rows<{ username: string; followers: number }>(sql`
         select username, followers from creator_list_snapshots where upload_id = ${snapshots.list.uploadId}`)
@@ -152,7 +165,7 @@ export async function getCreatorMetrics(period: Period): Promise<{ rows: Creator
   const ageMap = new Map(age.map((a) => [a.creator, a]));
   const txnMap = new Map(txn.map((t) => [t.username, t]));
   const listMap = new Map(list.map((t) => [t.username, t.followers]));
-  const weeks = snapshots.txn ? snapshots.txn.days / 7 : null;
+  const weeks = snapshots.txn ? snapshots.txn.days / 7 : derive ? period.days / 7 : null;
 
   // Include creators who sold only in the previous period (they may have gone quiet).
   const curNames = new Set(cur.map((c) => c.creator));
@@ -164,7 +177,8 @@ export async function getCreatorMetrics(period: Period): Promise<{ rows: Creator
     const x = txnMap.get(username);
     const ag = ageMap.get(username);
     const gmv = c?.gmv ?? 0;
-    const views = x ? x.views : snapshots.txn ? 0 : null;
+    const dv = derivedMap.get(username);
+    const views = x ? x.views : snapshots.txn ? 0 : derive ? (dv?.views ?? 0) : null;
     return {
       username,
       gmv,
@@ -192,9 +206,9 @@ export async function getCreatorMetrics(period: Period): Promise<{ rows: Creator
       freshVideos: ag?.fresh_videos ?? 0,
       freshGmv: ag?.fresh ?? 0,
       followers: listMap.get(username) ?? null,
-      videosPosted: snapshots.txn ? (x?.videos ?? 0) : null,
+      videosPosted: snapshots.txn ? (x?.videos ?? 0) : derive ? (dv?.videos ?? 0) : null,
       livesPosted: snapshots.txn ? (x?.lives ?? 0) : null,
-      vpw: snapshots.txn && weeks ? (x?.videos ?? 0) / weeks : null,
+      vpw: weeks ? ((snapshots.txn ? (x?.videos ?? 0) : (dv?.videos ?? 0)) / weeks) : null,
       impressions: snapshots.txn ? (x?.impressions ?? 0) : null,
       views,
       ctr: x?.ctr ?? null,

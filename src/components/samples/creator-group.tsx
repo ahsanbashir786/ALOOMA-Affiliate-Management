@@ -83,7 +83,6 @@ export function CreatorGroup({
             <Lightbulb className="size-4 shrink-0 text-brand" aria-hidden />
             <p className="min-w-0 flex-1 text-[13.5px] text-ink">
               <span className="font-medium">{v.short}:</span> {r.advice || v.todo}
-              {r.value > 0 && <span className="text-good"> · {r.verdict === "refresh" ? `${fmtRM(r.value)} / month at stake` : `est. +${fmtRM(r.value)}`}</span>}
             </p>
             {r.phone && hasMessage && <WaSendButton phone={r.phone} en={waMessage(msg, "en")} ms={waMessage(msg, "ms")} />}
             {!r.phone && canPhone && <span className="text-[12.5px] text-ink-3">Add a WhatsApp number to message them.</span>}

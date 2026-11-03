@@ -115,3 +115,31 @@ export async function saveOwnAccounts(_: Result, fd: FormData): Promise<Result> 
   revalidatePath("/", "layout");
   return { ok: list.length ? `Saved ${list.length} account${list.length === 1 ? "" : "s"}.` : "Cleared – brand accounts will be detected automatically." };
 }
+
+const Workflow = z.object({
+  followUpDays: z.coerce.number().int().min(1).max(30),
+  promiseFollowUpDays: z.coerce.number().int().min(0).max(14),
+  helpDays: z.coerce.number().int().min(1).max(30),
+  maxUnanswered: z.coerce.number().int().min(2).max(10),
+  todayLimit: z.coerce.number().int().min(3).max(100),
+  developmentLimit: z.coerce.number().int().min(0).max(30),
+  stuckTransitDays: z.coerce.number().int().min(3).max(60),
+});
+
+/** Defaults for the daily workflow (follow-up spacing, list size). Changing them never rewrites past staff actions. */
+export async function saveWorkflowSettings(_: Result, fd: FormData): Promise<Result> {
+  await requireUser("admin");
+  if (fd.get("reset")) {
+    await db.delete(settings).where(eq(settings.key, "workflow"));
+    revalidatePath("/", "layout");
+    return { ok: "Restored the defaults." };
+  }
+  const p = Workflow.safeParse(Object.fromEntries(fd));
+  if (!p.success) return { error: `Check “${String(p.error.issues[0].path[0])}”: ${p.error.issues[0].message}` };
+  await db
+    .insert(settings)
+    .values({ key: "workflow", value: p.data })
+    .onConflictDoUpdate({ target: settings.key, set: { value: p.data, updatedAt: new Date() } });
+  revalidatePath("/", "layout");
+  return { ok: "Saved. New follow-up dates use these rules; dates already scheduled are recalculated from the same staff actions." };
+}

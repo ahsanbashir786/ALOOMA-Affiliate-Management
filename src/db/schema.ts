@@ -149,6 +149,8 @@ export const orderLines = pgTable(
     paidAt: timestamp("paid_at"),
     deliveredAt: timestamp("delivered_at"),
     commissionPaidAt: timestamp("commission_paid_at"),
+    /** Latest event time in the export that last wrote this line – older exports never overwrite newer data. */
+    asof: timestamp("asof"),
     uploadId: integer("upload_id").references(() => uploads.id, { onDelete: "set null" }),
   },
   (t) => [
@@ -204,6 +206,8 @@ export const shopOrderLines = pgTable(
     rtsAt: timestamp("rts_at"),
     /** Free sample order (RM 0, no payment). Excluded from sales and order-health figures. */
     isSample: boolean("is_sample").notNull().default(false),
+    /** Latest event time in the export that last wrote this line – older exports never overwrite newer data. */
+    asof: timestamp("asof"),
     uploadId: integer("upload_id").references(() => uploads.id, { onDelete: "set null" }),
   },
   (t) => [
@@ -430,6 +434,10 @@ export const samples = pgTable(
     otherVideoCount: integer("other_video_count").notNull().default(0),
     /** Views of those product videos (best reporting window per video). */
     contentViews: integer("content_views").notNull().default(0),
+    /** Posting deadline (inclusive): the agreed date from a promise if there is one, otherwise delivery + the default days. */
+    postBy: date("post_by", { mode: "string" }),
+    /** "agreed" (a promised date overrides the default) or "default". */
+    postBySource: text("post_by_source"),
     /** Valid GMV / orders the creator made from the sampled product after delivery. */
     contentGmv: doublePrecision("content_gmv").notNull().default(0),
     contentOrders: integer("content_orders").notNull().default(0),
@@ -449,4 +457,109 @@ export const samples = pgTable(
     index("samples_creator_idx").on(t.creator),
     index("samples_result_idx").on(t.result),
   ],
+);
+
+// ───────── Staff work (never rebuilt by imports or recommendation refreshes) ─────────
+
+/**
+ * Everything staff do, in order: contacted, promised, needs_help, paused, resumed, note.
+ * Events are never deleted – "undo" marks them reverted so the history stays auditable.
+ * The creator's current state (next follow-up, paused, unanswered attempts…) is replayed from these rows.
+ */
+export const staffEvents = pgTable(
+  "staff_events",
+  {
+    id: serial("id").primaryKey(),
+    username: text("username").notNull(),
+    kind: text("kind").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    details: jsonb("details"),
+    /** Bulk "Contacted" actions share a batch id so the whole batch can be undone. */
+    batchId: text("batch_id"),
+    /** Labelled test records – never created by the application itself. */
+    synthetic: boolean("synthetic").notNull().default(false),
+    revertedAt: timestamp("reverted_at", { withTimezone: true }),
+    revertedBy: uuid("reverted_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [index("staff_events_user_idx").on(t.username, t.at), index("staff_events_kind_idx").on(t.kind, t.at)],
+);
+
+/** A promise made by a creator (collaboration commitment). Fulfilment is derived from verified content, not typed in. */
+export const commitments = pgTable(
+  "commitments",
+  {
+    id: serial("id").primaryKey(),
+    username: text("username").notNull(),
+    /** The "promised" event that created it; if that event is undone the commitment is cancelled. */
+    eventId: integer("event_id").notNull().references(() => staffEvents.id, { onDelete: "cascade" }),
+    promisedOn: date("promised_on", { mode: "string" }).notNull(),
+    /** Optional deliverable details typed by staff. */
+    details: text("details"),
+    /** Sample lines this promise is about (the open samples of the creator when it was recorded). */
+    sampleIds: integer("sample_ids").array().notNull().default([]),
+    productId: text("product_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("commitments_event_uq").on(t.eventId), index("commitments_user_idx").on(t.username)],
+);
+
+/** Content the system found for a sample (rebuilt on every check). Confirmed = same creator, product and dates; uncertain needs review. */
+export const sampleContent = pgTable(
+  "sample_content",
+  {
+    sampleId: integer("sample_id").notNull().references(() => samples.id, { onDelete: "cascade" }),
+    contentId: text("content_id").notNull(),
+    kind: text("kind").notNull(),
+    link: text("link"),
+    postedAt: timestamp("posted_at"),
+    views: integer("views").notNull().default(0),
+    confidence: text("confidence").notNull(),
+    reason: text("reason").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.sampleId, t.contentId] })],
+);
+
+/** Staff decisions on content: verified (with a link or id) or rejected. Never rebuilt, so they survive imports. */
+export const contentDecisions = pgTable(
+  "content_decisions",
+  {
+    id: serial("id").primaryKey(),
+    username: text("username").notNull(),
+    sampleId: integer("sample_id").references(() => samples.id, { onDelete: "cascade" }),
+    commitmentId: integer("commitment_id").references(() => commitments.id, { onDelete: "cascade" }),
+    contentId: text("content_id"),
+    link: text("link"),
+    decision: text("decision").notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    note: text("note"),
+    synthetic: boolean("synthetic").notNull().default(false),
+    revertedAt: timestamp("reverted_at", { withTimezone: true }),
+    revertedBy: uuid("reverted_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [index("content_decisions_user_idx").on(t.username)],
+);
+
+/** System recommendations. Refreshed freely; carries no staff state. */
+export const recommendations = pgTable(
+  "recommendations",
+  {
+    id: serial("id").primaryKey(),
+    username: text("username").notNull(),
+    type: text("type").notNull(),
+    priority: integer("priority").notNull().default(50),
+    title: text("title").notNull(),
+    /** Evidence in plain words (numbers from the data). */
+    reason: text("reason").notNull(),
+    instruction: text("instruction").notNull(),
+    instructionMs: text("instruction_ms"),
+    /** Assumption-based scenario value – shown only in the secondary Analysis area. */
+    scenarioValue: doublePrecision("scenario_value").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("recommendations_uq").on(t.username, t.type), index("recommendations_active_idx").on(t.active)],
 );

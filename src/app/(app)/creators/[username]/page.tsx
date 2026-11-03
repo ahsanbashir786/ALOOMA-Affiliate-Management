@@ -10,13 +10,16 @@ import { Badge, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/pri
 import { KpiCard } from "@/components/ui/kpi-card";
 import { TrendChart } from "@/components/charts/trend-chart";
 import { SegmentBadge } from "@/components/creators/segment-badge";
-import { ContactForm, NotesForm, QueueActionButton } from "@/components/creators/creator-tools";
+import { ContactForm, NotesForm } from "@/components/creators/creator-tools";
 import { ResultBadge } from "@/components/samples/result-badge";
 import { CONTENT_TYPE_LABEL, getCreatorSamples } from "@/lib/samples/analysis";
 import { db } from "@/db";
 import { creators } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { MessageBox } from "@/components/ui/message-box";
+import { getCreatorWorkspace } from "@/lib/workflow/timeline";
+import { CreatorTimeline } from "@/components/today/creator-timeline";
+import { fmtDayLabel, fmtDateTimeKL } from "@/lib/time";
 import { fmtCompact, fmtDate, fmtInt, fmtPct, fmtRM, initials, pctChange } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/creators/[username]">): Promise<Metadata> {
@@ -103,6 +106,7 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
     );
   }
   const detail = await getCreatorDetail(username, period);
+  const ws = await getCreatorWorkspace(username);
   const rec = buildRecommendation(c, period, analysis.thresholds, analysis.names);
   const hasPrev = period.prevEnd >= period.dataMin;
   const maxProd = Math.max(1, ...detail.products.map((p) => p.gmv));
@@ -167,13 +171,12 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
             {rec.expectedUplift > 0 && (
               <div className="text-right">
                 <p className="tnum text-[20px] font-semibold text-good">+{fmtRM(rec.expectedUplift)}</p>
-                <p className="text-[12px] text-ink-3" title="Conservative estimate of extra monthly GMV once the extra videos mature.">estimated uplift</p>
+                <p className="text-[12px] text-ink-3" title="An assumption-based scenario, not a forecast or a target.">scenario (assumption)</p>
               </div>
             )}
           </div>
           <MessageBox className="m-5 rounded-lg border border-line bg-surface-2 p-4" en={rec.instruction} ms={rec.instructionMs} phone={c.phone} />
           <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-3.5">
-            {canEdit && !detail.doNotContact && <QueueActionButton username={username} />}
           </div>
         </Card>
       ) : (
@@ -181,6 +184,19 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
           {seg ? <>No action needed right now. {seg.summary}</> : "Below the seller threshold – no recommendation for this period."}
         </Card>
       )}
+
+      <Card>
+        <CardHeader title="Activity timeline" description="Built automatically from staff actions, samples and verified content. Sales after a contact are shown for context only – they are not proof the contact caused them." />
+        <div className="grid gap-3 px-5 pb-4 sm:grid-cols-2 lg:grid-cols-4 text-[13px]">
+          <p><span className="text-ink-3">Last contact</span><br />{ws.summary.lastContactedAt ? fmtDateTimeKL(ws.summary.lastContactedAt) : "–"}</p>
+          <p><span className="text-ink-3">Next action</span><br />{ws.summary.nextOn ? fmtDayLabel(ws.summary.nextOn) : "–"}{ws.summary.status === "paused" ? " (paused)" : ""}</p>
+          <p><span className="text-ink-3">Promised date</span><br />{ws.summary.promiseOn ? `${fmtDayLabel(ws.summary.promiseOn)} · ${ws.summary.promiseState === "fulfilled" ? "content seen" : ws.summary.promiseState === "review" ? "possible match to review" : "not seen yet"}` : "–"}</p>
+          <p><span className="text-ink-3">Samples · confirmed content</span><br />{ws.summary.samples} · {ws.summary.verifiedContent}</p>
+          <p className="sm:col-span-2"><span className="text-ink-3">Sales since last contact (context only)</span><br />{ws.summary.gmvSinceContact == null ? "–" : fmtRM(ws.summary.gmvSinceContact)}</p>
+          <p className="sm:col-span-2"><span className="text-ink-3">Sales, last 28 days of data</span><br />{fmtRM(ws.summary.gmv28)}</p>
+        </div>
+        <CreatorTimeline entries={ws.entries} canUndo={canEdit} />
+      </Card>
 
       <section className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">

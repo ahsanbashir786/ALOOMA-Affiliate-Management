@@ -3,31 +3,8 @@
 import { useState, useTransition } from "react";
 import { CheckCircle2, ClipboardPlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
-import { queueCreatorAction, saveCreatorNotes } from "@/app/actions/actions";
+import { saveCreatorNotes } from "@/app/actions/actions";
 import { saveCreatorContact } from "@/app/actions/samples";
-
-export function QueueActionButton({ username }: { username: string }) {
-  const [pending, start] = useTransition();
-  const [msg, setMsg] = useState<string | null>(null);
-  return (
-    <div className="flex items-center gap-3">
-      <Button
-        size="sm"
-        variant="primary"
-        disabled={pending}
-        onClick={() => start(async () => setMsg((await queueCreatorAction(username)).message))}
-      >
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <ClipboardPlus className="size-4" />}
-        Add to action centre
-      </Button>
-      {msg && (
-        <span className="flex items-center gap-1 text-[13px] text-ink-2">
-          <CheckCircle2 className="size-4 text-good" /> {msg}
-        </span>
-      )}
-    </div>
-  );
-}
 
 export function NotesForm({ username, notes, doNotContact, canEdit }: { username: string; notes: string; doNotContact: boolean; canEdit: boolean }) {
   const [text, setText] = useState(notes);

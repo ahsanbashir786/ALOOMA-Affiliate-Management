@@ -10,7 +10,7 @@ import { AuthForm } from "@/components/auth-form";
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function LoginPage() {
-  if (await getCurrentUser()) redirect("/");
+  if (await getCurrentUser()) redirect("/today");
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
   if (n === 0) redirect("/setup");
   return (

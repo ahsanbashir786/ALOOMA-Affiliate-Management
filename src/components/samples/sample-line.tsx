@@ -4,6 +4,7 @@ import { cn, fmtCompact, fmtDateShort, fmtRM } from "@/lib/utils";
 import { LINE_STATES } from "@/lib/samples/states";
 import { StateBadge } from "./result-badge";
 import { LineDetails } from "./line-details";
+import { ContentReview } from "./content-review";
 
 const d = (s: string | null) => (s ? fmtDateShort(s) : null);
 
@@ -39,7 +40,7 @@ function Timeline({ l }: { l: SampleLine }) {
       <Step label="Shipped" date={d(l.shippedAt)} done={!!l.shippedAt} />
       <Step label="Delivered" date={d(l.deliveredAt)} done={!!l.deliveredAt} />
       <Step
-        label={posted ? "Posted" : "Post by"}
+        label={posted ? "Posted" : l.postBySource === "agreed" ? "Post by (agreed)" : "Post by"}
         date={posted ? d(l.postedAt) ?? "yes" : d(l.dueAt)}
         done={posted}
         tone={overdue ? "bad" : l.deliveredAt ? "warn" : "neutral"}
@@ -102,6 +103,7 @@ function Content({ l }: { l: SampleLine }) {
       <StateBadge state={l.state} manual={l.overridden} />
       {l.state === "chase" && <p className="text-ink-2">Nothing posted since delivery{l.dueAt ? ` (was due ${d(l.dueAt)})` : ""}.</p>}
       {l.state === "waiting" && <p className="text-ink-2">Delivered – she has until {d(l.dueAt)} to post.</p>}
+      {l.state === "review" && <p className="text-ink-2">The system found something that might be the sample content, but is not sure. Please check it.</p>}
       {l.state === "transit" && <p className="text-ink-2">Not delivered yet.</p>}
       {posted && (
         <>
@@ -165,6 +167,9 @@ export function SampleLineCard({
         <Timeline l={l} />
         <Content l={l} />
       </div>
+      {(l.state === "review" || l.state === "chase" || l.state === "waiting") && canEdit && l.creator && (
+        <ContentReview sampleId={l.id} username={l.creator} candidates={l.candidates} />
+      )}
       <LineDetails
         id={l.id}
         canEdit={canEdit}

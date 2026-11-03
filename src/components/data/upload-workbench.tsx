@@ -20,7 +20,18 @@ type Inspect = {
   existing: { periodStart: string | null; periodEnd: string | null; rowCount: number }[];
   warnings: string[];
 };
-type Result = { imported: number; skipped: number; replacedUploads: number; notes: string[] };
+type Result = {
+  imported: number;
+  skipped: number;
+  replacedUploads: number;
+  notes: string[];
+  added?: number;
+  updated?: number;
+  skippedOlder?: number;
+  rejected?: Record<string, number>;
+  warnings?: string[];
+  coverage?: { start: string | null; end: string | null };
+};
 type Item = {
   key: string;
   file: File;
@@ -167,12 +178,23 @@ export function UploadWorkbench() {
                   <p className="mt-1 flex items-start gap-1.5 text-[13px] text-critical"><AlertCircle className="mt-0.5 size-4 shrink-0" /> {it.error}</p>
                 )}
                 {it.phase === "done" && it.result && (
-                  <p className="mt-1 flex items-start gap-1.5 text-[13px] text-good">
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-                    Imported {fmtInt(it.result.imported)} rows
-                    {it.result.skipped ? ` (${it.result.skipped} skipped)` : ""}
-                    {it.result.replacedUploads ? ` · replaced ${it.result.replacedUploads} earlier upload for the same period` : ""}.
-                  </p>
+                  <div className="mt-1 space-y-0.5 text-[13px]">
+                    <p className="flex items-start gap-1.5 text-good">
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                      <span>
+                        <b>{fmtInt(it.result.added ?? it.result.imported)}</b> added · <b>{fmtInt(it.result.updated ?? 0)}</b> updated
+                        {it.result.skippedOlder ? <> · <b>{fmtInt(it.result.skippedOlder)}</b> skipped (older than what is already known)</> : null}
+                        {Object.values(it.result.rejected ?? {}).reduce((a, b) => a + b, 0) > 0 ? <> · <b>{fmtInt(Object.values(it.result.rejected ?? {}).reduce((a, b) => a + b, 0))}</b> rejected</> : null}
+                        {it.result.coverage?.start ? <span className="text-ink-3"> · covers {fmtDate(it.result.coverage.start)} – {fmtDate(it.result.coverage.end)}</span> : null}
+                      </span>
+                    </p>
+                    {Object.entries(it.result.rejected ?? {}).map(([why, n]) => (
+                      <p key={why} className="pl-[22px] text-[12.5px] text-ink-2">Rejected: {n} × {why}</p>
+                    ))}
+                    {(it.result.warnings ?? []).map((w) => (
+                      <p key={w} className="flex items-start gap-1.5 pl-[22px] text-[12.5px] text-warn"><AlertCircle className="mt-0.5 size-3.5 shrink-0" /> {w}</p>
+                    ))}
+                  </div>
                 )}
                 {it.phase === "done" && it.result && it.result.notes.length > 0 && (
                   <ul className="mt-1 space-y-0.5 pl-[22px] text-[12.5px] text-ink-2">

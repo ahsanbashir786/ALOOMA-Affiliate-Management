@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:push": "drizzle-kit push",
     "import:sample": "tsx --env-file=.env --conditions=react-server scripts/import-sample.ts",
+    "test:workflow": "tsx --conditions=react-server scripts/test-workflow.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

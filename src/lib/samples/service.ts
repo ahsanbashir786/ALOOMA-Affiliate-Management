@@ -66,14 +66,88 @@ async function matchSampleCreators(): Promise<number> {
 
 // ───────────────────────── Posting check ─────────────────────────
 
+/** The sample lines being checked with the product each one belongs to (all samples, or just the given ones). */
+const spCte = (ids?: number[]) => sql`
+  sp as (
+    select s.id, s.creator, s.delivered_at, s.order_status,
+      coalesce(
+        (select o.product_id from order_lines o where s.sku_id is not null and o.sku_id = s.sku_id limit 1),
+        (select o.product_id from order_lines o where s.seller_sku is not null and upper(o.seller_sku) = upper(s.seller_sku) limit 1),
+        (select p.product_id from products p where s.product_name is not null and p.name = s.product_name limit 1)
+      ) as pid
+    from samples s where s.source = 'orders' ${ids ? sql`and s.id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})` : sql``}
+  )`;
+
 /**
- * For every sample: did the creator post a video with that product (Video analysis, or a
- * new video already selling in the orders), go LIVE (LIVE orders), or does TikTok's sample
- * analysis report content with samples? Otherwise it is "waiting" until the deadline
- * (delivery + N days) and "not posted" after it. Also records how many videos were posted,
- * their views, and the valid sales of the sampled product made by that new content.
+ * Content the system finds for each sample, and how sure it is.
+ *  - confirmed: same creator, a video that lists the sampled product (or a new video / LIVE already selling that
+ *    product), posted on/after delivery. These complete the sample.
+ *  - uncertain: plausible but unproven – a video with no product listed, a LIVE that sold other products, or TikTok's
+ *    creator-level "content with samples" flag. These go to the review queue and never complete a sample by themselves.
+ * A video about other products is unrelated and is ignored. Staff decisions are applied afterwards and are never rebuilt.
  */
-async function computeSampleResults(postDays: number): Promise<void> {
+async function buildSampleEvidence(ids?: number[]): Promise<void> {
+  await db.execute(sql`delete from sample_content where sample_id in (select id from samples s where s.source = 'orders' ${ids ? sql`and s.id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})` : sql``})`);
+  await db.execute(sql`
+    with ${spCte(ids)},
+    ev as (
+      select sp.id as sample_id, v.video_id as content_id, 'video' as kind, v.link, v.posted_at,
+        coalesce((select max(s2.views) from video_snapshots s2 where s2.video_id = v.video_id), 0)::int as views,
+        'confirmed' as confidence, 'Video lists the sampled product and was posted after delivery' as reason
+      from sp join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day' and sp.pid = any(v.product_ids)
+      where sp.delivered_at is not null and sp.pid is not null
+      union all
+      select sp.id, o.content_id, 'video', 'https://www.tiktok.com/@' || sp.creator || '/video/' || o.content_id, min(o.created_at), 0,
+        'confirmed', 'A new video is already selling the sampled product (not in Video analysis yet)'
+      from sp join order_lines o on o.creator = sp.creator and o.content_type = 'Video' and o.content_id is not null and o.product_id = sp.pid
+      where sp.delivered_at is not null and not exists (select 1 from videos v2 where v2.video_id = o.content_id)
+      group by sp.id, o.content_id, sp.creator, sp.delivered_at
+      having min(o.created_at) >= sp.delivered_at
+      union all
+      select sp.id, coalesce(o.content_id, 'live-' || o.created_at::date::text), 'live', null, min(o.created_at), 0,
+        'confirmed', 'A LIVE sold the sampled product after delivery'
+      from sp join order_lines o on o.creator = sp.creator and o.content_type = 'Livestream' and o.created_at >= sp.delivered_at and o.product_id = sp.pid
+      where sp.delivered_at is not null
+      group by sp.id, coalesce(o.content_id, 'live-' || o.created_at::date::text)
+      union all
+      select sp.id, v.video_id, 'video', v.link, v.posted_at,
+        coalesce((select max(s2.views) from video_snapshots s2 where s2.video_id = v.video_id), 0)::int,
+        'uncertain', 'A video posted after delivery has no product listed – it may or may not be the sample'
+      from sp join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day' and coalesce(cardinality(v.product_ids), 0) = 0
+      where sp.delivered_at is not null
+      union all
+      select sp.id, coalesce(o.content_id, 'live-' || o.created_at::date::text), 'live', null, min(o.created_at), 0,
+        'uncertain', 'A LIVE sold other products after delivery – not proven to be about the sample'
+      from sp join order_lines o on o.creator = sp.creator and o.content_type = 'Livestream' and o.created_at >= sp.delivered_at
+        and (sp.pid is null or o.product_id <> sp.pid)
+      where sp.delivered_at is not null
+      group by sp.id, coalesce(o.content_id, 'live-' || o.created_at::date::text)
+      union all
+      select sp.id, 'report:' || sp.creator, 'report', null, null, 0,
+        'uncertain', 'TikTok''s sample report says this creator posted content with samples – not tied to this product or date'
+      from sp
+      where sp.delivered_at is not null and exists (
+        select 1 from sample_snapshots ss join uploads u on u.id = ss.upload_id
+        where ss.username = sp.creator and (ss.videos_with_samples > 0 or ss.live_with_samples > 0) and u.period_end >= sp.delivered_at::date)
+    )
+    insert into sample_content (sample_id, content_id, kind, link, posted_at, views, confidence, reason)
+    select distinct on (sample_id, content_id) sample_id, content_id, kind, link, posted_at, views, confidence, reason from ev
+    order by sample_id, content_id, (confidence = 'confirmed') desc`);
+  // Once a sample has confirmed content, the weaker evidence is just noise.
+  await db.execute(sql`
+    delete from sample_content a where a.confidence = 'uncertain'
+      and exists (select 1 from sample_content b where b.sample_id = a.sample_id and b.confidence = 'confirmed')
+      ${ids ? sql`and a.sample_id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})` : sql``}`);
+}
+
+/**
+ * Sets every sample's result from the evidence, the staff decisions and the deadline.
+ * Result: confirmed content → posted (video / LIVE); else uncertain evidence → "needs review";
+ * else waiting until the post-by date (an agreed date from a promise wins over delivery + default days), then "not posted".
+ */
+async function computeSampleResults(postDays: number, ids?: number[]): Promise<void> {
+  const notRejected = sql`not exists (select 1 from content_decisions d where d.decision = 'rejected' and d.reverted_at is null
+    and d.sample_id = sc.sample_id and d.content_id = sc.content_id)`;
   await db.execute(sql`
     with ref as (
       select greatest(
@@ -81,66 +155,24 @@ async function computeSampleResults(postDays: number): Promise<void> {
         coalesce((select max(created_at)::date from order_lines), date '1970-01-01')
       ) as d
     ),
-    sp as (
-      select s.id, s.creator, s.delivered_at, s.order_status,
-        coalesce(
-          (select o.product_id from order_lines o where s.sku_id is not null and o.sku_id = s.sku_id limit 1),
-          (select o.product_id from order_lines o where s.seller_sku is not null and upper(o.seller_sku) = upper(s.seller_sku) limit 1),
-          (select p.product_id from products p where s.product_name is not null and p.name = s.product_name limit 1)
-        ) as pid
-      from samples s where s.source = 'orders'
+    ${spCte(ids)},
+    cnf as (
+      select sample_id,
+        (count(*) filter (where kind = 'video'))::int as vids, (count(*) filter (where kind = 'live'))::int as lives,
+        min(posted_at) as first_at, min(link) filter (where link is not null) as link,
+        coalesce(sum(views) filter (where kind = 'video'), 0)::int as views, min(content_id) filter (where kind = 'video') as first_id
+      from sample_content sc where sc.confidence = 'confirmed' and ${notRejected}
+      group by sample_id
     ),
-    vid as (
-      select distinct on (sp.id) sp.id, v.video_id, v.posted_at, v.link, coalesce(sp.pid = any(v.product_ids), false) as prod
-      from sp join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day'
-      where sp.delivered_at is not null
-      order by sp.id, coalesce(sp.pid = any(v.product_ids), false) desc, v.posted_at asc
+    unc as (select sample_id, count(*)::int as n from sample_content sc where sc.confidence = 'uncertain' and ${notRejected} group by sample_id),
+    ver as (
+      select sample_id, count(*)::int as n, min(link) as link, min(content_id) as cid, min(at) as at
+      from content_decisions where decision = 'verified' and sample_id is not null and reverted_at is null group by sample_id
     ),
-    vstats as (
-      select sp.id,
-        (count(*) filter (where coalesce(sp.pid = any(v.product_ids), false)))::int as vp,
-        (count(*) filter (where not coalesce(sp.pid = any(v.product_ids), false)))::int as vo,
-        coalesce(sum(vv.views) filter (where coalesce(sp.pid = any(v.product_ids), false)), 0)::int as views
-      from sp
-      join videos v on v.creator = sp.creator and v.posted_at >= sp.delivered_at - interval '1 day'
-      left join lateral (select max(s2.views) as views from video_snapshots s2 where s2.video_id = v.video_id) vv on true
-      where sp.delivered_at is not null
-      group by sp.id
-    ),
-    ovid as (
-      -- A video that only shows up in orders (not yet in the video report) and first sold after delivery is new content.
-      select distinct on (sp.id) sp.id, o.content_id as video_id, min(o.created_at) as at, bool_or(o.product_id = sp.pid) as prod
-      from sp
-      join order_lines o on o.creator = sp.creator and o.content_type = 'Video' and o.content_id is not null
-      where sp.delivered_at is not null and not exists (select 1 from videos v where v.video_id = o.content_id)
-      group by sp.id, o.content_id
-      having min(o.created_at) >= min(sp.delivered_at)
-      order by sp.id, bool_or(o.product_id = sp.pid) desc, min(o.created_at) asc
-    ),
-    ocnt as (
-      select x.id, count(*)::int as n from (
-        select sp.id, o.content_id
-        from sp
-        join order_lines o on o.creator = sp.creator and o.content_type = 'Video' and o.content_id is not null
-          and (sp.pid is null or o.product_id = sp.pid)
-        where sp.delivered_at is not null and not exists (select 1 from videos v where v.video_id = o.content_id)
-        group by sp.id, o.content_id
-        having min(o.created_at) >= min(sp.delivered_at)
-      ) x group by x.id
-    ),
-    live as (
-      select sp.id, min(o.created_at) as at
-      from sp join order_lines o on o.creator = sp.creator and o.content_type = 'Livestream' and o.created_at >= sp.delivered_at
-      where sp.delivered_at is not null
-      group by sp.id
-    ),
-    snap as (
-      select sp.id, bool_or(ss.videos_with_samples > 0) as v, bool_or(ss.live_with_samples > 0) as l
-      from sp
-      join sample_snapshots ss on ss.username = sp.creator
-      join uploads u on u.id = ss.upload_id
-      where sp.delivered_at is not null and u.period_end >= sp.delivered_at::date
-      group by sp.id
+    agreed as (
+      select x.id as sample_id, max(c.promised_on) as d
+      from sp x join commitments c on x.id = any(c.sample_ids) join staff_events e on e.id = c.event_id and e.reverted_at is null
+      group by x.id
     ),
     gmv as (
       select sp.id,
@@ -160,46 +192,41 @@ async function computeSampleResults(postDays: number): Promise<void> {
         when sp.order_status = 'Canceled' then 'cancelled'
         when sp.creator is null then 'no_creator'
         when sp.delivered_at is null then 'in_transit'
-        when vid.prod or ovid.prod then 'posted_video'
-        when live.at is not null then 'did_live'
-        when snap.v then 'posted_video'
-        when snap.l then 'did_live'
-        when vid.video_id is not null or ovid.video_id is not null then 'posted_other'
-        when sp.delivered_at::date + ${postDays}::int > ref.d then 'in_window'
+        when coalesce(cnf.vids, 0) + coalesce(ver.n, 0) > 0 then 'posted_video'
+        when coalesce(cnf.lives, 0) > 0 then 'did_live'
+        when coalesce(unc.n, 0) > 0 then 'uncertain'
+        when coalesce(agreed.d, sp.delivered_at::date + ${postDays}::int) >= ref.d then 'in_window'
         else 'not_posted' end,
-      posted_at = case
-        when vid.prod then vid.posted_at when ovid.prod then ovid.at when live.at is not null then live.at
-        else coalesce(vid.posted_at, ovid.at) end,
-      post_video_id = case when vid.prod or (vid.video_id is not null and not coalesce(ovid.prod, false)) then vid.video_id else ovid.video_id end,
-      post_link = case
-        when vid.prod or (vid.video_id is not null and not coalesce(ovid.prod, false)) then vid.link
-        when ovid.video_id is not null then 'https://www.tiktok.com/@' || sp.creator || '/video/' || ovid.video_id end,
+      post_by = case when sp.delivered_at is null then null else coalesce(agreed.d, sp.delivered_at::date + ${postDays}::int) end,
+      post_by_source = case when sp.delivered_at is null then null when agreed.d is not null then 'agreed' else 'default' end,
+      posted_at = coalesce(cnf.first_at, ver.at),
+      post_video_id = coalesce(cnf.first_id, ver.cid),
+      post_link = coalesce(cnf.link, ver.link),
       product_id = sp.pid,
-      video_count = coalesce(vstats.vp, 0) + coalesce(ocnt.n, 0),
-      other_video_count = coalesce(vstats.vo, 0),
-      content_views = coalesce(vstats.views, 0),
+      video_count = coalesce(cnf.vids, 0) + coalesce(ver.n, 0),
+      other_video_count = 0,
+      content_views = coalesce(cnf.views, 0),
       content_gmv = coalesce(gmv.gmv, 0),
       content_orders = coalesce(gmv.n, 0),
       checked_at = now()
     from sp
     cross join ref
-    left join vid on vid.id = sp.id
-    left join vstats on vstats.id = sp.id
-    left join ovid on ovid.id = sp.id
-    left join ocnt on ocnt.id = sp.id
-    left join live on live.id = sp.id
-    left join snap on snap.id = sp.id
+    left join cnf on cnf.sample_id = sp.id
+    left join unc on unc.sample_id = sp.id
+    left join ver on ver.sample_id = sp.id
+    left join agreed on agreed.sample_id = sp.id
     left join gmv on gmv.id = sp.id
     where s.id = sp.id`);
 }
 
-/** Matches creators and re-runs the posting check. Safe to run any time. */
-export async function refreshSamples(): Promise<{ matched: number }> {
+/** Matches creators and re-runs the posting check (all samples, or only the given ones). Safe to run any time. */
+export async function refreshSamples(opts: { sampleIds?: number[] } = {}): Promise<{ matched: number }> {
   // Earlier versions also kept hand-logged and staff-sheet samples; samples now come from orders only.
   await db.execute(sql`delete from samples where source <> 'orders'`);
   const t = await getThresholds();
-  const matched = await matchSampleCreators();
-  await computeSampleResults(t.samplePostDays);
+  const matched = opts.sampleIds ? 0 : await matchSampleCreators();
+  await buildSampleEvidence(opts.sampleIds);
+  await computeSampleResults(t.samplePostDays, opts.sampleIds);
   return { matched };
 }
 

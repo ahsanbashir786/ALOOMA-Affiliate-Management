@@ -38,6 +38,8 @@ export type ScoreRow = {
   posted: number;
   notPosted: number;
   waiting: number;
+  /** Samples with possible (uncertain) content that staff still need to confirm or reject. */
+  review: number;
   postingRate: number | null;
   avgDaysToPost: number | null;
   contentGmv: number;
@@ -62,8 +64,8 @@ export type ScoreRow = {
   value: number;
 };
 
-const JUDGED = sql.raw(`('posted_video','did_live','posted_other','not_posted')`);
-const POSTED_SET = sql.raw(`('posted_video','did_live','posted_other')`);
+const JUDGED = sql.raw(`('posted_video','did_live','not_posted')`);
+const POSTED_SET = sql.raw(`('posted_video','did_live')`);
 
 const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
 const fmtDay = (d: string | null) =>
@@ -73,13 +75,14 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 type VerdictInput = Pick<
   ScoreRow,
-  "posted" | "judged" | "notPosted" | "waiting" | "delivered" | "contentGmv" | "contentOrders" | "oldestUnposted" | "firstDelivered" | "videosSince" | "newestVideo" | "recentGmv14"
+  "posted" | "judged" | "notPosted" | "waiting" | "review" | "delivered" | "contentGmv" | "contentOrders" | "oldestUnposted" | "firstDelivered" | "videosSince" | "newestVideo" | "recentGmv14"
 >;
 
 export function verdictFor(r: VerdictInput, t: Thresholds, today: string): SampleVerdict {
   const stale = r.oldestUnposted != null && daysBetween(today, r.oldestUnposted) > t.samplePostDays * 2;
   if (r.posted === 0 && (r.judged >= 2 || (r.notPosted >= 1 && stale))) return "stop";
   if (r.notPosted >= 1) return "chase";
+  if (r.review >= 1 && r.posted === 0) return "review";
   if (r.posted >= 1 && r.contentGmv >= t.sampleMoreMinGmv) {
     const weeks = Math.max(1, daysBetween(today, r.firstDelivered ?? today) / 7);
     return r.videosSince / weeks < t.targetVideosPerWeek ? "more_content" : "more";
@@ -93,6 +96,8 @@ export function verdictFor(r: VerdictInput, t: Thresholds, today: string): Sampl
 
 function adviceFor(r: ScoreRow, t: Thresholds, today: string): string {
   switch (r.verdict) {
+    case "review":
+      return `${plural(r.review, "sample")} may have content, but the match is uncertain – confirm or reject it.`;
     case "chase":
       return `${plural(r.notPosted, "sample")} delivered (oldest ${fmtDay(r.oldestUnposted)}) – nothing posted after ${t.samplePostDays} days.`;
     case "stop":
@@ -123,7 +128,7 @@ export async function getSampleScorecard(range?: DateRange): Promise<{ rows: Sco
       coalesce((select max(created_at)::date from order_lines), current_date)), 'YYYY-MM-DD') as d`);
   const data = await rows<{
     creator: string; phone: string | null; approach: string | null; dnc: boolean | null; samples: number; qty: number;
-    delivered: number; judged: number; posted: number; not_posted: number; waiting: number; days: number | null;
+    delivered: number; judged: number; posted: number; not_posted: number; waiting: number; review: number; days: number | null;
     gmv: number; orders: number; oldest: string | null; first: string | null; last: string | null; products: string | null;
     videos_since: number | null; newest: string | null; recent: number | null;
     videos: number | null; lives: number | null; vgmv: number | null; lgmv: number | null;
@@ -140,6 +145,7 @@ export async function getSampleScorecard(range?: DateRange): Promise<{ rows: Sco
         (count(*) filter (where r in ${POSTED_SET}))::int as posted,
         (count(*) filter (where r = 'not_posted'))::int as not_posted,
         (count(*) filter (where r in ('in_window', 'in_transit')))::int as waiting,
+        (count(*) filter (where r = 'uncertain'))::int as review,
         (avg(extract(epoch from (posted_at - delivered_at)) / 86400) filter (where r in ${POSTED_SET} and posted_at is not null))::float8 as days,
         to_char(min(delivered_at) filter (where r = 'not_posted'), 'YYYY-MM-DD') as oldest,
         to_char(min(delivered_at), 'YYYY-MM-DD') as first,
@@ -212,6 +218,7 @@ export async function getSampleScorecard(range?: DateRange): Promise<{ rows: Sco
       posted: r.posted,
       notPosted: r.not_posted,
       waiting: r.waiting,
+      review: r.review,
       postingRate: r.judged ? r.posted / r.judged : null,
       avgDaysToPost: r.days,
       contentGmv: r.gmv,
@@ -280,6 +287,10 @@ export type SampleLine = {
   otherVideoCount: number;
   /** Every video posted since delivery (this product first), with its link, views and sales. */
   videos: SampleVideo[];
+  /** Possible (uncertain) content staff still need to confirm or reject, and why the system is unsure. */
+  candidates: { contentId: string; kind: string; link: string | null; postedAt: string | null; views: number; reason: string }[];
+  /** "agreed" when the date comes from a creator's promise, otherwise the default window. */
+  postBySource: string | null;
   contentViews: number;
   contentGmv: number;
   contentOrders: number;
@@ -323,7 +334,9 @@ async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> 
       approvedAt: day(r.approved_at),
       shippedAt: day(r.shipped_at),
       deliveredAt: delivered,
-      dueAt: delivered ? addDays(delivered, t.samplePostDays) : null,
+      dueAt: day(r.post_by) ?? (delivered ? addDays(delivered, t.samplePostDays) : null),
+      postBySource: (r.post_by_source as string) ?? null,
+      candidates: [],
       postedAt: day(r.posted_at),
       postLink: (r.post_link as string) ?? null,
       result,
@@ -345,7 +358,23 @@ async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> 
     } as SampleLine;
   });
   await attachVideos(lines);
+  await attachCandidates(lines);
   return lines;
+}
+
+/** Uncertain evidence per sample that staff have not rejected. */
+async function attachCandidates(lines: SampleLine[]): Promise<void> {
+  const ids = lines.filter((l) => l.result === "uncertain").map((l) => l.id);
+  if (!ids.length) return;
+  const found = await rows<{ sid: number; cid: string; kind: string; link: string | null; at: string | null; views: number; reason: string }>(sql`
+    select sc.sample_id as sid, sc.content_id as cid, sc.kind, sc.link, to_char(sc.posted_at, 'YYYY-MM-DD') as at, sc.views, sc.reason
+    from sample_content sc
+    where sc.confidence = 'uncertain' and sc.sample_id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})
+      and not exists (select 1 from content_decisions d where d.decision = 'rejected' and d.reverted_at is null
+        and d.sample_id = sc.sample_id and d.content_id = sc.content_id)
+    order by sc.posted_at desc nulls last`);
+  const by = new Map(lines.map((l) => [l.id, l]));
+  for (const f of found) by.get(f.sid)?.candidates.push({ contentId: f.cid, kind: f.kind, link: f.link, postedAt: f.at, views: f.views, reason: f.reason });
 }
 
 /** Adds the list of videos posted since delivery (with link, views and sales) to every delivered sample line. */
@@ -438,8 +467,8 @@ export async function getSampleTotals(range?: DateRange): Promise<{ sent: number
     select count(*)::int as sent, coalesce(sum(quantity), 0)::int as qty,
       (count(*) filter (where delivered_at is not null))::int as delivered,
       (count(*) filter (where r = 'not_posted'))::int as chase,
-      (count(*) filter (where r in ('posted_video','did_live','posted_other') and content_orders = 0))::int as nosales,
-      (count(*) filter (where r in ('posted_video','did_live','posted_other') and content_orders > 0))::int as selling,
+      (count(*) filter (where r in ('posted_video','did_live') and content_orders = 0))::int as nosales,
+      (count(*) filter (where r in ('posted_video','did_live') and content_orders > 0))::int as selling,
       (select coalesce(sum(g), 0) from (select max(content_gmv) as g from s group by creator, coalesce(product_id, id::text)) x)::float8 as gmv,
       (count(*) filter (where creator is null))::int as unknown
     from s`);

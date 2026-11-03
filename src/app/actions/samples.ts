@@ -12,7 +12,7 @@ import { normalisePhone } from "@/lib/ingest/import";
 
 const done = () => {
   revalidatePath("/samples", "layout");
-  revalidatePath("/actions");
+  revalidatePath("/today");
 };
 
 const NO_PHONE_RIGHT = "You don't have permission to edit WhatsApp numbers. Ask an admin to tick “Can edit WhatsApp” for you in Settings.";

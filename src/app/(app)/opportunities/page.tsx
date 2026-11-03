@@ -75,7 +75,7 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/op
                   <p className="mt-1.5 line-clamp-2 text-[12.5px] text-ink-3">{s.summary}</p>
                   <p className="tnum mt-2.5 text-[12.5px] text-ink-2">
                     {gmvBySeg.get(k) ? `${fmtRM(gmvBySeg.get(k)!)} GMV` : "–"}
-                    {uplift > 0 && <span className="text-good"> · +{fmtRM(uplift)} est.</span>}
+                    {uplift > 0 && <span className="text-good"> · +{fmtRM(uplift)} scenario</span>}
                   </p>
                 </Link>
               );
@@ -114,7 +114,7 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/op
                             {r.expectedUplift > 0 ? (
                               <>
                                 <p className="tnum text-[14px] font-semibold text-good">+{fmtRM(r.expectedUplift)}</p>
-                                <p className="text-[11.5px] text-ink-3">est. uplift</p>
+                                <p className="text-[11.5px] text-ink-3">scenario (assumption)</p>
                               </>
                             ) : null}
                           </div>
@@ -161,7 +161,7 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/op
           )}
           {totalUplift > 0 && (
             <p className="text-[12.5px] text-ink-3">
-              Uplift estimates are conservative: extra videos per week × the creator&apos;s average GMV per selling video × {Math.round(analysis.thresholds.upliftHaircut * 100)}%. Adjust the assumptions in Settings.
+              Scenario values are assumptions, not forecasts or targets: extra videos per week × the creator&apos;s average GMV per selling video × {Math.round(analysis.thresholds.upliftHaircut * 100)}%. Adjust the assumptions in Settings.
             </p>
           )}
         </>
