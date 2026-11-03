@@ -95,6 +95,11 @@ function Panel({ username, onClose }: { username: string; onClose: () => void })
               <span className="text-ink-3">{data.phone ? `WhatsApp ${data.phone}` : "No WhatsApp number saved"}</span>
               <Link href={`/creators/${encodeURIComponent(username)}`} className="ml-auto text-brand hover:underline">Open full page →</Link>
             </div>
+            <dl className="mx-5 mb-3 grid grid-cols-3 gap-3 text-center" aria-label="Track record">
+              <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Promises kept</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.promisesJudged ? `${data.profile.promisesOnTime}/${data.profile.promisesJudged}` : "–"}</dd></div>
+              <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Videos, 28 days</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.videos28}</dd></div>
+              <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Last sale</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.lastSaleLabel ?? "–"}</dd></div>
+            </dl>
             {msg && <p role="status" className="mx-5 mb-2 rounded-lg bg-surface-2 px-3 py-2 text-[13.5px] text-ink-2">{msg}</p>}
 
             <Section title="Commitments" count={data.obligations.length} defaultOpen>

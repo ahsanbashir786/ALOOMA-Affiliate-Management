@@ -1,5 +1,8 @@
 import {
   Beaker,
+  Gauge,
+  TrendingUp,
+  Truck,
   Contact,
   ClipboardList,
   Database,
@@ -32,10 +35,19 @@ export const NAV: NavGroup[] = [
   {
     label: "Work",
     items: [
+      { href: "/command", label: "Command centre", icon: Gauge, min: "admin" },
       { href: "/today", label: "Today's Work", icon: ClipboardList, badge: "actions" },
       { href: "/affiliates", label: "Affiliates", icon: Contact, usesPeriod: true, exact: true },
       { href: "/samples", label: "Samples", icon: Beaker, usesPeriod: true },
       { href: "/progress", label: "Progress", icon: LineChart, min: "admin" },
+    ],
+  },
+  {
+    label: "Operations",
+    collapsible: true,
+    items: [
+      { href: "/order-health", label: "Order health", icon: Truck },
+      { href: "/demand", label: "Demand planning", icon: TrendingUp },
     ],
   },
   {

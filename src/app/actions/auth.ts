@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import * as z from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { createSession, destroySession } from "@/lib/auth";
+import { landingFor, createSession, destroySession } from "@/lib/auth";
 
 export type FormState = { error?: string; values?: Record<string, string> } | undefined;
 
@@ -24,7 +24,7 @@ export async function login(_: FormState, formData: FormData): Promise<FormState
   const ok = user && user.active && (await bcrypt.compare(parsed.data.password, user.passwordHash));
   if (!ok) return { error: "Incorrect email or password.", values };
   await createSession(user.id);
-  redirect("/today");
+  redirect(landingFor(user.role));
 }
 
 export async function logout() {
@@ -55,5 +55,5 @@ export async function setupAdmin(_: FormState, formData: FormData): Promise<Form
     })
     .returning({ id: users.id });
   await createSession(created.id);
-  redirect("/today");
+  redirect("/command");
 }

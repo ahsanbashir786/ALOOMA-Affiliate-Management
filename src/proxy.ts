@@ -6,7 +6,7 @@ import type { NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = request.cookies.has("ams_session");
-  const isAuthPage = pathname === "/login" || pathname === "/setup";
+  const isAuthPage = pathname === "/login" || pathname === "/setup" || pathname === "/api/health";
   if (!hasSession && !isAuthPage) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Not signed in." }, { status: 401 });

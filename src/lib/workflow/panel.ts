@@ -27,6 +27,8 @@ export type PanelData = {
   samples: { id: number; product: string; qty: number; approvedLabel: string | null; shippedLabel: string | null; deliveredLabel: string | null; postByLabel: string | null; agreed: boolean; stateLabel: string; stateTone: Tone; result: string }[];
   evidence: { id: string; kind: string; when: string; link: string | null; source: string }[];
   history: { at: string; text: string; by: string | null; undone: boolean; eventId?: number }[];
+  /** Plain track record from the records: promises kept, recent output, last sale. */
+  profile: { promisesJudged: number; promisesOnTime: number; videos28: number; lastSaleLabel: string | null };
   canAct: boolean;
 };
 
@@ -49,6 +51,8 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
       ? `Follow-up ${fmtDayLabel(st.nextOn)}`
       : null;
   const sampleLines = lines.get(username) ?? [];
+  const [vid] = await rows<{ n: number }>(sql`select count(*)::int as n from content_items where creator = ${username} and posted_at is not null and posted_at::date >= (${today}::date - 27)`);
+  const judged = comms.filter((c) => c.state === "fulfilled" || c.dueOn < today);
 
   // evidence: pieces counted for promises, plus videos found for samples – each piece once
   const seen = new Map<string, PanelData["evidence"][number]>();
@@ -99,6 +103,12 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
     })),
     evidence: [...seen.values()],
     history: ws.entries.slice(0, 30).map((e) => ({ at: fmtDateTimeKL(e.at), text: e.text, by: e.by, undone: !!e.undone, eventId: e.eventId })),
+    profile: {
+      promisesJudged: judged.length,
+      promisesOnTime: judged.filter((c) => c.state === "fulfilled" && c.timing === "on_time").length,
+      videos28: vid?.n ?? 0,
+      lastSaleLabel: rel.get(username)?.lastSaleOn ? fmtDayLabel(rel.get(username)!.lastSaleOn!) : null,
+    },
     canAct,
   };
 }

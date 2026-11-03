@@ -89,7 +89,8 @@ export function affiliateDirection(s: Version, i: Version): Direction {
 
 export function shopDirection(s: Version, i: Version): Direction {
   const cancelled = (v: Version) => v.status === "Canceled";
-  const returned = (v: Version) => v.cancelType === "Return/Refund" || Number(v.returnQty ?? 0) > 0 || Number(v.refundAmount ?? 0) > 0;
+  // the export also fills the returned quantity on CANCELLED lines, so a quantity only means a return when the order was not cancelled
+  const returned = (v: Version) => v.cancelType === "Return/Refund" || (Number(v.returnQty ?? 0) > 0 && v.status !== "Canceled") || Number(v.refundAmount ?? 0) > 0;
   const worse = (cancelled(i) && !cancelled(s)) || (returned(i) && !returned(s)) || Number(i.refundAmount ?? 0) > Number(s.refundAmount ?? 0);
   const better = (cancelled(s) && !cancelled(i)) || (returned(s) && !returned(i)) || Number(i.refundAmount ?? 0) < Number(s.refundAmount ?? 0);
   return worse && !better ? "worse" : better && !worse ? "better" : "neutral";

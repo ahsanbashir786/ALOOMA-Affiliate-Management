@@ -1,0 +1,50 @@
+# Affiliate HQ on a VPS:  docker compose up -d --build
+# Services: db (PostgreSQL, data kept in a Docker volume) · app (this project) · caddy (HTTPS, automatic certificates)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: affiliate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: affiliate
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U affiliate -d affiliate"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # not published to the internet: only the app can reach it
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://affiliate:${POSTGRES_PASSWORD}@db:5432/affiliate
+      NODE_ENV: production
+      # Keep "true" when you use a domain with HTTPS. Use "false" only for a short plain-http test by IP address.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env (for example affiliates.example.com)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  dbdata:
+  caddydata:
+  caddyconfig:

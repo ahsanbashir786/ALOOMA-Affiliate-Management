@@ -1,5 +1,7 @@
 # Owner guide – what Progress shows
 
+The **Command centre** is the owner's home screen: data freshness, staff execution gauges, what needs a decision, the creator pipeline, the sample journey, order health and the demand outlook. Click any block for detail. **Ctrl+K** searches pages and creators anywhere.
+
 Open **Progress**. Pick 7, 28 or 90 days (Malaysia time). **Every figure is a link** to the records behind it (creator, detail, date).
 Staff-confirmed numbers (someone pressed a button) are kept apart from system-detected ones (found in the TikTok files).
 
@@ -14,3 +16,8 @@ Staff-confirmed numbers (someone pressed a button) are kept apart from system-de
 | **Sales movement** | Newly selling, reactivated, sales of contacted creators | Context only. Equal-length periods, only where both order files fully cover both periods; the effective dates are shown; otherwise it says why it is withheld. A missing upload is never zero sales |
 
 Not measured on purpose: reply rates (replies are not logged) and message counts as a judgment of performance. Sales after a contact are not credited to staff.
+
+## Order health and Demand planning
+
+* **Order health** (Operations): cancelled and returned orders, why, by payment method and product, when orders arrive, and how fast they ship and deliver. Unusual days are flagged against the previous 28 days. Counts are orders (not lines); free samples are excluded; the window ends at the latest order we hold.
+* **Demand planning**: units sold per week for each single item (bundles are broken into their parts), a forecast for the next 4 weeks with its likely range, and sample units separately. It does not know about stock on hand, campaigns or stock-outs, so it shows demand, not what to buy.

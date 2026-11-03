@@ -8,6 +8,7 @@ import { Sidebar } from "./sidebar";
 import { PeriodPicker } from "./period-picker";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
+import { CommandPalette } from "./command-palette";
 import { CreatorPanelProvider } from "@/components/creator/creator-panel";
 
 const NO_PERIOD = ["/data", "/settings", "/today", "/progress"];
@@ -35,6 +36,7 @@ export function AppShell({
   const showPeriod = !NO_PERIOD.some((p) => pathname.startsWith(p));
 
   return (
+    <CreatorPanelProvider>
     <div className="min-h-screen">
       <Suspense fallback={null}>
         <Sidebar role={user.role} openActions={openActions} open={open} onClose={() => setOpen(false)} />
@@ -61,12 +63,14 @@ export function AppShell({
                 />
               </Suspense>
             )}
+            <CommandPalette />
             <ThemeToggle />
             <UserMenu name={user.name} email={user.email} role={user.role} />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-8"><CreatorPanelProvider>{children}</CreatorPanelProvider></main>
+        <main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-8">{children}</main>
       </div>
     </div>
+    </CreatorPanelProvider>
   );
 }

@@ -82,6 +82,16 @@ async function main() {
   const dupRec = await one<{ n: number }>(sql`select count(*)::int n from (select username, type from recommendations group by 1,2 having count(*) > 1) x`);
   check("refreshing recommendations never duplicates them", dupRec.n === 0);
 
+  // order health: "returned" must not include cancelled lines (the export fills the returned quantity on cancelled lines too)
+  const { getOrderHealth } = await import("../src/lib/insights/orders");
+  const oh = await getOrderHealth(90);
+  const raw = await one<{ n: number }>(sql`
+    select count(distinct order_id)::int as n from shop_order_lines where not is_sample and created_at::date between ${oh.start}::date and ${oh.end}::date
+      and (coalesce(cancel_type, '') = 'Return/Refund' or (coalesce(return_qty, 0) > 0 and status <> 'Canceled'))`);
+  const rawC = await one<{ n: number }>(sql`select count(distinct order_id)::int as n from shop_order_lines where not is_sample and status = 'Canceled' and created_at::date between ${oh.start}::date and ${oh.end}::date`);
+  check("order health: returned orders match the raw records and do not include cancelled orders", oh.totals.returned === raw.n && oh.totals.returned < oh.totals.cancelled, JSON.stringify({ returned: oh.totals.returned, raw: raw.n }));
+  check("order health: cancelled orders match the raw records", oh.totals.cancelled === rawC.n, JSON.stringify({ c: oh.totals.cancelled, raw: rawC.n }));
+
   // screens run on real data
   const today = await getToday("focus");
   check(`Today's Work builds on real data (${today.counts.focus} in focus, ${today.counts.development} opportunities, ${today.sampleExceptions.unmatched} unmatched samples)`, today.rows.length >= 0);

@@ -8,6 +8,9 @@ import { AuthForm } from "@/components/auth-form";
 
 export const metadata: Metadata = { title: "Set up" };
 
+// Reads the database on every request, so it must never be prerendered at build time (the Docker build has no database).
+export const dynamic = "force-dynamic";
+
 export default async function SetupPage() {
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
   if (n > 0) redirect("/login");

@@ -109,3 +109,7 @@ Upgrading a database that already has data: see `docs/UPGRADE.md` (`npm run db:m
 
 The script refuses to run unless the database name ends in `_test` (it wipes it) and only creates clearly labelled
 synthetic records (`zz_test_*`). Never point it at production.
+
+## Running on a VPS
+
+`docs/DEPLOY.md` (Docker + automatic HTTPS + daily backups). Future modules (ads, inventory, purchasing, returns cases, profit, leakage checks): `docs/ROADMAP.md`.

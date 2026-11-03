@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+backups
+*.dump
+.env
+.env.*
+docs/screenshots
+scripts/_*

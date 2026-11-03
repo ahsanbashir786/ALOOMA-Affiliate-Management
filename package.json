@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:push": "drizzle-kit push",
-    "db:migrate": "tsx --env-file=.env scripts/migrate.ts",
+    "db:migrate": "node --env-file=.env scripts/migrate.mjs",
     "import:sample": "tsx --env-file=.env --conditions=react-server scripts/import-sample.ts",
     "test:workflow": "tsx --conditions=react-server scripts/test-workflow.ts",
     "test:regressions": "tsx --conditions=react-server scripts/test-regressions.ts",

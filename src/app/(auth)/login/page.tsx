@@ -3,14 +3,18 @@ import { redirect } from "next/navigation";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, landingFor } from "@/lib/auth";
 import { login } from "@/app/actions/auth";
 import { AuthForm } from "@/components/auth-form";
 
 export const metadata: Metadata = { title: "Sign in" };
 
+// Reads the database on every request, so it must never be prerendered at build time (the Docker build has no database).
+export const dynamic = "force-dynamic";
+
 export default async function LoginPage() {
-  if (await getCurrentUser()) redirect("/today");
+  const me = await getCurrentUser();
+  if (me) redirect(landingFor(me.role));
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
   if (n === 0) redirect("/setup");
   return (

@@ -23,7 +23,8 @@ export async function createSession(userId: string) {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // HTTPS-only cookie in production. Set COOKIE_SECURE=false only for a temporary plain-http test by IP address.
+    secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : process.env.NODE_ENV === "production",
     path: "/",
     expires: expiresAt,
   });
@@ -64,6 +65,9 @@ export async function requireUser(min: Role = "viewer"): Promise<SessionUser> {
   if (RANK[user.role] < RANK[min]) redirect("/?denied=1");
   return user;
 }
+
+/** Where a person lands after signing in: the owner starts at the Command centre, staff at Today's Work. */
+export const landingFor = (role: Role) => (role === "admin" ? "/command" : "/today");
 
 export const can = (user: { role: Role }, min: Role) => RANK[user.role] >= RANK[min];
 

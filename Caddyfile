@@ -1,0 +1,9 @@
+# Caddy gets and renews the HTTPS certificate for {$DOMAIN} by itself.
+{$DOMAIN} {
+	encode zstd gzip
+	# large Excel exports
+	request_body {
+		max_size 120MB
+	}
+	reverse_proxy app:3000
+}
