@@ -30,6 +30,9 @@ export type CommitmentInput = {
 };
 
 export type DecisionInput = {
+  id: number;
+  /** When the decision was recorded (ISO). Together with `id` it orders decisions: the latest non-undone one wins. */
+  at: string;
   contentId: string;
   decision: "verified" | "rejected";
   commitmentId: number | null;
@@ -55,14 +58,31 @@ export type CommitmentResult = {
   candidateIds: string[];
 };
 
+/**
+ * The decision in force for one commitment and one content piece: the LATEST non-undone decision (by time, then id) among those
+ * recorded for that commitment or, for sample-level decisions, for a sample it is linked to. Earlier decisions stay in the history
+ * but no longer apply; undoing the latest one makes the previous one apply again (callers pass only non-undone decisions).
+ */
+export function effectiveDecision(c: { id: number }, contentId: string, decisions: DecisionInput[]): DecisionInput | null {
+  let best: DecisionInput | null = null;
+  for (const d of decisions) {
+    if (d.contentId !== contentId) continue;
+    if (!(d.commitmentId === c.id || (d.commitmentId == null && d.appliesTo.includes(c.id)))) continue;
+    if (!best || d.at > best.at || (d.at === best.at && d.id > best.id)) best = d;
+  }
+  return best;
+}
+
 export function allocate(commitments: CommitmentInput[], pieces: ContentPiece[], decisions: DecisionInput[]): CommitmentResult[] {
   const byId = new Map<string, ContentPiece>();
   for (const p of pieces) if (!byId.has(p.contentId)) byId.set(p.contentId, p); // duplicate rows of one content id count once
   const ordered = [...commitments].sort((a, b) => a.recordedOn.localeCompare(b.recordedOn) || a.recordedSeq - b.recordedSeq || a.id - b.id);
 
-  const rejected = (c: CommitmentInput, contentId: string) => decisions.some((d) => d.decision === "rejected" && d.contentId === contentId && (d.commitmentId === c.id || (d.commitmentId == null && d.appliesTo.includes(c.id))));
-  const verifiedFor = (c: CommitmentInput) =>
-    decisions.filter((d) => d.decision === "verified" && (d.commitmentId === c.id || (d.commitmentId == null && d.appliesTo.includes(c.id))));
+  const rejected = (c: CommitmentInput, contentId: string) => effectiveDecision(c, contentId, decisions)?.decision === "rejected";
+  const verifiedFor = (c: CommitmentInput) => {
+    const ids = [...new Set(decisions.filter((d) => d.appliesTo.includes(c.id) || d.commitmentId === c.id).map((d) => d.contentId))];
+    return ids.map((id) => effectiveDecision(c, id, decisions)).filter((d): d is DecisionInput => !!d && d.decision === "verified");
+  };
 
   const claimed = new Map<string, number>(); // contentId → commitment that owns it
   const counted = new Map<number, Set<string>>();

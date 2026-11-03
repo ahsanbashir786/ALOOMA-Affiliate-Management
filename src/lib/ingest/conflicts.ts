@@ -2,7 +2,9 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { importConflicts, orderLines, shopOrderLines } from "@/db/schema";
+import { refreshSamples } from "@/lib/samples/service";
 import { AFFILIATE_DATES, SHOP_DATES } from "./freshness";
+import { upsertSampleOrders } from "./import";
 
 const revive = (row: Record<string, unknown>, dates: readonly string[]) => {
   const out = { ...row };
@@ -19,6 +21,7 @@ export async function resolveConflicts(ids: number[], action: "accept" | "dismis
   if (!ids.length) return 0;
   const rows = await db.select().from(importConflicts).where(and(eq(importConflicts.status, "pending"), sql`${importConflicts.id} in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`));
   let n = 0;
+  const sampleLines: { row: typeof shopOrderLines.$inferInsert; uploadId: number | null }[] = [];
   await db.transaction(async (tx) => {
     for (const c of rows) {
       if (action === "accept") {
@@ -29,11 +32,18 @@ export async function resolveConflicts(ids: number[], action: "accept" | "dismis
         } else {
           const row = revive(inc, SHOP_DATES) as typeof shopOrderLines.$inferInsert;
           await tx.insert(shopOrderLines).values(row).onConflictDoUpdate({ target: [shopOrderLines.orderId, shopOrderLines.skuId], set: row });
+          if (row.isSample) sampleLines.push({ row, uploadId: c.uploadId });
         }
       }
       await tx.update(importConflicts).set({ status: action === "accept" ? "accepted" : "dismissed", resolvedAt: new Date(), resolvedBy: userId }).where(eq(importConflicts.id, c.id));
       n++;
     }
   });
+  if (action === "accept" && n) {
+    // The accepted order is now the truth: bring the linked samples in line with it, then recalculate everything derived from it
+    // (content matching, deadlines, promise progress, sales attribution). Notes, promises and decisions are not touched.
+    for (const s of sampleLines) await upsertSampleOrders([s.row], s.uploadId);
+    await refreshSamples();
+  }
   return n;
 }

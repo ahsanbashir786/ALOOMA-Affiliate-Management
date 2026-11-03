@@ -60,6 +60,11 @@ export type WorkflowState = {
   nextKind: FollowupKind | null;
   help: { reason: string; nextOn: string; at: Date; by: string | null } | null;
   followups: Followup[];
+  /**
+   * Reminders still open, one per commitment (promiseKey = its "promised" event) plus at most one general reminder (promiseKey null).
+   * A later promise never touches an earlier promise's reminder.
+   */
+  open: Followup[];
 };
 
 export type ReplayConfig = { followUpDays: number; promiseFollowUpDays: number };
@@ -79,31 +84,38 @@ export const emptyState = (username: string): WorkflowState => ({
   nextKind: null,
   help: null,
   followups: [],
+  open: [],
 });
 
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 
 export function replayEvents(username: string, events: StaffEvent[], cfg: ReplayConfig): WorkflowState {
   const st = emptyState(username);
-  let open: Followup | null = null;
+  // Reminders are kept per commitment: key = the "promised" event id, or "general" for the creator-level follow-up.
+  const open = new Map<number | "general", Followup>();
   const promises = new Map<number, string>();
   const refreshPromiseOn = () => {
     st.promises = [...promises].map(([key, dueOn]) => ({ key, dueOn }));
     st.promiseOn = st.promises.length ? st.promises.map((p) => p.dueOn).sort()[0] : null;
   };
-
-  const close = (e: StaffEvent, outcome: FollowupOutcome) => {
-    if (!open) return;
-    open.completedAt = e.at;
-    open.outcome = outcome;
-    open.onTime = outcome === "completed" ? dayKL(e.at) <= open.dueOn : null;
-    st.followups.push(open);
-    open = null;
+  const refreshNext = () => {
+    const list = [...open.values()].sort((a, b) => a.dueOn.localeCompare(b.dueOn));
+    st.nextOn = list[0]?.dueOn ?? null;
+    st.nextKind = list[0]?.kind ?? null;
+    st.open = list;
   };
-  const schedule = (e: StaffEvent, dueOn: string | null, kind: FollowupKind | null, promiseKey: number | null = null) => {
-    st.nextOn = dueOn;
-    st.nextKind = dueOn ? kind : null;
-    if (dueOn && kind) open = { username, dueOn, setAt: e.at, kind, completedAt: null, outcome: null, onTime: null, promiseKey };
+
+  const close = (key: number | "general", e: StaffEvent, outcome: FollowupOutcome) => {
+    const f = open.get(key);
+    if (!f) return;
+    f.completedAt = e.at;
+    f.outcome = outcome;
+    f.onTime = outcome === "completed" ? dayKL(e.at) <= f.dueOn : null;
+    st.followups.push(f);
+    open.delete(key);
+  };
+  const schedule = (key: number | "general", e: StaffEvent, dueOn: string, kind: FollowupKind) => {
+    open.set(key, { username, dueOn, setAt: e.at, kind, completedAt: null, outcome: null, onTime: null, promiseKey: key === "general" ? null : key });
   };
 
   const sorted = events.filter((e) => !e.revertedAt).sort((a, b) => a.at.getTime() - b.at.getTime() || a.id - b.id);
@@ -119,69 +131,78 @@ export function replayEvents(username: string, events: StaffEvent[], cfg: Replay
           st.contactTimes.push(e.at);
           break;
         }
-        close(e, "completed");
+        // A contact answers the reminders that are due (or overdue) and the general one; reminders for promises not yet due stay as they are.
+        close("general", e, "completed");
+        const rearm: number[] = [];
+        for (const [key, f] of [...open]) {
+          if (key !== "general" && f.dueOn <= day) {
+            close(key, e, "completed");
+            rearm.push(key);
+          }
+        }
+        // the promises are still outstanding as far as replay knows (content decides later), so their next look is scheduled
+        for (const key of rearm) if (promises.has(key)) schedule(key, e, addDaysISO(day, cfg.followUpDays), "promise");
+        if (!open.size) schedule("general", e, addDaysISO(day, cfg.followUpDays), "follow_up");
         st.lastContactedAt = e.at;
         st.lastContactedBy = e.userId;
         st.contactTimes.push(e.at);
         st.help = null;
-        // with a promise still to come, the next look is the day after the (current) promised date
-        const ahead = st.promises.filter((p) => p.dueOn >= day).sort((a, b) => a.dueOn.localeCompare(b.dueOn))[0];
-        if (ahead) schedule(e, addDaysISO(ahead.dueOn, cfg.promiseFollowUpDays), "promise", ahead.key);
-        else schedule(e, addDaysISO(day, cfg.followUpDays), "follow_up");
         break;
       }
       case "promised": {
         const promisedOn = str(e.details?.promisedOn);
         if (!promisedOn) break;
-        close(e, "completed"); // the creator answered with a date
+        close("general", e, "completed"); // the creator answered with a date; other promises' reminders are not theirs to close
         promises.set(e.id, promisedOn);
         refreshPromiseOn();
         st.contactTimes = [];
         st.help = null;
-        schedule(e, addDaysISO(promisedOn, cfg.promiseFollowUpDays), "promise", e.id);
+        schedule(e.id, e, addDaysISO(promisedOn, cfg.promiseFollowUpDays), "promise");
         break;
       }
       case "rescheduled": {
         const key = typeof e.details?.promiseEventId === "number" ? e.details.promiseEventId : null;
         const toOn = str(e.details?.toOn);
         if (key == null || !toOn || !promises.has(key)) break;
-        close(e, "rescheduled"); // moving a deadline is not a completed follow-up
+        close(key, e, "rescheduled"); // moving a deadline is not a completed follow-up
         promises.set(key, toOn);
         refreshPromiseOn();
-        schedule(e, addDaysISO(toOn, cfg.promiseFollowUpDays), "promise", key); // only the new deadline drives reminders
+        schedule(key, e, addDaysISO(toOn, cfg.promiseFollowUpDays), "promise"); // only the new deadline drives this promise's reminder
         break;
       }
       case "needs_help": {
-        close(e, "rescheduled");
+        close("general", e, "rescheduled");
         const nextOn = str(e.details?.nextOn) ?? addDaysISO(day, 2);
         st.help = { reason: str(e.details?.reason) ?? "Needs help", nextOn, at: e.at, by: e.userId };
-        schedule(e, nextOn, "help");
+        schedule("general", e, nextOn, "help");
         break;
       }
       case "paused": {
-        close(e, "paused"); // setting work aside is not completing it
+        for (const key of [...open.keys()]) close(key, e, "paused"); // setting work aside is not completing it
         st.status = "paused";
         st.pausedReason = str(e.details?.reason);
         st.pausedAt = e.at;
         st.resumeOn = str(e.details?.resumeOn);
-        schedule(e, st.resumeOn, "resume");
+        if (st.resumeOn) schedule("general", e, st.resumeOn, "resume");
         break;
       }
       case "resumed": {
-        close(e, "cancelled");
+        close("general", e, "cancelled");
         st.status = "active";
         st.pausedReason = null;
         st.pausedAt = null;
         st.resumeOn = null;
         st.contactTimes = [];
-        schedule(e, null, null);
+        // promises that were set aside by the pause become actionable again (never earlier than their own day-after-deadline)
+        for (const [key, dueOn] of promises) if (!open.has(key)) schedule(key, e, [addDaysISO(dueOn, cfg.promiseFollowUpDays), day].sort().pop()!, "promise");
         break;
       }
       default:
         break; // notes change nothing
     }
+    refreshNext();
   }
-  if (open) st.followups.push(open);
+  st.followups.push(...open.values());
   return st;
 }
 

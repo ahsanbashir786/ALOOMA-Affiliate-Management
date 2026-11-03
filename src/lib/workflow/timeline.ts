@@ -50,11 +50,14 @@ export async function getCreatorWorkspace(username: string): Promise<CreatorWork
       select sc.content_id, sc.kind, sc.link, min(sc.posted_at) as at, 'system' as source
       from sample_content sc join samples s on s.id = sc.sample_id
       where s.creator = ${username} and sc.confidence = 'confirmed'
-        and not exists (select 1 from content_decisions d where d.decision = 'rejected' and d.reverted_at is null and d.sample_id = sc.sample_id and d.content_id = sc.content_id)
+        and coalesce((select d.decision from content_decisions d where d.reverted_at is null and d.sample_id = sc.sample_id and d.content_id = sc.content_id order by d.at desc, d.id desc limit 1), '') <> 'rejected'
       group by sc.content_id, sc.kind, sc.link
       union all
-      select d.content_id, 'video', d.link, d.at, 'staff' from content_decisions d
-      where d.username = ${username} and d.decision = 'verified' and d.reverted_at is null`),
+      select d.content_id, 'video', d.link, d.at, 'staff' from (
+        select distinct on (content_id, commitment_id, sample_id) * from content_decisions
+        where username = ${username} and reverted_at is null and content_id is not null
+        order by content_id, commitment_id, sample_id, at desc, id desc) d
+      where d.decision = 'verified'`),
     rows<{ since: number | null; g28: number }>(sql`
       select
         (select coalesce(sum(al.pay) filter (where al.valid), 0)::float8 from ${AL} where al.creator = ${username}

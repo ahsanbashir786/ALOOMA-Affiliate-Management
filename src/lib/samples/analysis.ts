@@ -370,8 +370,8 @@ async function attachCandidates(lines: SampleLine[]): Promise<void> {
     select sc.sample_id as sid, sc.content_id as cid, sc.kind, sc.link, to_char(sc.posted_at, 'YYYY-MM-DD') as at, sc.views, sc.reason
     from sample_content sc
     where sc.confidence = 'uncertain' and sc.sample_id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})
-      and not exists (select 1 from content_decisions d where d.decision = 'rejected' and d.reverted_at is null
-        and d.sample_id = sc.sample_id and d.content_id = sc.content_id)
+      and coalesce((select d.decision from content_decisions d where d.reverted_at is null and d.sample_id = sc.sample_id
+        and d.content_id = sc.content_id order by d.at desc, d.id desc limit 1), '') <> 'rejected'
     order by sc.posted_at desc nulls last`);
   const by = new Map(lines.map((l) => [l.id, l]));
   for (const f of found) by.get(f.sid)?.candidates.push({ contentId: f.cid, kind: f.kind, link: f.link, postedAt: f.at, views: f.views, reason: f.reason });

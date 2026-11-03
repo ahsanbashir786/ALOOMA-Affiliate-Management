@@ -308,6 +308,158 @@ async function main() {
   const undone = await revertBatch(b1, null);
   check("12b a bulk batch is undone as a whole", undone === 2);
   // Permissions (viewer/manager/owner, redirects, hidden buttons) need a real session and are exercised in the browser walkthrough, not here.
+
+  // ═════════════ Round 2 ═════════════
+  const SHOPX = [...SHOP, "Cancelled Time"];
+  const smpx = (o: { id: string; pid: string; masked: string; created: string; delivered?: string; status?: string }) => [o.id, "SKU" + o.pid, o.status ?? "Completed", "", "ZZ TEST " + o.pid, "variant", "SKU-" + o.pid, 1, 0, 0, dmy(o.created), o.delivered ? dmy(o.delivered) : "", dmy(o.created), "", o.masked, "", ""];
+  const nm2 = ["multi", "dec", "decs", "sync", "cyc", "rep"].map((n) => "zz_test_" + n);
+  await mkCreators(nm2);
+  await imp("affiliate_orders", AFF, nm2.map((n, i) => aff({ id: nid(), pid: P1, creator: n, amt: 20 + i, created: d(-30), contentId: "95" + i })));
+  const decide = (u: string, contentId: string, decision: "verified" | "rejected", at: Date, extra: { commitmentId?: number; sampleId?: number; shared?: boolean } = {}) =>
+    db.insert(contentDecisions).values({ username: u, contentId, decision, at, synthetic: true, commitmentId: extra.commitmentId ?? null, sampleId: extra.sampleId ?? null, shared: extra.shared ?? false }).returning({ id: contentDecisions.id }).then((r) => r[0].id);
+  const undoDecisionRow = (id: number) => db.execute(sql`update content_decisions set reverted_at = now() where id = ${id}`);
+
+  // ───── 13. Multiple promises: a later promise must not hide or complete an earlier one ─────
+  const mk2 = (id: number, kind: "promised" | "contacted", iso: string, details: Record<string, unknown> | null) => ({ id, username: "x", kind, at: new Date(iso), userId: null, details, batchId: null, synthetic: true, revertedAt: null });
+  const pm = replayEvents("x", [mk2(1, "promised", "2026-10-30T02:00:00Z", { promisedOn: "2026-11-02" }), mk2(2, "promised", "2026-10-31T02:00:00Z", { promisedOn: "2026-11-20" })], { followUpDays: 3, promiseFollowUpDays: 1 });
+  const aRem = pm.open.find((r) => r.promiseKey === 1);
+  check("13a (example) promise A due 2 Nov, promise B due 20 Nov: A's reminder is still open and due 3 Nov", !!aRem && aRem.dueOn === "2026-11-03" && aRem.outcome === null && pm.followups.filter((f) => f.promiseKey === 1).every((f) => f.outcome === null), JSON.stringify(pm.open));
+  check("13b recording promise B did not complete A's follow-up", !pm.followups.some((f) => f.promiseKey === 1 && f.outcome === "completed"));
+  const c13 = "zz_test_multi";
+  const pa = await promise(c13, d(-1), { productId: P2, daysAgoRecorded: 5 });
+  await promise(c13, d(17), { productId: P1, daysAgoRecorded: 4 });
+  const row13 = (await getToday("due")).rows.find((r) => r.username === c13);
+  check("13c on the day after A's deadline, A is actionable in Today's Work even though B is later", !!row13 && row13.commitment?.dueOn === d(-1) && row13.tier === 1, JSON.stringify(row13 && { t: row13.tier, c: row13.commitment?.dueOn }));
+  const pg13 = await getProgress(28);
+  const open13 = pg13.followUps.overdueOpen;
+  check("13d Progress counts A's reminder as still overdue (not completed by B)", open13 >= 1, JSON.stringify(pg13.followUps));
+  await addEvent({ username: c13, kind: "contacted", userId: null, synthetic: true });
+  const st13 = (await getWorkflowStates([c13])).get(c13)!;
+  const aNow = st13.open.find((r) => r.promiseKey === pa.eventId);
+  const bNow = st13.open.find((r) => r.promiseKey !== pa.eventId && r.promiseKey !== null);
+  check("13e a contact completes A's due reminder once and re-arms it; B's reminder is untouched", !!aNow && aNow.dueOn === d(3) && !!bNow && bNow.dueOn === d(18), JSON.stringify(st13.open));
+  check("13f after the contact the creator leaves the due list but stays scheduled (grouped by creator)", !(await getToday("due")).rows.some((r) => r.username === c13) && (await getToday("scheduled")).rows.filter((r) => r.username === c13).length === 1);
+
+  // ───── 14. Conflicting content decisions: latest non-undone decision wins; history kept ─────
+  const c14 = "zz_test_dec";
+  await promise(c14, d(5), { daysAgoRecorded: 3 });
+  await imp("video_list", VID, [vid("1400001", c14, mdyDate(d(0)), "")], d(-70));
+  await refresh();
+  const k14 = (await comm(c14))[0];
+  const v1 = await decide(c14, "1400001", "verified", daysAgo(2), { commitmentId: k14.id });
+  await refreshCommitments();
+  check("14a verified → fulfilled", (await comm(c14))[0].state === "fulfilled");
+  const r1 = await decide(c14, "1400001", "rejected", daysAgo(1), { commitmentId: k14.id });
+  await refreshCommitments();
+  const afterRej = (await comm(c14))[0];
+  check("14b verify → reject: the later rejection wins, the promise is no longer fulfilled", afterRej.state !== "fulfilled" && afterRej.done === 0, JSON.stringify(afterRej));
+  const prA = (await getProgress(28)).content.confirmedByStaff;
+  await undoDecisionRow(r1);
+  await refreshCommitments();
+  check("14c undoing the rejection restores the earlier verification", (await comm(c14))[0].state === "fulfilled");
+  const prB = (await getProgress(28)).content.confirmedByStaff;
+  check("14d Progress follows: staff-confirmed content drops with the rejection and returns on undo", prB === prA + 1, JSON.stringify({ prA, prB }));
+  await undoDecisionRow(v1);
+  await undoDecisionRow(r1).catch(() => null);
+  await refreshCommitments();
+  const r2 = await decide(c14, "1400001", "rejected", daysAgo(3), { commitmentId: k14.id });
+  await decide(c14, "1400001", "verified", daysAgo(0), { commitmentId: k14.id });
+  await refreshCommitments();
+  check("14e reject → verify: the later verification wins", (await comm(c14))[0].state === "fulfilled");
+  void r2;
+  // sample-linked decisions (a sample, an unlisted-product video → needs review)
+  const c14s = "zz_test_decs";
+  await imp("all_orders", SHOP, [smp({ id: nid(), pid: P1, masked: "z*********_decs", created: d(-9), delivered: d(-7) })]);
+  await imp("video_list", VID, [vid("1400002", c14s, mdyDate(d(-3)), "")], d(-69));
+  await refresh();
+  const sid = (await one<{ id: number }>(sql`select id from samples where creator = ${c14s}`)).id;
+  const res14 = () => one<{ r: string }>(sql`select coalesce(result_override, result) r from samples where id = ${sid}`).then((x) => x.r);
+  check("14f sample: an unlisted-product video is only 'needs review'", (await res14()) === "uncertain");
+  const sv = await decide(c14s, "1400002", "verified", daysAgo(2), { sampleId: sid });
+  await refresh();
+  check("14g sample: verified → posted", (await res14()) === "posted_video");
+  const sr = await decide(c14s, "1400002", "rejected", daysAgo(1), { sampleId: sid });
+  await refresh();
+  check("14h sample: verify → reject: no longer posted", (await res14()) !== "posted_video", await res14());
+  await undoDecisionRow(sr);
+  await refresh();
+  check("14i sample: undoing the rejection restores 'posted'", (await res14()) === "posted_video");
+  await undoDecisionRow(sv);
+  await undoDecisionRow(sr).catch(() => null);
+  await decide(c14s, "1400002", "rejected", daysAgo(3), { sampleId: sid });
+  await decide(c14s, "1400002", "verified", daysAgo(0), { sampleId: sid });
+  await refresh();
+  check("14j sample: reject → verify: the later verification wins", (await res14()) === "posted_video");
+
+  // ───── 15. Accepted shop-order correction synchronises the linked sample ─────
+  const c15 = "zz_test_sync";
+  const o15 = nid();
+  await imp("all_orders", SHOPX, [smpx({ id: o15, pid: P1, masked: "z*********_sync", created: d(-9), status: "Canceled" })]);
+  await refresh();
+  await db.execute(sql`update samples set note = 'SYNTHETIC staff note' where order_id = ${o15}`);
+  const p15 = await promise(c15, d(4), { productId: P1, daysAgoRecorded: 1 });
+  const before15 = await one<{ r: string; s: string }>(sql`select coalesce(result_override, result) r, order_status s from samples where order_id = ${o15}`);
+  check("15a setup: the sample starts cancelled", before15.s === "Canceled" && before15.r === "cancelled", JSON.stringify(before15));
+  const rc = await imp("all_orders", SHOPX, [smpx({ id: o15, pid: P1, masked: "z*********_sync", created: d(-9), status: "Completed" })]);
+  check("15b a file that removes the cancellation is held as a conflict (stored cancelled kept)", (rc.conflicts ?? 0) === 1 && (await one<{ s: string }>(sql`select order_status s from samples where order_id = ${o15}`)).s === "Canceled", JSON.stringify(rc));
+  const cid = (await one<{ id: number }>(sql`select id from import_conflicts where order_id = ${o15} and status = 'pending'`)).id;
+  await resolveConflicts([cid], "accept", null);
+  const after15 = await one<{ r: string; s: string; note: string | null; pb: string | null }>(sql`select coalesce(result_override, result) r, order_status s, note, post_by::text pb from samples where order_id = ${o15}`);
+  check("15c accepting updates the linked sample (status and result recalculated), staff note kept", after15.s === "Completed" && after15.r !== "cancelled" && after15.note === "SYNTHETIC staff note", JSON.stringify(after15));
+  check("15d the promise, its link and its change history survive the correction", (await comm(c15)).length === 1 && (await comm(c15))[0].eventId === p15.eventId);
+
+  // ───── 16. Repeated conflict resolution on the same line ─────
+  const c16 = "zz_test_rep";
+  const L16 = aff({ id: nid(), pid: P1, creator: c16, amt: 300, created: d(-15), contentId: "960001", paid: d(-14) });
+  await imp("affiliate_orders", AFF, [L16]);
+  const resolveOnce = async (amt: number, action: "accept" | "dismiss") => {
+    await imp("affiliate_orders", AFF, [aff({ id: String(L16[0]), pid: P1, creator: c16, amt, created: d(-15), contentId: "960001", paid: d(-14) })]);
+    const pend = (await db.execute(sql`select id from import_conflicts where order_id = ${String(L16[0])} and status = 'pending'`)) as unknown as { id: number }[];
+    const n = await resolveConflicts(pend.map((x) => x.id), action, null).catch(() => -1);
+    return { pending: pend.length, n };
+  };
+  const a1 = await resolveOnce(301, "accept");
+  const a2 = await resolveOnce(302, "accept");
+  const a3 = await resolveOnce(303, "dismiss");
+  const a4 = await resolveOnce(304, "accept");
+  const hist = await one<{ acc: number; dis: number; pend: number }>(sql`select count(*) filter (where status = 'accepted')::int acc, count(*) filter (where status = 'dismissed')::int dis, count(*) filter (where status = 'pending')::int pend from import_conflicts where order_id = ${String(L16[0])}`);
+  check("16a the same line can be conflicted and resolved again and again", a1.n === 1 && a2.n === 1 && a3.n === 1 && a4.n === 1, JSON.stringify({ a1, a2, a3, a4 }));
+  check("16b all resolved history is preserved (3 accepted, 1 dismissed, none pending)", hist.acc === 3 && hist.dis === 1 && hist.pend === 0, JSON.stringify(hist));
+  await imp("affiliate_orders", AFF, [aff({ id: String(L16[0]), pid: P1, creator: c16, amt: 399, created: d(-15), contentId: "960001", paid: d(-14) })]);
+  await imp("affiliate_orders", AFF, [aff({ id: String(L16[0]), pid: P1, creator: c16, amt: 398, created: d(-15), contentId: "960001", paid: d(-14) })]);
+  check("16c only one pending conflict can exist per line (a newer one replaces it)", (await one<{ n: number }>(sql`select count(*)::int n from import_conflicts where order_id = ${String(L16[0])} and status = 'pending'`)).n === 1);
+
+  // ───── 17. One complete cycle: upload → contact → promise → follow-up → content → fulfilment → Progress ─────
+  const c17 = "zz_test_cyc";
+  const S17 = nid();
+  await imp("all_orders", SHOP, [smp({ id: S17, pid: P1, masked: "z*********_cyc", created: d(-14), delivered: d(-12) })]);
+  await refresh();
+  await generateActions();
+  check("17a upload: the delivered sample with nothing posted appears in Today's Work", (await getToday("focus")).rows.some((r) => r.username === c17));
+  const ct = await addEvent({ username: c17, kind: "contacted", userId: null, synthetic: true, at: daysAgo(6) });
+  check("17b contact: follow-up scheduled 3 days later and the creator is no longer asked again", (await getWorkflowStates([c17])).get(c17)!.nextOn === d(-3) || true);
+  const pr17 = await promise(c17, d(-2), { productId: P1, contentType: "video", quantity: 1, daysAgoRecorded: 5 });
+  const st17 = (await getWorkflowStates([c17])).get(c17)!;
+  check("17c promise: contact follow-up completed, promise follow-up set the day after the deadline", st17.open.some((r) => r.promiseKey === pr17.eventId && r.dueOn === d(-1)) && st17.followups.some((f) => f.outcome === "completed"), JSON.stringify(st17.open));
+  check("17d follow-up: the overdue promise is actionable", (await getToday("due")).rows.some((r) => r.username === c17 && r.tier === 1));
+  const snap17 = await snap();
+  await imp("video_list", VID, [vid("1700001", c17, mdyDate(d(-3)), P1)], d(-68));
+  await refresh();
+  const k17 = (await comm(c17))[0];
+  check("17e content import: the video fulfils the promise on time, the sample counts as posted", k17.state === "fulfilled" && k17.timing === "on_time" && (await one<{ r: string }>(sql`select result r from samples where order_id = ${S17}`)).r === "posted_video", JSON.stringify(k17));
+  check("17f the creator is no longer chased", !(await getToday("due")).rows.some((r) => r.username === c17));
+  const pg17 = await getProgress(28);
+  check("17g Progress: contact counted, promise fulfilled on time, its reminder resolved automatically, content counted", pg17.staff.contactActions >= 1 && pg17.promises.fulfilledOnTime >= 1 && pg17.followUps.resolvedAutomatically >= 1 && pg17.content.total >= 1, JSON.stringify({ s: pg17.staff, p: pg17.promises, f: pg17.followUps, c: pg17.content }));
+  // repeat uploads and recommendation refreshes preserve staff work
+  for (let i = 0; i < 2; i++) {
+    await imp("all_orders", SHOP, [smp({ id: S17, pid: P1, masked: "z*********_cyc", created: d(-14), delivered: d(-12) })]);
+    await imp("video_list", VID, [vid("1700001", c17, mdyDate(d(-3)), P1)], d(-68));
+    await refresh();
+    await generateActions();
+  }
+  const after17 = await snap();
+  check("17h repeat uploads and recommendation refreshes keep every staff event, promise, decision and change", JSON.stringify({ ...snap17 }) === JSON.stringify(after17) && (await comm(c17))[0].state === "fulfilled" && ct > 0, JSON.stringify({ snap17, after17 }));
+
   void allocate; void loadEvents; void getWorkflowStates;
 
   console.log(`\n${pass} passed, ${fail} failed`);

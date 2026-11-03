@@ -249,7 +249,7 @@ async function versionedWrite(cfg: {
     await D().execute(sql`
       insert into import_conflicts (kind, order_id, sku_id, upload_id, reason, stored, incoming)
       values (${cfg.kind}, ${c.orderId}, ${c.skuId}, ${cfg.uploadId}, ${c.reason}, ${JSON.stringify(c.stored)}::jsonb, ${JSON.stringify(c.incoming)}::jsonb)
-      on conflict (kind, order_id, sku_id, status) do update set reason = excluded.reason, incoming = excluded.incoming, upload_id = excluded.upload_id, created_at = now()`);
+      on conflict (kind, order_id, sku_id) where status = 'pending' do update set reason = excluded.reason, incoming = excluded.incoming, upload_id = excluded.upload_id, created_at = now()`);
   }
   return { written, added, updated, unchanged, skippedOlder, conflicts: conflicts.length };
 }
@@ -755,7 +755,8 @@ function isSampleLine(r: RowObj): boolean {
   );
 }
 
-async function upsertSampleOrders(lines: (typeof shopOrderLines.$inferInsert)[], uploadId: number): Promise<number> {
+/** Writes free-sample order lines into the sample tracker (staff notes, owners, follow-ups and corrections are never touched). */
+export async function upsertSampleOrders(lines: (typeof shopOrderLines.$inferInsert)[], uploadId: number | null): Promise<number> {
   if (!lines.length) return 0;
   const rows = lines.map((l) => ({
     source: "orders",

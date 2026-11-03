@@ -160,8 +160,8 @@ async function attributeSales(ids?: number[]): Promise<void> {
       select al.order_id, al.sku_id, sp.id as sample_id, sp.creator, sp.pid, sp.delivered_at, al.content_id, al.pay,
         (al.content_type = 'Livestream'
           or (ci.posted_at is not null and ${postedAfterDelivery("ci.posted_at", "sp.delivered_at")})
-          or exists (select 1 from content_decisions d where d.decision = 'verified' and d.reverted_at is null
-               and d.content_id = al.content_id and d.username = sp.creator and (d.sample_id = sp.id or d.sample_id is null))) as is_content
+          or (select d.decision from content_decisions d where d.reverted_at is null and d.content_id = al.content_id
+               and d.username = sp.creator and (d.sample_id = sp.id or d.sample_id is null) order by d.at desc, d.id desc limit 1) = 'verified') as is_content
       from sp
       join ${AL} on al.creator = sp.creator and al.product_id = sp.pid and al.created_at >= sp.delivered_at and al.valid
       left join content_items ci on ci.content_id = al.content_id
@@ -182,8 +182,9 @@ async function attributeSales(ids?: number[]): Promise<void> {
  * then "not posted". Sales figures are read from sample_sales.
  */
 async function computeSampleResults(postDays: number, ids?: number[]): Promise<void> {
-  const notRejected = sql`not exists (select 1 from content_decisions d where d.decision = 'rejected' and d.reverted_at is null
-    and d.sample_id = sc.sample_id and d.content_id = sc.content_id)`;
+  // The latest non-undone decision for this sample and content wins (a later verification lifts an earlier rejection and vice versa).
+  const notRejected = sql`coalesce((select d.decision from content_decisions d where d.reverted_at is null
+    and d.sample_id = sc.sample_id and d.content_id = sc.content_id order by d.at desc, d.id desc limit 1), '') <> 'rejected'`;
   await db.execute(sql`
     with ref as (
       select greatest(
@@ -203,7 +204,11 @@ async function computeSampleResults(postDays: number, ids?: number[]): Promise<v
     unc as (select sample_id, count(*)::int as n from sample_content sc where sc.confidence = 'uncertain' and ${notRejected} group by sample_id),
     ver as (
       select sample_id, count(*)::int as n, min(link) as link, min(content_id) as cid, min(at) as at
-      from content_decisions where decision = 'verified' and sample_id is not null and reverted_at is null group by sample_id
+      from (
+        select distinct on (sample_id, content_id) sample_id, content_id, link, at, decision
+        from content_decisions where reverted_at is null and sample_id is not null and content_id is not null
+        order by sample_id, content_id, at desc, id desc
+      ) latest where decision = 'verified' group by sample_id
     ),
     agreed as (
       -- the earliest CURRENT deadline among commitments for this sample that are still outstanding (same state the queue uses)

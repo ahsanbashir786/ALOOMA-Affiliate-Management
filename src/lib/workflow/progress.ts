@@ -180,8 +180,12 @@ export async function getProgress(days: number, endDay?: string): Promise<Progre
       where ci.posted_at is null and ci.first_observed_on between ${start}::date and ${end}::date and ci.first_observed_on > fc.d
     ),
     staffv as (
-      select distinct d.content_id, d.username as creator from content_decisions d
-      where d.decision = 'verified' and d.reverted_at is null and d.content_id is not null
+      -- only verifications still in force: the latest non-undone decision for the same content and scope must be a verification
+      select distinct d.content_id, d.username as creator from (
+        select distinct on (username, content_id, commitment_id, sample_id) * from content_decisions
+        where reverted_at is null and content_id is not null
+        order by username, content_id, commitment_id, sample_id, at desc, id desc) d
+      where d.decision = 'verified'
         and (d.at at time zone 'Asia/Kuala_Lumpur')::date between ${start}::date and ${end}::date
     ),
     allc as (select content_id, creator from dated union select content_id, creator from undated union select content_id, creator from staffv)

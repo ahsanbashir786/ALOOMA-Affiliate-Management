@@ -66,7 +66,7 @@ shipped, delivered, cancelled, commission paid). So each order line's freshness 
 | same stamp, but a **new** cancellation / return / refund appears | applied – these carry no timestamp of their own, and statuses do not move in a straight line (a delivered order can be returned later) |
 | same stamp, but a stored cancellation / return / refund **disappears** | **not** applied – listed to review |
 
-*Deliberate correction:* in Data hub, "Keep what is stored" or "The file is newer – use its version" resolves the listed lines; who
+*Deliberate correction:* accepting a shop-order correction also updates the linked sample (delivery, status), then recalculates content matching, deadlines, promise progress and sales attribution; staff notes, promises and decisions are untouched. In Data hub, "Keep what is stored" or "The file is newer – use its version" resolves the listed lines; who
 decided and when is recorded. *Limitation:* if two exports differ only in a way that has no timestamp and is not a cancellation/return/refund,
 the stored version wins until a person decides. Report snapshots (video/creator files) are replaced per report period, newest upload wins.
 
@@ -84,6 +84,8 @@ the stored version wins until a person decides. Report snapshots (video/creator 
 * A promise belongs to a creator and exists **without any sample**. Optional, structured: content type (video/LIVE), product, quantity. Free text is kept for reading and is **never** parsed for quantities or products.
 * Fulfilled = the required number of **distinct** pieces of the right type and product, with a **known posting date** on/after the day the promise was recorded – or confirmed by staff. No agreed product ⇒ the system only suggests matches (review).
 * Each content piece counts once and is used by one promise unless staff deliberately record shared use. Duplicate imports and repeated verification never count twice.
+* **Reminders are per promise.** A later promise never hides, completes or replaces an earlier promise's reminder; creators are only grouped for display. A contact answers the reminders that are due, not promises still to come.
+* **Latest decision wins.** For the same content and scope, the latest non-undone verify/reject decides; earlier ones stay in the history, and undoing the latest restores the previous one. Samples, promises and Progress all follow it.
 * Moving a date is a **reschedule** (original kept, change recorded, only the current deadline drives reminders); it is not a new promise. Sample deadlines and the daily queue both use the **earliest outstanding current deadline**.
 
 ## Reporting periods

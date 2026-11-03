@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { commitmentChanges, commitments } from "@/db/schema";
 import { rows } from "@/lib/analytics/sql";
 import { sampleProducts } from "@/lib/samples/pid";
-import { allocate, type CommitmentInput, type ContentPiece, type DecisionInput } from "./fulfilment";
+import { allocate, effectiveDecision, type CommitmentInput, type ContentPiece, type DecisionInput } from "./fulfilment";
 
 /**
  * A commitment is a promise a creator made: a date, and optionally a content type, a product and a quantity.
@@ -114,8 +114,8 @@ export async function refreshCommitments(): Promise<void> {
   const items = await rows<{ content_id: string; creator: string; kind: string; product_ids: string[]; posted_on: string | null; first_on: string | null }>(sql`
     select content_id, creator, kind, product_ids, to_char(posted_at, 'YYYY-MM-DD') as posted_on, to_char(first_observed_on, 'YYYY-MM-DD') as first_on
     from content_items where creator in (${inUsers})`);
-  const decs = await rows<{ username: string; content_id: string | null; decision: string; commitment_id: number | null; sample_id: number | null; shared: boolean; decided_on: string }>(sql`
-    select username, content_id, decision, commitment_id, sample_id, shared, to_char(at at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as decided_on
+  const decs = await rows<{ id: number; at: Date | string; username: string; content_id: string | null; decision: string; commitment_id: number | null; sample_id: number | null; shared: boolean; decided_on: string }>(sql`
+    select id, at, username, content_id, decision, commitment_id, sample_id, shared, to_char(at at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as decided_on
     from content_decisions where reverted_at is null and content_id is not null and username in (${inUsers})`);
 
   const out: (typeof import("@/db/schema").commitmentStatus.$inferInsert)[] = [];
@@ -137,6 +137,8 @@ export async function refreshCommitments(): Promise<void> {
     const decisions: DecisionInput[] = decs
       .filter((d) => d.username === u && d.content_id)
       .map((d) => ({
+        id: d.id,
+        at: new Date(d.at).toISOString(),
         contentId: d.content_id!,
         decision: d.decision === "verified" ? "verified" : "rejected",
         commitmentId: d.commitment_id,
@@ -191,13 +193,19 @@ export async function getCommitments(usernames?: string[]): Promise<CommitmentRo
         select content_id, kind, link, to_char(posted_at, 'YYYY-MM-DD') as posted_on from content_items where content_id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`)
     : [];
   const byItem = new Map(items.map((i) => [i.content_id, i]));
-  const verified = r.length
-    ? await rows<{ commitment_id: number | null; sample_id: number | null; content_id: string }>(sql`
-        select commitment_id, sample_id, content_id from content_decisions where decision = 'verified' and reverted_at is null and content_id is not null
+  const decRows = r.length
+    ? await rows<{ id: number; at: Date | string; commitment_id: number | null; sample_id: number | null; content_id: string; decision: string; shared: boolean }>(sql`
+        select id, at, commitment_id, sample_id, content_id, decision, shared from content_decisions where reverted_at is null and content_id is not null
           and username in (${sql.join([...new Set(r.map((x) => x.username))].map((x) => sql`${x}`), sql`, `)})`)
     : [];
   return r.map((x) => {
-    const staff = verified.some((v) => x.content_ids.includes(v.content_id) && (v.commitment_id === x.id || (v.commitment_id == null && v.sample_id != null && x.sample_ids.includes(v.sample_id))));
+    // "staff" when at least one counted piece is held up by a verification that is still the latest decision for it
+    const mine: DecisionInput[] = decRows.map((v) => ({
+      id: v.id, at: new Date(v.at).toISOString(), contentId: v.content_id, decision: v.decision === "verified" ? "verified" : "rejected",
+      commitmentId: v.commitment_id, sampleLinked: v.sample_id != null, shared: v.shared, decidedOn: "",
+      appliesTo: v.commitment_id != null ? [v.commitment_id] : v.sample_id != null && x.sample_ids.includes(v.sample_id) ? [x.id] : [],
+    }));
+    const staff = x.content_ids.some((id) => effectiveDecision({ id: x.id }, id, mine)?.decision === "verified");
     return {
       id: x.id,
       eventId: x.event_id,

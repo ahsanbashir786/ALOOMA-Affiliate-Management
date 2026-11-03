@@ -62,22 +62,13 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
     db.select().from(recommendations).where(sql`${recommendations.active}`),
   ]);
 
-  // Outstanding = not fulfilled. The earliest current deadline wins, exactly as for sample deadlines.
-  const openComm = new Map<string, CommitmentRow>();
-  const otherCount = new Map<string, number>();
-  for (const c of comms) {
-    if (c.state === "fulfilled") continue;
-    const prev = openComm.get(c.username);
-    if (!prev) openComm.set(c.username, c);
-    else {
-      otherCount.set(c.username, (otherCount.get(c.username) ?? 0) + 1);
-      if (c.dueOn < prev.dueOn) openComm.set(c.username, c);
-    }
-  }
+  // Outstanding = not fulfilled. Reminders are decided per commitment below; creators are only grouped for display.
+  const outsBy = new Map<string, CommitmentRow[]>();
+  for (const c of comms) if (c.state !== "fulfilled") outsBy.set(c.username, [...(outsBy.get(c.username) ?? []), c].sort((x, y) => x.dueOn.localeCompare(y.dueOn) || x.id - y.id));
   const recBy = new Map<string, typeof recRows>();
   for (const r of recRows) recBy.set(r.username, [...(recBy.get(r.username) ?? []), r]);
 
-  const names = new Set<string>([...recBy.keys(), ...openComm.keys()]);
+  const names = new Set<string>([...recBy.keys(), ...outsBy.keys()]);
   for (const [u, st] of states) if (st.nextOn || st.status === "paused") names.add(u);
   const list = [...names];
 
@@ -124,7 +115,12 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
     const inf = infoBy.get(u);
     if (inf?.dnc) continue;
     const st = states.get(u);
-    const comm = openComm.get(u) ?? null;
+    const outs = outsBy.get(u) ?? [];
+    const reminderFor = (c: CommitmentRow) => st?.open.find((r) => r.promiseKey === c.eventId) ?? null;
+    // A promise is actionable when its own deadline has passed and its own reminder (if any) is due – other promises never hide it.
+    const actionable = outs.filter((c) => c.dueOn < today && (reminderFor(c)?.dueOn ?? c.dueOn) <= today);
+    const reviewC = outs.find((c) => c.candidates.length > 0) ?? null;
+    const comm = actionable[0] ?? reviewC ?? outs[0] ?? null;
     const recs = (recBy.get(u) ?? []).sort((a, b) => b.priority - a.priority);
     const reasons: TodayRow["reasons"] = [];
     let tier: TodayRow["tier"] | null = null;
@@ -138,44 +134,41 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
         tier = 2;
       } else held = `Paused${st?.pausedReason ? `: ${st.pausedReason}` : ""}${st?.resumeOn ? ` · until ${fmtDayLabel(st.resumeOn)}` : ""}`;
     } else {
-      // an overdue promise is chased once: after staff act (contacted / needs help) the next date they set decides
-      const scheduledAhead = !!st?.nextOn && st.nextOn > today;
-      if (comm && comm.dueOn < today && !scheduledAhead) {
-        const late = daysBetweenISO(comm.dueOn, today);
-        const parts = comm.needed > 1 ? ` – ${comm.done}/${comm.needed} done` : "";
+      const overdue = actionable[0] ?? null;
+      if (overdue) {
+        const late = daysBetweenISO(overdue.dueOn, today);
+        const parts = overdue.needed > 1 ? ` – ${overdue.done}/${overdue.needed} done` : "";
         reasons.push({
           kind: "promise_overdue",
-          text: `Promised ${fmtDayLabel(comm.dueOn)}${comm.rescheduled ? " (moved)" : ""} (${late} day${late === 1 ? "" : "s"} ago)${parts} – no matching content seen yet${comm.state === "review" ? "; possible match to review" : ""}.`,
+          text: `Promised ${fmtDayLabel(overdue.dueOn)}${overdue.rescheduled ? " (moved)" : ""} (${late} day${late === 1 ? "" : "s"} ago)${parts} – no matching content seen yet${overdue.state === "review" ? "; possible match to review" : ""}.${actionable.length > 1 ? ` (${actionable.length} promises overdue)` : ""}`,
         });
         tier = 1;
       }
       // Possible content for a promise needs a quick yes/no, whatever the date.
-      if (comm && comm.candidates.length && tier == null) {
-        reasons.push({ kind: "promise_review", text: `Possible content for the promise (${comm.candidates.length}) – confirm or reject it.` });
+      if (reviewC && tier == null) {
+        reasons.push({ kind: "promise_review", text: `Possible content for the promise (${reviewC.candidates.length}) – confirm or reject it.` });
         tier = 2;
       }
-      if (st?.nextOn && st.nextOn <= today && st.nextKind && st.nextKind !== "resume") {
-        // a promise follow-up whose promise is already fulfilled needs no chasing
-        const fulfilledAlready = st.nextKind === "promise" && !comm;
-        if (!fulfilledAlready && st.nextKind !== "promise") {
-          const over = daysBetweenISO(st.nextOn, today);
-          reasons.push({
-            kind: st.nextKind === "help" ? "help_due" : "followup_due",
-            text:
-              st.nextKind === "help"
-                ? `Needs-help follow-up ${over > 0 ? `was due ${fmtDayLabel(st.nextOn)}` : "is due today"}${st.help ? `: ${st.help.reason}` : ""}.`
-                : `Follow-up ${over > 0 ? `was due ${fmtDayLabel(st.nextOn)}` : "is due today"} (last contacted ${st.lastContactedAt ? fmtDayLabel(st.lastContactedAt.toISOString().slice(0, 10)) : "–"}).`,
-          });
-          tier = tier ?? 2;
-        }
+      const g = st?.open.find((r) => r.promiseKey === null && r.kind !== "resume") ?? null;
+      if (g && g.dueOn <= today) {
+        const over = daysBetweenISO(g.dueOn, today);
+        reasons.push({
+          kind: g.kind === "help" ? "help_due" : "followup_due",
+          text:
+            g.kind === "help"
+              ? `Needs-help follow-up ${over > 0 ? `was due ${fmtDayLabel(g.dueOn)}` : "is due today"}${st?.help ? `: ${st.help.reason}` : ""}.`
+              : `Follow-up ${over > 0 ? `was due ${fmtDayLabel(g.dueOn)}` : "is due today"} (last contacted ${st?.lastContactedAt ? fmtDayLabel(st.lastContactedAt.toISOString().slice(0, 10)) : "–"}).`,
+        });
+        tier = tier ?? 2;
       }
       if (tier == null) {
-        // System recommendations only appear when nothing already covers this creator: no scheduled follow-up,
+        // System recommendations only appear when nothing already covers this creator: no scheduled reminder,
         // no promise still to come, no pause (so the same person is never chased twice for the same thing).
-        const future = st?.nextOn && st.nextOn > today ? st.nextOn : null;
-        const promiseAhead = comm && comm.dueOn >= today ? comm.dueOn : null;
+        const future = st?.open.filter((r) => r.dueOn > today).map((r) => r.dueOn).sort()[0] ?? null;
+        const promiseAhead = outs.find((c) => c.dueOn >= today)?.dueOn ?? null;
         if (future || promiseAhead) {
-          held = promiseAhead ? `Promised ${fmtDayLabel(promiseAhead)} – waiting` : `Follow-up on ${fmtDayLabel(future!)}`;
+          const overdueRearmed = outs.some((c) => c.dueOn < today);
+          held = promiseAhead && !(overdueRearmed && future) ? `Promised ${fmtDayLabel(promiseAhead)} – waiting` : `Follow-up on ${fmtDayLabel(future!)}`;
         } else if (recs.length) {
           const sampleRec = recs.some((r) => SAMPLE_TYPES.has(r.type));
           tier = sampleRec ? 3 : 4;
@@ -200,7 +193,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
       lastContactedBy: st?.lastContactedBy ? (userBy.get(st.lastContactedBy) ?? null) : null,
       help: st?.help ? { reason: st.help.reason, nextOn: st.help.nextOn } : null,
       commitment: comm,
-      otherCommitments: otherCount.get(u) ?? 0,
+      otherCommitments: Math.max(0, outs.length - 1),
       suggest: (() => {
         const mine = actBy.get(u) ?? [];
         const open = (samplesBy.get(u) ?? []).filter((x) => x.pid).map((x) => ({ id: x.pid!, name: x.product }));

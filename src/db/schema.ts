@@ -15,6 +15,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["admin", "manager", "viewer"]);
 
@@ -664,7 +665,7 @@ export const importConflicts = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
   },
-  (t) => [uniqueIndex("import_conflicts_line_uq").on(t.kind, t.orderId, t.skuId, t.status), index("import_conflicts_status_idx").on(t.status)],
+  (t) => [uniqueIndex("import_conflicts_pending_uq").on(t.kind, t.orderId, t.skuId).where(sql`${t.status} = 'pending'`), index("import_conflicts_status_idx").on(t.status)],
 );
 
 /** Written by `npm run db:migrate`. Declared here so `drizzle-kit push` never offers to drop it. */

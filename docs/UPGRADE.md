@@ -35,6 +35,7 @@ backup is untouched. To go back: `pg_restore --clean -d "$DATABASE_URL" backup-b
 | `0001_workflow_foundation` | Adds the Today's Work tables (staff events, promises, recommendations, content decisions). |
 | `0002_commitments_content_attribution` | Adds promise details (type, quantity), reschedule history, the general content table, the single sales-attribution table and the import-conflicts table. Existing promises keep their date; their product is filled in only when all their samples were one product. Order lines get a per-line freshness stamp (their own latest timestamp). |
 | `0003_legacy_actions` | **The old Action centre is kept exactly as it was** (notes, assignees, statuses – readable on each creator's timeline, labelled "Earlier Action centre"). Only actions marked **Sent** that have a recorded completion time become one "Contacted" event, at that recorded time and by the recorded person, flagged *legacy*: they show as past contacts but never create reminders or count toward follow-up performance. "Done", "dismissed", "in progress" and "open" items do **not** become events – they do not prove a message was sent. No date or contact is invented. |
+| `0004_pending_conflict_uniqueness` | Import conflicts: only **pending** conflicts must be unique per line, so one line can be conflicted and resolved any number of times. All resolved history is kept untouched. |
 
 ## What is rebuilt after an upgrade (and is safe to rebuild)
 
