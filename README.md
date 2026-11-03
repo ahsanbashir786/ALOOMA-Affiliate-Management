@@ -86,3 +86,22 @@ After pulling a new version, run `npm install` and `npm run db:push -- --force` 
 - Uplift figures are **conservative estimates** (extra videos × the creator's historic GMV per selling video × a confidence factor). They are for prioritising, not forecasting.
 - The app doesn't send messages; it writes them. Copy them into TikTok or WhatsApp, then mark the action sent.
 - Phase 2 ideas: before/after impact tracking per action, TikTok Shop API sync, AI-personalised messages, alerts.
+
+## Daily workflow (Today's Work)
+
+The Action centre was replaced by **Today's Work**: staff press *Contacted*, *Promised date*, *Needs help* or *Pause*;
+follow-ups are scheduled automatically (Settings → Daily workflow; defaults 3 days after contact, the day after a promised date).
+Staff actions are an append-only log (`staff_events`) – undo only marks them reverted. Promises live in `commitments`,
+system suggestions in `recommendations`; neither imports nor "Refresh recommendations" touch staff work.
+See `docs/DATA-AUDIT.md`, `docs/UPLOAD-GUIDE.md` and `docs/STAFF-GUIDE.md`.
+
+### Tests
+
+```bash
+createdb affiliate_test
+DATABASE_URL=postgres://…/affiliate_test npx drizzle-kit push --force
+DATABASE_URL=postgres://…/affiliate_test npm run test:workflow
+```
+
+The script refuses to run unless the database name ends in `_test` (it wipes it) and only creates clearly labelled
+synthetic records (`zz_test_*`). Never point it at production.
