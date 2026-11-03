@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { AlertTriangle, CheckCircle2, CircleDashed } from "lucide-react";
 import { db } from "@/db";
 import { uploads, users } from "@/db/schema";
-import { requireUser } from "@/lib/auth";
+import { mayEditContacts, requireUser } from "@/lib/auth";
 import { queryAffiliates } from "@/lib/affiliates/service";
 import { KINDS, KIND_META, REFERENCE_KINDS, type Kind } from "@/lib/ingest/kinds";
 import { Badge, buttonClasses, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/primitives";
@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Data hub" };
 const FRESH_DAYS = 10;
 
 export default async function DataPage() {
-  await requireUser("manager");
+  const user = await requireUser("manager");
   const list = await db
     .select({
       id: uploads.id, kind: uploads.kind, filename: uploads.filename, periodStart: uploads.periodStart,
@@ -51,9 +51,13 @@ export default async function DataPage() {
           title="WhatsApp numbers"
           description="TikTok exports don't include WhatsApp numbers. Download the affiliates who still have none, fill in the WhatsApp column, then upload the file back above – only empty numbers are filled, saved numbers are kept."
           action={
-            <a href="/api/affiliates/missing-contacts" className={buttonClasses({ variant: "secondary" })}>
-              Download affiliates without a number ({fmtInt(withoutPhone)})
-            </a>
+            mayEditContacts(user) ? (
+              <a href="/api/affiliates/missing-contacts" className={buttonClasses({ variant: "secondary" })}>
+                Download affiliates without a number ({fmtInt(withoutPhone)})
+              </a>
+            ) : (
+              <span className="text-[12.5px] text-ink-3">Needs the “Can edit WhatsApp” permission</span>
+            )
           }
         />
         <p className="px-5 pb-4 text-[12.5px] text-ink-3">

@@ -101,21 +101,32 @@ const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-/** Guess the reporting window from a filename such as "..._1st_sep_to_30_sep.xlsx". */
-export function guessPeriodFromFilename(name: string, refYear: number): { start: string; end: string } | null {
+/**
+ * Guess the reporting window from a filename such as "..._1st_sep_to_30_sep.xlsx",
+ * "1st_mar_2025_to_31_mar_2025", "01-03-2025_31-03-2025" or "2025-03-01_2025-03-31".
+ * `yearKnown` is false when the file name has no year and `refYear` had to be assumed.
+ */
+export function guessPeriodFromFilename(name: string, refYear: number): { start: string; end: string; yearKnown: boolean } | null {
+  const p = (n: number) => String(n).padStart(2, "0");
   const iso = name.match(/(\d{4})-(\d{2})-(\d{2})[-_ ]+(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return { start: `${iso[1]}-${iso[2]}-${iso[3]}`, end: `${iso[4]}-${iso[5]}-${iso[6]}` };
+  if (iso) return { start: `${iso[1]}-${iso[2]}-${iso[3]}`, end: `${iso[4]}-${iso[5]}-${iso[6]}`, yearKnown: true };
+  const dmy = name.match(/(\d{2})[-_.](\d{2})[-_.](20\d{2})[-_ ]+(?:to[-_ ]+)?(\d{2})[-_.](\d{2})[-_.](20\d{2})/i);
+  if (dmy) return { start: `${dmy[3]}-${dmy[2]}-${dmy[1]}`, end: `${dmy[6]}-${dmy[5]}-${dmy[4]}`, yearKnown: true };
+
   const m = name.match(
-    /(\d{1,2})(?:st|nd|rd|th)?[\s_-]*([a-z]{3,9})[\s_-]*to[\s_-]*(\d{1,2})(?:st|nd|rd|th)?[\s_-]*([a-z]{3,9})/i,
+    /(\d{1,2})(?:st|nd|rd|th)?[\s_-]*([a-z]{3,9})(?:[\s_-]*(20\d{2}))?[\s_-]*to[\s_-]*(\d{1,2})(?:st|nd|rd|th)?[\s_-]*([a-z]{3,9})(?:[\s_-]*(20\d{2}))?/i,
   );
   if (!m) return null;
   const m1 = MONTHS[m[2].slice(0, 3).toLowerCase()];
-  const m2 = MONTHS[m[4].slice(0, 3).toLowerCase()];
+  const m2 = MONTHS[m[5].slice(0, 3).toLowerCase()];
   if (!m1 || !m2) return null;
-  const endYear = refYear;
-  const startYear = m1 > m2 ? refYear - 1 : refYear;
-  const p = (n: number) => String(n).padStart(2, "0");
-  return { start: `${startYear}-${p(m1)}-${p(+m[1])}`, end: `${endYear}-${p(m2)}-${p(+m[3])}` };
+  const wraps = m1 > m2; // e.g. 15 Dec to 14 Jan
+  const startYear = m[3] ? +m[3] : null;
+  const endYear = m[6] ? +m[6] : null;
+  const yearKnown = startYear != null || endYear != null;
+  const eY = endYear ?? (startYear != null ? startYear + (wraps ? 1 : 0) : refYear);
+  const sY = startYear ?? (wraps ? eY - 1 : eY);
+  return { start: `${sY}-${p(m1)}-${p(+m[1])}`, end: `${eY}-${p(m2)}-${p(+m[4])}`, yearKnown };
 }
 
 export function chunk<T>(arr: T[], size: number): T[][] {

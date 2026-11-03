@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Lightbulb } from "lucide-react";
-import { getCurrentUser, can } from "@/lib/auth";
+import { getCurrentUser, can, mayEditContacts } from "@/lib/auth";
 import { periodQuery, resolvePeriod } from "@/lib/period";
 import { analyse, buildRecommendation } from "@/lib/analytics/recommendations";
 import { getCreatorDetail } from "@/lib/analytics/creator-detail";
@@ -32,7 +32,7 @@ const SERIES = [
 ];
 
 /** Contact details, samples and staff-logged videos – shown whether or not the creator sold in this period. */
-async function CreatorExtras({ username, canEdit }: { username: string; canEdit: boolean }) {
+async function CreatorExtras({ username, canEdit }: { username: string; canEdit: boolean }) {  // canEdit = may edit WhatsApp numbers
   const [[contact], samples] = await Promise.all([
     db.select({ phone: creators.phone, approach: creators.approach }).from(creators).where(eq(creators.username, username)).limit(1),
     getCreatorSamples(username),
@@ -86,6 +86,7 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
   const period = await resolvePeriod(await searchParams);
   const user = await getCurrentUser();
   const canEdit = !!user && can(user, "manager");
+  const canPhone = !!user && mayEditContacts(user);
   const qs = periodQuery(period);
 
   const analysis = await analyse(period);
@@ -93,11 +94,11 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
   if (!c) {
     return (
       <div className="space-y-5">
-        <Link href={`/creators?${qs}`} className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink">
-          <ArrowLeft className="size-4" /> All creators
+        <Link href={`/affiliates?${qs}`} className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink">
+          <ArrowLeft className="size-4" /> Affiliates Overview
         </Link>
         <PageHeader title={username} description={`No sales for this creator in ${period.label.toLowerCase()} or the period before.`} />
-        <CreatorExtras username={username} canEdit={canEdit} />
+        <CreatorExtras username={username} canEdit={canPhone} />
       </div>
     );
   }
@@ -109,8 +110,8 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
 
   return (
     <div className="space-y-6">
-      <Link href={`/creators?${qs}`} className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink">
-        <ArrowLeft className="size-4" /> All creators
+      <Link href={`/affiliates?${qs}`} className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink">
+        <ArrowLeft className="size-4" /> Affiliates Overview
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -252,7 +253,7 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
         </div>
       </Card>
 
-      <CreatorExtras username={username} canEdit={canEdit} />
+      <CreatorExtras username={username} canEdit={canPhone} />
 
       <section className="grid gap-4 lg:grid-cols-3">
         <Card>

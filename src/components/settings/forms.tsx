@@ -30,12 +30,15 @@ export function NewUserForm() {
       </div>
       <div><Label htmlFor="nu-pass">Temporary password</Label><Input id="nu-pass" name="password" type="text" minLength={8} required autoComplete="off" /></div>
       <Button type="submit" variant="primary" disabled={pending}>{pending && <Loader2 className="size-4 animate-spin" />} Add user</Button>
+      <label className="flex items-center gap-2 text-[13px] text-ink-2 sm:col-span-2 lg:col-span-5">
+        <input type="checkbox" name="canEditContacts" className="size-4 accent-[var(--brand)]" /> Can edit WhatsApp numbers (admins always can)
+      </label>
       <div className="sm:col-span-2 lg:col-span-5"><Feedback state={state} /></div>
     </form>
   );
 }
 
-export function UserRow({ u, isMe }: { u: { id: string; name: string; email: string; role: "admin" | "manager" | "viewer"; active: boolean }; isMe: boolean }) {
+export function UserRow({ u, isMe }: { u: { id: string; name: string; email: string; role: "admin" | "manager" | "viewer"; active: boolean; canEditContacts: boolean }; isMe: boolean }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<Result>();
   const [reset, setReset] = useState(false);
@@ -57,6 +60,16 @@ export function UserRow({ u, isMe }: { u: { id: string; name: string; email: str
           <option value="manager">Affiliate manager</option>
           <option value="admin">Admin</option>
         </Select>
+        <label className="flex items-center gap-2 text-[13px] text-ink-2" title="WhatsApp numbers are personal data. Admins can always edit them.">
+          <input
+            type="checkbox"
+            className="size-4 accent-[var(--brand)]"
+            checked={u.role === "admin" || u.canEditContacts}
+            disabled={pending || u.role === "admin"}
+            onChange={(e) => start(async () => setMsg(await updateUser(u.id, { canEditContacts: e.target.checked })))}
+          />
+          Can edit WhatsApp
+        </label>
         <Button size="sm" variant="ghost" onClick={() => setReset((r) => !r)}>Reset password</Button>
         <Button
           size="sm"

@@ -17,6 +17,7 @@ const NewUser = z.object({
   email: z.email("Enter a valid email.").trim().toLowerCase(),
   role: Role,
   password: z.string().min(8, "Password needs at least 8 characters."),
+  canEditContacts: z.string().optional(),
 });
 
 export async function createUser(_: Result, fd: FormData): Promise<Result> {
@@ -29,6 +30,7 @@ export async function createUser(_: Result, fd: FormData): Promise<Result> {
     name: p.data.name,
     email: p.data.email,
     role: p.data.role,
+    canEditContacts: !!p.data.canEditContacts,
     passwordHash: await bcrypt.hash(p.data.password, 12),
   });
   revalidatePath("/settings");
@@ -43,14 +45,14 @@ async function otherActiveAdmins(exceptId: string) {
   return n;
 }
 
-export async function updateUser(id: string, patch: { role?: z.infer<typeof Role>; active?: boolean }): Promise<Result> {
+export async function updateUser(id: string, patch: { role?: z.infer<typeof Role>; active?: boolean; canEditContacts?: boolean }): Promise<Result> {
   const me = await requireUser("admin");
   const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!target) return { error: "User not found." };
   const losesAdmin = target.role === "admin" && ((patch.role && patch.role !== "admin") || patch.active === false);
   if (losesAdmin && (await otherActiveAdmins(id)) === 0) return { error: "There must be at least one active admin." };
   if (id === me.id && patch.active === false) return { error: "You can't deactivate your own account." };
-  await db.update(users).set({ ...(patch.role ? { role: Role.parse(patch.role) } : {}), ...(patch.active !== undefined ? { active: patch.active } : {}) }).where(eq(users.id, id));
+  await db.update(users).set({ ...(patch.role ? { role: Role.parse(patch.role) } : {}), ...(patch.active !== undefined ? { active: patch.active } : {}), ...(patch.canEditContacts !== undefined ? { canEditContacts: patch.canEditContacts } : {}) }).where(eq(users.id, id));
   if (patch.active === false || (patch.role && patch.role !== target.role)) await db.delete(sessions).where(eq(sessions.userId, id));
   revalidatePath("/settings");
   return { ok: "Saved." };

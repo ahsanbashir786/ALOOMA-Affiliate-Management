@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Settings" };
 export default async function SettingsPage() {
   const me = await requireUser("admin");
   const [team, t, own, [stored]] = await Promise.all([
-    db.select({ id: users.id, name: users.name, email: users.email, role: users.role, active: users.active }).from(users).orderBy(asc(users.name)),
+    db.select({ id: users.id, name: users.name, email: users.email, role: users.role, active: users.active, canEditContacts: users.canEditContacts }).from(users).orderBy(asc(users.name)),
     getThresholds(),
     getOwnAccounts(),
     db.select().from(settings).where(eq(settings.key, "own_accounts")),
@@ -22,7 +22,7 @@ export default async function SettingsPage() {
       <PageHeader title="Settings" description="Who can use the app, and the rules that decide how creators are grouped and what we recommend." />
 
       <Card>
-        <CardHeader title="Team" description="Viewers can look but not change anything. Affiliate managers can upload data and work the action centre. Admins also manage settings and users." />
+        <CardHeader title="Team" description="Viewers can look but not change anything. Affiliate managers can upload data and work the action centre. Admins also manage settings and users. WhatsApp numbers can only be edited by admins and by people you tick “Can edit WhatsApp”." />
         <ul className="border-t border-line">
           {team.map((u) => <UserRow key={u.id} u={u} isMe={u.id === me.id} />)}
         </ul>

@@ -1,11 +1,12 @@
 import "server-only";
 import ExcelJS from "exceljs";
-import type { Affiliate } from "./service";
+import { sourceOf, type Affiliate } from "./service";
 import { CONTENT_TYPE_LABEL } from "@/lib/samples/analysis";
 import { LINE_STATES } from "@/lib/samples/states";
 
 const profile = (u: string) => `https://www.tiktok.com/@${u}`;
 const MONEY = "#,##0.00";
+const SRC = { video: "Video", live: "LIVE", both: "Both", none: "" } as const;
 
 function sheet(wb: ExcelJS.Workbook, name: string, cols: { header: string; key: string; width: number; money?: boolean }[]) {
   const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
@@ -50,7 +51,8 @@ export async function buildAffiliateWorkbook(items: Affiliate[]): Promise<Uint8A
     { header: "Sample items", key: "items", width: 46 },
     { header: "GMV from samples (RM)", key: "fs", width: 16, money: true },
     { header: "Orders from samples", key: "fso", width: 11 },
-    { header: "Recommended action", key: "act", width: 32 },
+    { header: "Segment", key: "seg", width: 26 },
+    { header: "Action to take", key: "act", width: 32 },
     { header: "Action details", key: "actd", width: 60 },
     { header: "Samples to offer (not received or sold in loaded data)", key: "sug", width: 50 },
   ]);
@@ -64,6 +66,7 @@ export async function buildAffiliateWorkbook(items: Affiliate[]): Promise<Uint8A
     { header: "GMV (RM)", key: "gmv", width: 13, money: true },
     { header: "Video GMV (RM)", key: "v", width: 15, money: true },
     { header: "LIVE GMV (RM)", key: "l", width: 15, money: true },
+    { header: "Source of GMV", key: "src", width: 14 },
   ]);
   const m = sheet(wb, "Samples", [
     { header: "Username", key: "u", width: 24 },
@@ -81,9 +84,13 @@ export async function buildAffiliateWorkbook(items: Affiliate[]): Promise<Uint8A
     { header: "GMV from sample content (RM)", key: "gmv", width: 16, money: true },
     { header: "Orders from sample content", key: "ord", width: 11 },
     { header: "Video links", key: "links", width: 60 },
+    { header: "All her orders of this SKU", key: "skuord", width: 12 },
+    { header: "All her GMV of this SKU (RM)", key: "skugmv", width: 16, money: true },
+    { header: "Source of GMV", key: "src", width: 14 },
   ]);
 
   for (const x of items) {
+    const bySku = new Map(x.sampleSkus.map((k) => [k.key, k]));
     a.addRow({
       u: x.username,
       link: { text: profile(x.username), hyperlink: profile(x.username) },
@@ -97,11 +104,12 @@ export async function buildAffiliateWorkbook(items: Affiliate[]): Promise<Uint8A
       items: x.lines.map((l) => `${l.name ?? l.variation ?? l.sku} ×${l.quantity}`).join("; "),
       fs: x.samples ? x.fromSamplesGmv : "",
       fso: x.samples ? x.fromSamplesOrders : "",
+      seg: x.segment?.label ?? "",
       act: x.action?.label ?? "",
       actd: x.action?.text ?? "",
       sug: x.suggest.join(", "),
     });
-    for (const r of mergedSkuRows(x)) s.addRow({ u: x.username, sku: r.sku, name: r.name, sampled: r.sampled || "", orders: r.orders, qty: r.qty, gmv: r.gmv, v: r.video, l: r.live });
+    for (const r of mergedSkuRows(x)) s.addRow({ u: x.username, sku: r.sku, name: r.name, sampled: r.sampled || "", orders: r.orders, qty: r.qty, gmv: r.gmv, v: r.video, l: r.live, src: SRC[sourceOf(r.video, r.live) ?? "none"] });
     for (const l of x.lines) {
       const mine = l.videos.filter((v) => v.product);
       const shown = mine.length ? mine : l.videos;
@@ -121,6 +129,9 @@ export async function buildAffiliateWorkbook(items: Affiliate[]): Promise<Uint8A
         gmv: l.contentGmv,
         ord: l.contentOrders,
         links: shown.map((v) => v.link).filter(Boolean).join("\n"),
+        skuord: bySku.get((l.sku ?? "").toUpperCase())?.orders ?? 0,
+        skugmv: bySku.get((l.sku ?? "").toUpperCase())?.gmv ?? 0,
+        src: SRC[bySku.get((l.sku ?? "").toUpperCase())?.source ?? "none"],
       });
     }
   }

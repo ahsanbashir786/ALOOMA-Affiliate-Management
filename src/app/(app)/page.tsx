@@ -161,8 +161,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
             title="Top creators"
             description="Ranked by valid GMV in this period."
             action={
-              <Link href={`/creators?${qs}`} className="flex items-center gap-1 text-[13px] font-medium text-brand hover:underline">
-                All creators <ArrowRight className="size-3.5" />
+              <Link href={`/affiliates?${qs}`} className="flex items-center gap-1 text-[13px] font-medium text-brand hover:underline">
+                All affiliates <ArrowRight className="size-3.5" />
               </Link>
             }
           />

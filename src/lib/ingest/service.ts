@@ -121,6 +121,11 @@ export async function inspectUpload(token: string, filename: string): Promise<In
       base.suggestedStart = guess.start;
       base.suggestedEnd = guess.end;
       base.periodSource = "filename";
+      if (!guess.yearKnown) {
+        warnings.push(
+          `The file name has no year, so the year was guessed as ${guess.end.slice(0, 4)} (from your latest orders). Check the dates – for older months, add the year to the file name (e.g. 1st_mar_2025_to_31_mar_2025) or correct the dates here.`,
+        );
+      }
     } else {
       warnings.push("Couldn't read the date range from the filename – please enter it.");
     }

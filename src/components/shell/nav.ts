@@ -8,7 +8,6 @@ import {
   ShoppingCart,
   Settings,
   Target,
-  Users,
   Video,
   type LucideIcon,
 } from "lucide-react";
@@ -29,8 +28,7 @@ export const NAV: NavGroup[] = [
     label: "Analyse",
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard, usesPeriod: true },
-      { href: "/creators", label: "Creators", icon: Users, usesPeriod: true },
-      { href: "/affiliates", label: "Affiliates", icon: Contact, usesPeriod: true },
+      { href: "/affiliates", label: "Affiliates Overview", icon: Contact, usesPeriod: true },
       { href: "/content", label: "Content", icon: Video, usesPeriod: true },
       { href: "/products", label: "Products", icon: Package, usesPeriod: true },
       { href: "/samples", label: "Samples", icon: Beaker, usesPeriod: true },

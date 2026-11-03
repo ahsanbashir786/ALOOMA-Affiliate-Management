@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { can, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, mayEditContacts } from "@/lib/auth";
 import { queryAffiliates } from "@/lib/affiliates/service";
 import { buildMissingContactsWorkbook } from "@/lib/affiliates/export";
 
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!can(user, "manager")) return NextResponse.json({ error: "You don't have permission." }, { status: 403 });
+  if (!mayEditContacts(user)) return NextResponse.json({ error: "You don't have permission to work with WhatsApp numbers." }, { status: 403 });
 
   const { rows } = await queryAffiliates({ scope: "active", noPhone: true }, "gmv", "desc", 20_000, 0);
   const file = await buildMissingContactsWorkbook(rows.map((r) => ({ username: r.username, samples: r.samples, gmv: r.gmv, orders: r.orders })));

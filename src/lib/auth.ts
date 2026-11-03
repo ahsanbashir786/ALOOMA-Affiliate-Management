@@ -36,14 +36,14 @@ export async function destroySession() {
   jar.delete(SESSION_COOKIE);
 }
 
-export type SessionUser = { id: string; name: string; email: string; role: Role };
+export type SessionUser = { id: string; name: string; email: string; role: Role; canEditContacts: boolean };
 
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const [row] = await db
-    .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+    .select({ id: users.id, name: users.name, email: users.email, role: users.role, canEditContacts: users.canEditContacts })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(
@@ -66,3 +66,6 @@ export async function requireUser(min: Role = "viewer"): Promise<SessionUser> {
 }
 
 export const can = (user: { role: Role }, min: Role) => RANK[user.role] >= RANK[min];
+
+/** WhatsApp numbers are personal data: only admins and people an admin ticked in Settings may edit or upload them. */
+export const mayEditContacts = (user: { role: Role; canEditContacts: boolean }) => user.role === "admin" || user.canEditContacts;

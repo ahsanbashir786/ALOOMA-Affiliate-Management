@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser, can } from "@/lib/auth";
+import { getCurrentUser, can, mayEditContacts } from "@/lib/auth";
 import { discardUpload, inspectUpload, MAX_UPLOAD_BYTES, stashUpload } from "@/lib/ingest/service";
 
 export const runtime = "nodejs";
@@ -22,7 +22,15 @@ export async function POST(request: Request) {
 
   const token = await stashUpload(Buffer.from(await file.arrayBuffer()));
   try {
-    return NextResponse.json(await inspectUpload(token, file.name));
+    const info = await inspectUpload(token, file.name);
+    if ((info.kind === "contact_list" || info.kind === "staff_sheet") && !mayEditContacts(user)) {
+      await discardUpload(token);
+      return NextResponse.json(
+        { error: "This file contains WhatsApp numbers. You need the “Can edit WhatsApp” permission – ask an admin to tick it for you in Settings." },
+        { status: 403 },
+      );
+    }
+    return NextResponse.json(info);
   } catch (e) {
     await discardUpload(token);
     return NextResponse.json(

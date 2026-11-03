@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import * as z from "zod";
-import { getCurrentUser, can } from "@/lib/auth";
+import { getCurrentUser, can, mayEditContacts } from "@/lib/auth";
 import { KINDS } from "@/lib/ingest/kinds";
 import { commitUpload } from "@/lib/ingest/service";
 
@@ -22,6 +22,11 @@ export async function POST(request: Request) {
 
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+
+  // Files that carry WhatsApp numbers need the extra permission.
+  if ((parsed.data.kind === "contact_list" || parsed.data.kind === "staff_sheet") && !mayEditContacts(user)) {
+    return NextResponse.json({ error: "You need the “Can edit WhatsApp” permission to upload WhatsApp numbers. Ask an admin to tick it for you in Settings." }, { status: 403 });
+  }
 
   try {
     const result = await commitUpload({ ...parsed.data, userId: user.id });

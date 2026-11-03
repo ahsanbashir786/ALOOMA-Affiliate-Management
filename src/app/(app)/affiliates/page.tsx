@@ -1,28 +1,34 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, Download, ExternalLink, Users } from "lucide-react";
-import { can, requireUser } from "@/lib/auth";
-import { AFFILIATE_SORTS, loadAffiliates, type AffiliateScope, type AffiliateSort } from "@/lib/affiliates/service";
+import { mayEditContacts, requireUser } from "@/lib/auth";
+import { AFFILIATE_SORTS, loadAffiliates, queryAffiliates, type AffiliateScope, type AffiliateSort, type SalesSource } from "@/lib/affiliates/service";
 import { CONTENT_TYPE_LABEL } from "@/lib/samples/analysis";
 import { sampleRange } from "@/lib/samples/range";
 import { href, one, periodParams, type SP } from "@/lib/url";
 import { Badge, Button, buttonClasses, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/pagination";
-import { FilesBar } from "@/components/samples/files-bar";
 import { PhoneEditor } from "@/components/samples/phone-editor";
 import { AffiliateRow } from "@/components/affiliates/affiliate-row";
-import { AFFILIATE_COLS } from "@/components/affiliates/cols";
+import { AFFILIATE_COLS, SAMPLE_SUBCOLS } from "@/components/affiliates/cols";
 import { AffiliateDetail } from "@/components/affiliates/affiliate-detail";
-import { cn, fmtDate, fmtInt, fmtRM, initials } from "@/lib/utils";
+import { DataSources } from "@/components/affiliates/data-sources";
+import { cn, fmtInt, fmtRM, fmtRMCompact } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Affiliates" };
+export const metadata: Metadata = { title: "Affiliates Overview" };
 
 const PAGE_SIZE = 25;
+
+const SOURCE: Record<Exclude<SalesSource, null>, { label: string; cls: string }> = {
+  video: { label: "Video", cls: "bg-surface-2 text-ink-2" },
+  live: { label: "LIVE", cls: "bg-brand-soft text-brand-strong" },
+  both: { label: "Both", cls: "bg-good-soft text-good" },
+};
 
 export default async function AffiliatesPage({ searchParams }: PageProps<"/affiliates">) {
   const user = await requireUser();
   const sp = (await searchParams) as SP;
-  const canEdit = can(user, "manager");
+  const canPhone = mayEditContacts(user);
   const pp = periodParams(sp);
   const { period, range } = await sampleRange(sp);
 
@@ -33,14 +39,14 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
   const dir = one(sp.dir) === "asc" || one(sp.dir) === "desc" ? (one(sp.dir) as "asc" | "desc") : AFFILIATE_SORTS[sort].dir;
   const page = Math.max(1, Number(one(sp.page)) || 1);
 
-  const { items, total, withoutPhone } = await loadAffiliates({ q, scope, noPhone, range }, sort, dir, period, PAGE_SIZE, (page - 1) * PAGE_SIZE);
+  const filter = { q, scope, noPhone, range };
+  const first = await loadAffiliates(filter, sort, dir, period, PAGE_SIZE, (page - 1) * PAGE_SIZE);
+  const total = first.total;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const cur = Math.min(page, pages);
-  if (cur !== page && total > 0) {
-    // a page past the end (after filtering) – show the last one
-    const again = await loadAffiliates({ q, scope, noPhone, range }, sort, dir, period, PAGE_SIZE, (cur - 1) * PAGE_SIZE);
-    items.splice(0, items.length, ...again.items);
-  }
+  const { items } = cur !== page && total > 0 ? await loadAffiliates(filter, sort, dir, period, PAGE_SIZE, (cur - 1) * PAGE_SIZE) : first;
+  // WhatsApp coverage of everyone in scope, whatever the search or filter is
+  const cover = q || noPhone ? await queryAffiliates({ scope, range }, "gmv", "desc", 1, 0) : { total, withoutPhone: first.withoutPhone };
 
   const isDefault = sort === "gmv" && dir === AFFILIATE_SORTS.gmv.dir;
   const filters = { ...pp, q: q || undefined, scope: scope === "everyone" ? "everyone" : undefined, nophone: noPhone ? "1" : undefined, sort: isDefault ? undefined : sort, dir: isDefault ? undefined : dir };
@@ -58,17 +64,14 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
   return (
     <div>
       <PageHeader
-        title="Affiliates"
-        description={`Everything about each affiliate in one place: WhatsApp, the samples she received, what she sold per SKU, how much came from samples, and what to do next.${
-          range ? ` Showing ${fmtDate(range.start)} – ${fmtDate(range.end)}.` : ""
-        }`}
+        title="Affiliates Overview"
         actions={
           <a href={exportHref} className={buttonClasses({ variant: "secondary" })}>
             <Download className="size-4" /> Export to Excel
           </a>
         }
       />
-      <FilesBar role={user.role} title="Data loaded" showOptional={false} />
+      <DataSources role={user.role} everyone={scope === "everyone"} withPhone={cover.total - cover.withoutPhone} total={cover.total} />
 
       <form action="/affiliates" className="mb-4 flex flex-wrap items-center gap-2.5 rounded-xl border border-line bg-surface p-3 shadow-card">
         {pp.range && <input type="hidden" name="range" value={pp.range} />}
@@ -93,9 +96,7 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
           <option value="asc">Low → high</option>
         </Select>
         <Button type="submit" variant="primary">Apply</Button>
-        <span className="ml-auto text-[12.5px] text-ink-3">
-          {fmtInt(total)} affiliates · {fmtInt(withoutPhone)} without a WhatsApp number
-        </span>
+        <span className="ml-auto text-[12.5px] text-ink-3">{fmtInt(total)} affiliates</span>
       </form>
 
       <Card>
@@ -107,87 +108,124 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
           />
         ) : (
           <div className="overflow-x-auto">
-            <div className="min-w-[1140px]">
-              <div className={cn("grid items-center gap-x-3 border-b border-line bg-surface-2 px-5 py-2.5", AFFILIATE_COLS, th)}>
+            <div className="min-w-[1170px]">
+              <div className={cn("grid items-end gap-x-3 border-b border-line bg-surface-2 px-5 py-2.5", AFFILIATE_COLS, th)}>
                 {sortLink("name", "Affiliate")}
                 <span>WhatsApp</span>
-                {sortLink("samples", "Samples received")}
-                {sortLink("orders", "Orders", true)}
-                {sortLink("gmv", "GMV", true)}
-                <span className="text-right">{sortLink("video", "Video", true)} / {sortLink("live", "LIVE", true)}</span>
-                {sortLink("fromsamples", "From samples", true)}
-                <span>Recommended action</span>
+                <div>
+                  <div>{sortLink("samples", "Samples received")}</div>
+                  <div className={cn("mt-1 grid gap-x-2 text-[10.5px] font-normal normal-case", SAMPLE_SUBCOLS)}>
+                    <span>SKU × qty</span><span className="text-right">Orders</span><span className="text-right">GMV</span><span>Source</span>
+                  </div>
+                </div>
+                <span className="text-right">{sortLink("gmv", "Total GMV", true)}</span>
+                <span>Segment</span>
+                <span>Action to take</span>
                 <span />
               </div>
               <ul>
-                {items.map((a) => {
-                  const names = [...new Set(a.lines.map((l) => l.name ?? l.variation ?? l.sku ?? ""))].filter(Boolean);
-                  return (
-                    <AffiliateRow
-                      key={a.username}
-                      name={a.username}
-                      head={
-                        <>
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-[12px] font-semibold text-ink-2">{initials(a.username)}</span>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <Link href={`/creators/${encodeURIComponent(a.username)}`} className="truncate text-[14px] font-medium text-ink hover:text-brand hover:underline">{a.username}</Link>
-                                <a href={`https://www.tiktok.com/@${a.username}`} target="_blank" rel="noopener noreferrer" aria-label={`TikTok profile of ${a.username}`} className="shrink-0 text-ink-3 hover:text-brand">
-                                  <ExternalLink className="size-3.5" />
-                                </a>
-                              </div>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                                {a.type && <Badge tone={a.type === "live" ? "brand" : a.type === "both" ? "good" : "neutral"} className="text-[11px]">{CONTENT_TYPE_LABEL[a.type]}</Badge>}
-                                {a.doNotContact && <Badge tone="critical" className="text-[11px]">Do not contact</Badge>}
-                              </div>
-                            </div>
+                {items.map((a) => (
+                  <AffiliateRow
+                    key={a.username}
+                    name={a.username}
+                    head={
+                      <>
+                        <div className="min-w-0 self-start">
+                          <div className="flex items-center gap-1.5">
+                            <Link href={`/creators/${encodeURIComponent(a.username)}`} className="truncate text-[14px] font-medium text-ink hover:text-brand hover:underline">{a.username}</Link>
+                            <a href={`https://www.tiktok.com/@${a.username}`} target="_blank" rel="noopener noreferrer" aria-label={`TikTok profile of ${a.username}`} className="shrink-0 text-ink-3 hover:text-brand">
+                              <ExternalLink className="size-3.5" />
+                            </a>
                           </div>
-                          <div><PhoneEditor username={a.username} phone={a.phone} canEdit={canEdit} /></div>
-                          <div className="min-w-0 text-[13px]">
-                            {a.samples === 0 ? (
-                              <span className="text-ink-3">None</span>
-                            ) : (
-                              <>
-                                <p className="font-medium text-ink">{a.samples} sample{a.samples === 1 ? "" : "s"}{a.sampleQty !== a.samples ? ` (${a.sampleQty} items)` : ""}</p>
-                                <p className="line-clamp-2 text-[12px] text-ink-3" title={names.join(", ")}>{names.slice(0, 2).join(", ")}{names.length > 2 ? ` +${names.length - 2} more` : ""}</p>
-                              </>
-                            )}
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            {a.type && <Badge tone={a.type === "live" ? "brand" : a.type === "both" ? "good" : "neutral"} className="text-[11px]">{CONTENT_TYPE_LABEL[a.type]}</Badge>}
+                            {a.doNotContact && <Badge tone="critical" className="text-[11px]">Do not contact</Badge>}
                           </div>
-                          <div className="tnum text-right text-[13.5px]">{fmtInt(a.orders)}</div>
-                          <div className="tnum text-right text-[13.5px] font-medium">{a.gmv ? fmtRM(a.gmv) : "–"}</div>
-                          <div className="tnum text-right text-[12.5px] text-ink-2">{a.videoGmv ? fmtRM(a.videoGmv) : "–"} / {a.liveGmv ? fmtRM(a.liveGmv) : "–"}</div>
-                          <div className={cn("tnum text-right text-[13.5px]", a.fromSamplesGmv > 0 && "font-medium text-good")}>{a.samples ? (a.fromSamplesGmv ? fmtRM(a.fromSamplesGmv) : "RM 0") : "–"}</div>
-                          <div className="min-w-0">
-                            {a.action ? (
-                              <>
-                                <Badge tone={a.action.tone}>{a.action.label}</Badge>
-                                {a.suggest.length > 0 && a.samples > 0 && <p className="mt-1 line-clamp-1 text-[11.5px] text-ink-3" title={`Samples to offer: ${a.suggest.join(", ")}`}>Offer: {a.suggest.join(", ")}</p>}
-                              </>
-                            ) : a.suggest.length > 0 && (a.gmv > 0 || a.samples > 0) ? (
-                              <p className="line-clamp-2 text-[12.5px] text-ink-2" title="Not received or sold in the loaded data">Offer a sample: {a.suggest.join(", ")}</p>
-                            ) : (
-                              <span className="text-[12.5px] text-ink-3">–</span>
-                            )}
-                          </div>
-                        </>
-                      }
-                    >
-                      <AffiliateDetail a={a} range={pp.range} />
-                    </AffiliateRow>
-                  );
-                })}
+                        </div>
+                        <div className="self-start pt-0.5"><PhoneEditor username={a.username} phone={a.phone} canEdit={canPhone} /></div>
+                        <div className="min-w-0 self-start text-[12.5px]">
+                          {a.sampleSkus.length === 0 ? (
+                            <span className="text-ink-3">None</span>
+                          ) : (
+                            <>
+                              <ul className="divide-y divide-line/70">
+                                {a.sampleSkus.map((sk) => (
+                                  <li key={sk.key} className={cn("grid items-start gap-x-2 py-1.5 first:pt-0", SAMPLE_SUBCOLS)}>
+                                    <div className="min-w-0">
+                                      <p className="truncate font-medium text-ink" title={sk.name}>
+                                        {sk.name} <span className="tnum font-normal text-ink-3">×{sk.qty}</span>
+                                      </p>
+                                      <p className="truncate text-[11px] text-ink-3" title={`${sk.sku}${sk.parts.length ? " – " + sk.parts.map((p) => `${p.qty}× ${p.name}`).join(", ") : ""}`}>
+                                        {sk.sku}{sk.parts.length ? ` · bundle: ${sk.parts.map((p) => `${p.qty}× ${p.name}`).join(", ")}` : ""}
+                                      </p>
+                                      {(sk.afterGmv > 0 || sk.afterOrders > 0) && (
+                                        <p className="tnum text-[11px] text-good">after sample: {fmtRM(sk.afterGmv)} · {sk.afterOrders} order{sk.afterOrders === 1 ? "" : "s"}</p>
+                                      )}
+                                    </div>
+                                    <span className="tnum text-right">{sk.orders || "–"}</span>
+                                    <span className="tnum text-right font-medium">{sk.gmv ? fmtRM(sk.gmv) : "–"}</span>
+                                    <span>
+                                      {sk.source ? (
+                                        <span className={cn("rounded-full px-1.5 py-0.5 text-[10.5px] font-medium", SOURCE[sk.source].cls)}>{SOURCE[sk.source].label}</span>
+                                      ) : (
+                                        <span className="text-[11px] text-ink-3" title="No sales of this SKU yet">–</span>
+                                      )}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                              {a.fromSamplesGmv > 0 && (
+                                <p className="tnum mt-1.5 border-t border-line pt-1.5 text-[11.5px] font-medium text-good">
+                                  GMV from sample content: {fmtRM(a.fromSamplesGmv)} · {fmtInt(a.fromSamplesOrders)} orders
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        <div className="tnum self-start text-right">
+                          <p className="text-[14px] font-semibold text-ink">{a.gmv ? fmtRM(a.gmv) : "–"}</p>
+                          {a.gmv > 0 && (
+                            <p className="text-[11px] text-ink-3">
+                              Video {a.videoGmv ? fmtRMCompact(a.videoGmv) : "–"} · LIVE {a.liveGmv ? fmtRMCompact(a.liveGmv) : "–"}
+                            </p>
+                          )}
+                          {a.orders > 0 && <p className="text-[11px] text-ink-3">{fmtInt(a.orders)} orders</p>}
+                        </div>
+                        <div className="min-w-0 self-start">
+                          {a.segment ? (
+                            <>
+                              <Badge tone={a.segment.tone} className="rounded-lg text-left whitespace-normal">{a.segment.label}</Badge>
+                              <p className="mt-1 line-clamp-2 text-[11px] text-ink-3" title={a.segment.reason}>{a.segment.reason}</p>
+                            </>
+                          ) : (
+                            <span className="text-[12.5px] text-ink-3">–</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 self-start">
+                          {a.action ? (
+                            <>
+                              {a.action.source === "samples" && <Badge tone={a.action.tone} className="rounded-lg text-left whitespace-normal">{a.action.label}</Badge>}
+                              <p className={cn("line-clamp-3 text-[12.5px] text-ink", a.action.source === "samples" && "mt-1")} title={a.action.text}>{a.action.text}</p>
+                            </>
+                          ) : (
+                            <span className="text-[12.5px] text-ink-3">–</span>
+                          )}
+                          {a.suggest.length > 0 && (a.gmv > 0 || a.samples > 0) && (
+                            <p className="mt-1 line-clamp-2 text-[11.5px] text-ink-3" title="Not received or sold in the loaded data">Offer a sample: {a.suggest.join(", ")}</p>
+                          )}
+                        </div>
+                      </>
+                    }
+                  >
+                    <AffiliateDetail a={a} range={pp.range} />
+                  </AffiliateRow>
+                ))}
               </ul>
             </div>
           </div>
         )}
         <Pagination page={cur} pages={pages} total={total} pageSize={PAGE_SIZE} hrefFor={(p) => href("/affiliates", { ...filters, page: p })} />
       </Card>
-      <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-        GMV counts valid orders only (cancelled and returned orders are excluded). “From samples” is the sales of the sampled products made by content posted after the sample arrived;
-        sizes of one product are counted once. “Samples to offer” are top sellers she has neither received nor sold in the data loaded above, so load older months to make this more reliable.
-        The Excel export has three sheets: affiliates, sales by SKU and samples.
-      </p>
     </div>
   );
 }

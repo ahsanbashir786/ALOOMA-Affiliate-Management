@@ -28,12 +28,14 @@ export function CreatorGroup({
   lines,
   team,
   canEdit,
+  canPhone,
   today,
 }: {
   r: ScoreRow;
   lines: SampleLine[];
   team: { id: string; name: string }[];
   canEdit: boolean;
+  canPhone: boolean;
   today: string;
 }) {
   const v = VERDICTS[r.verdict];
@@ -64,7 +66,7 @@ export function CreatorGroup({
                 {r.doNotContact && <Badge tone="critical">Do not contact</Badge>}
               </div>
               <div className="mt-1.5">
-                <PhoneEditor username={r.username} phone={r.phone} canEdit={canEdit} />
+                <PhoneEditor username={r.username} phone={r.phone} canEdit={canPhone} />
               </div>
             </div>
           </div>
@@ -84,7 +86,7 @@ export function CreatorGroup({
               {r.value > 0 && <span className="text-good"> · {r.verdict === "refresh" ? `${fmtRM(r.value)} / month at stake` : `est. +${fmtRM(r.value)}`}</span>}
             </p>
             {r.phone && hasMessage && <WaSendButton phone={r.phone} en={waMessage(msg, "en")} ms={waMessage(msg, "ms")} />}
-            {!r.phone && canEdit && <span className="text-[12.5px] text-ink-3">Add a WhatsApp number to message them.</span>}
+            {!r.phone && canPhone && <span className="text-[12.5px] text-ink-3">Add a WhatsApp number to message them.</span>}
           </div>
         )}
       </div>

@@ -5,7 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import { db } from "@/db";
 import { creators, samples } from "@/db/schema";
-import { requireUser } from "@/lib/auth";
+import { getCurrentUser, mayEditContacts, requireUser } from "@/lib/auth";
 import { generateActions } from "@/lib/analytics/recommendations";
 import { refreshSamples } from "@/lib/samples/service";
 import { normalisePhone } from "@/lib/ingest/import";
@@ -14,6 +14,12 @@ const done = () => {
   revalidatePath("/samples", "layout");
   revalidatePath("/actions");
 };
+
+const NO_PHONE_RIGHT = "You don't have permission to edit WhatsApp numbers. Ask an admin to tick “Can edit WhatsApp” for you in Settings.";
+async function allowedToEditContacts(): Promise<boolean> {
+  const u = await getCurrentUser();
+  return !!u && mayEditContacts(u);
+}
 
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 const Username = z
@@ -80,6 +86,7 @@ export async function setBuyerCreator(buyerMasked: string, creator: string): Pro
 /** The one thing staff must add: the creator's WhatsApp number. */
 export async function saveCreatorPhone(username: string, phone: string): Promise<{ ok?: true; error?: string }> {
   await requireUser("manager");
+  if (!(await allowedToEditContacts())) return { error: NO_PHONE_RIGHT };
   const tel = phone.trim() ? normalisePhone(phone) : null;
   if (phone.trim() && !tel) return { error: "Enter the number with country code, e.g. 60123456789." };
   await db
@@ -98,6 +105,7 @@ const Contact = z.object({
 
 export async function saveCreatorContact(username: string, input: z.input<typeof Contact>): Promise<{ ok?: true; error?: string }> {
   await requireUser("manager");
+  if (!(await allowedToEditContacts())) return { error: NO_PHONE_RIGHT };
   const p = Contact.safeParse(input);
   if (!p.success) return { error: p.error.issues[0].message };
   const phone = p.data.phone ? normalisePhone(p.data.phone) : null;

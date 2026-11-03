@@ -4,7 +4,7 @@ import { asc, sql } from "drizzle-orm";
 import { Gift, HelpCircle } from "lucide-react";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { can, requireUser } from "@/lib/auth";
+import { can, mayEditContacts, requireUser } from "@/lib/auth";
 import { getThresholds } from "@/lib/analytics/settings";
 import { getCreatorsMatching, getSampleLines, getSampleScorecard, getSampleTotals, getUnknownLines } from "@/lib/samples/analysis";
 import { QUEUES, VERDICTS, type SampleVerdict } from "@/lib/samples/states";
@@ -30,6 +30,7 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
   const user = await requireUser();
   const sp = (await searchParams) as SP;
   const canEdit = can(user, "manager");
+  const canPhone = mayEditContacts(user);
   const today = new Date().toISOString().slice(0, 10);
   const q = (one(sp.q) ?? "").trim();
   const mine = one(sp.mine) === "1";
@@ -135,7 +136,7 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
               <Link href={href("/samples", { ...base, view: "all", page: undefined })} className={cn("font-medium hover:underline", view === "all" ? "text-ink" : "text-brand")}>
-                All creators ({fmtInt(all.length)})
+                All affiliates ({fmtInt(all.length)})
               </Link>
               <Link href={href("/samples", { ...base, view: "ok", page: undefined })} className={cn("font-medium hover:underline", view === "ok" ? "text-ink" : "text-brand")}>
                 No action needed ({fmtInt(count("ok"))})
@@ -145,7 +146,7 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
                   Receiver not matched ({fmtInt(unknown.length)})
                 </Link>
               )}
-              {missingPhone > 0 && canEdit && (
+              {missingPhone > 0 && canPhone && (
                 <Link href={href("/samples", { ...base, view: "all", nophone: "1", page: undefined })} className="font-medium text-warn hover:underline">
                   {fmtInt(missingPhone)} creators need a WhatsApp number
                 </Link>
@@ -194,7 +195,7 @@ export default async function SampleTrackerPage({ searchParams }: PageProps<"/sa
           ) : (
             <div className="space-y-4">
               {shown.map((r) => (
-                <CreatorGroup key={r.username} r={r} lines={lines.get(r.username) ?? []} team={team} canEdit={canEdit} today={today} />
+                <CreatorGroup key={r.username} r={r} lines={lines.get(r.username) ?? []} team={team} canEdit={canEdit} canPhone={canPhone} today={today} />
               ))}
               <Card>
                 <Pagination page={cur} pages={pages} total={list.length} pageSize={PAGE_SIZE} hrefFor={(p) => href("/samples", { ...base, page: p })} />

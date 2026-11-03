@@ -4,7 +4,7 @@ import { analyse } from "@/lib/analytics/recommendations";
 import { getOwnAccounts } from "@/lib/analytics/settings";
 import { AL, rows, textArr } from "@/lib/analytics/sql";
 import type { Period } from "@/lib/period-core";
-import { getSampleLines, getSampleScorecard, rangeSql, contentType, type ContentType, type DateRange, type SampleLine, type ScoreRow } from "@/lib/samples/analysis";
+import { getSampleLines, getSampleScorecard, rangeSql, contentType, type BundlePart, type ContentType, type DateRange, type SampleLine, type ScoreRow } from "@/lib/samples/analysis";
 import { VERDICTS } from "@/lib/samples/states";
 import { SEGMENTS } from "@/lib/segments";
 
@@ -192,16 +192,80 @@ export async function getTopProducts(range: DateRange, limit = 8): Promise<TopPr
 
 // ───────────────────────── Enriched rows ─────────────────────────
 
-export type AffiliateAction = { label: string; tone: "good" | "brand" | "neutral" | "warn" | "serious" | "critical"; text: string };
+export type AffiliateAction = {
+  label: string;
+  tone: "good" | "brand" | "neutral" | "warn" | "serious" | "critical";
+  text: string;
+  /** "samples" = a sample follow-up (chase, more samples…), "segment" = advice for the creator's result segment. */
+  source: "samples" | "segment";
+};
+
+export type AffiliateSegment = { label: string; tone: "good" | "brand" | "neutral" | "warn" | "serious" | "critical"; reason: string };
+
+/** Where an SKU's sales came from. */
+export type SalesSource = "video" | "live" | "both" | null;
+
+/** One received SKU (all samples of it combined) with her own sales of that SKU. */
+export type SampleSku = {
+  key: string;
+  sku: string;
+  name: string;
+  qty: number;
+  parts: BundlePart[];
+  orders: number;
+  gmv: number;
+  videoGmv: number;
+  liveGmv: number;
+  source: SalesSource;
+  /** Sales of the sampled product by content posted after the sample arrived. */
+  afterGmv: number;
+  afterOrders: number;
+};
 
 export type Affiliate = AffiliateBase & {
   type: ContentType | null;
   lines: SampleLine[];
   skus: SkuSales[];
+  /** Every SKU she received as a sample, with her sales of it. */
+  sampleSkus: SampleSku[];
+  segment: AffiliateSegment | null;
   action: AffiliateAction | null;
   /** Products she has neither received as a sample nor sold – only judged on the data that is loaded. */
   suggest: string[];
 };
+
+export const sourceOf = (video: number, live: number): SalesSource => (video > 0 && live > 0 ? "both" : video > 0 ? "video" : live > 0 ? "live" : null);
+
+function groupSampleSkus(lines: SampleLine[], skus: SkuSales[]): SampleSku[] {
+  const sales = new Map(skus.map((x) => [x.key, x]));
+  const out = new Map<string, SampleSku>();
+  for (const l of lines) {
+    const key = (l.sku ?? `line-${l.id}`).toUpperCase();
+    const cur = out.get(key);
+    if (cur) {
+      cur.qty += l.quantity;
+      cur.afterGmv = Math.max(cur.afterGmv, l.contentGmv);
+      cur.afterOrders = Math.max(cur.afterOrders, l.contentOrders);
+      continue;
+    }
+    const x = sales.get(key);
+    out.set(key, {
+      key,
+      sku: l.sku ?? "",
+      name: l.name ?? l.variation ?? l.sku ?? "Unknown product",
+      qty: l.quantity,
+      parts: l.parts,
+      orders: x?.orders ?? 0,
+      gmv: x?.gmv ?? 0,
+      videoGmv: x?.videoGmv ?? 0,
+      liveGmv: x?.liveGmv ?? 0,
+      source: x ? sourceOf(x.videoGmv, x.liveGmv) : null,
+      afterGmv: l.contentGmv,
+      afterOrders: l.contentOrders,
+    });
+  }
+  return [...out.values()];
+}
 
 const BIG = 2000;
 
@@ -239,12 +303,17 @@ export async function loadAffiliates(
     const cl = seg.get(r.username);
 
     let action: AffiliateAction | null = null;
+    let segment: AffiliateSegment | null = null;
+    if (cl?.segment && !["sample_no_post", "untapped"].includes(cl.segment)) {
+      const sg = SEGMENTS[cl.segment];
+      segment = { label: sg.label, tone: sg.tone, reason: cl.reason };
+    }
     if (sc && sc.verdict !== "ok") {
       const v = VERDICTS[sc.verdict];
-      action = { label: v.label, tone: v.tone, text: sc.advice || v.todo };
+      action = { label: v.label, tone: v.tone, text: sc.advice || v.todo, source: "samples" };
     } else if (cl?.segment && !["steady", "sample_no_post", "untapped"].includes(cl.segment)) {
-      const s = SEGMENTS[cl.segment];
-      action = { label: s.label, tone: s.tone, text: cl.reason || s.playbook };
+      const sg = SEGMENTS[cl.segment];
+      action = { label: sg.short, tone: sg.tone, text: sg.playbook, source: "segment" };
     }
 
     const have = new Set<string>([...ls.map((l) => l.productId), ...sk.map((x) => x.productId)].filter((x): x is string => !!x));
@@ -255,6 +324,8 @@ export async function loadAffiliates(
       type: sc?.type ?? cl?.contentType ?? contentType({ videoGmv: r.videoGmv, liveGmv: r.liveGmv, approach: r.approach }),
       lines: ls,
       skus: sk,
+      sampleSkus: groupSampleSkus(ls, sk),
+      segment,
       action,
       suggest,
     };

@@ -8,17 +8,16 @@ find sellers who deserve more investment, and turn that into ready-to-send instr
 | Area | What you get |
 |---|---|
 | **Overview** | Affiliate GMV, orders, AOV, commission cost, cancellations – each vs. the previous period. Sales by source (creator video, creator LIVE, showcase, external traffic, **brand LIVE**, organic) across the whole shop, plus auto-written key findings. |
-| **Creators** | Every creator with segment, GMV trend, posting rhythm, cancellations, followers; profile page with sales over time, products, top videos, samples, notes and history. |
 | **Opportunities** | Creators grouped by what they need next (see below) with the reasoning, an estimated uplift and a copy-ready message. |
 | **Action centre** | Work queue ranked by priority: assign, mark sent/done/dismissed, add notes. Re-generated from fresh data after every import; work already done is never overwritten. |
 | **Content** | How old are the videos that sell (evergreen dependence), evergreen winners, best posting times, hashtags that convert, top videos. |
 | **Samples** | **Tracker**: every free sample as a creator card – shipped → delivered → posted timeline, SKU (bundles broken into their items), videos posted, LIVEs, views and sales from the new content – plus a "what to do next" queue with estimated value: *chase*, *posted but not selling*, *performing – ask for more content*, *send more samples*, *old content still selling*, *stop samples*. WhatsApp links with a ready message. **Scorecard**: compare creators (every column sortable). A date filter at the top limits the Samples pages to samples approved in that range, and a bar shows which files they need and how fresh they are. **Products**: which sampled SKUs convert. Plus TikTok's own sample report. |
-| **Affiliates** | One table with every affiliate found in your files: TikTok link, WhatsApp (editable), Video or LIVE, samples received (SKU and quantity, bundles split), orders and GMV per SKU, GMV from samples, and a recommended action (more content, more samples, chase…) plus samples to offer. Open a row for the per-SKU details. **Export to Excel** gives three sheets: affiliates, sales by SKU and samples. |
+| **Affiliates Overview** | One table with every affiliate found in your files: TikTok link, WhatsApp, Video or LIVE, every SKU received as a sample with its own orders, GMV and source (Video / LIVE / Both), total GMV, result segment and the action to take (more content, more samples, chase…) plus samples to offer. A "Comes from Data" box shows which file feeds what and how many affiliates have a WhatsApp number. Open a row for the per-SKU details. **Export to Excel** gives three sheets: affiliates, sales by SKU and samples. |
 | **Products / Orders** | Product performance and under-promoted products; shop-wide cancellations (COD vs. online), payments, states, delivery. |
 | **Data hub** | Drag-and-drop the TikTok exports, your SKU / bundle lists and the staff sheet. File type is detected automatically; period is read from the filename. |
 | **Settings** (admin) | Team and roles, recommendation thresholds, brand-owned accounts. |
 
-Roles: **admin** (everything), **affiliate manager** (upload data, work actions), **viewer** (read-only).
+Roles: **admin** (everything), **affiliate manager** (upload data, work actions), **viewer** (read-only). WhatsApp numbers are personal data: only admins and users an admin ticks "Can edit WhatsApp" in Settings can edit or upload them.
 
 ### Segments
 
@@ -76,6 +75,8 @@ Then open **Data hub** and upload your exports. For a quick start with a folder 
 `npm run import:sample -- ./path/to/exports`.
 
 Production: `npm run build && npm start` (set `DATABASE_URL`; put it behind HTTPS).
+
+Report files may carry the year in the name (e.g. `1st_mar_2025_to_31_mar_2025`); without a year the app guesses it from your latest orders and warns you.
 
 After pulling a new version, run `npm install` and `npm run db:push -- --force` (adds new columns; hand-logged and staff-sheet samples from older versions are removed) before `npm run dev`.
 
