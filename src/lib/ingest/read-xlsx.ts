@@ -102,9 +102,13 @@ const toSheet = (tab: RawTab): RawSheet => ({
  * TikTok exports store them as text.
  */
 export async function readXlsx(path: string): Promise<RawSheet> {
-  for await (const ws of openReader(path)) {
-    const rows = await readRows(ws as unknown as AsyncIterable<ExcelJS.Row>);
-    if (rows.length) return toSheet({ name: sheetName(ws), rows });
+  try {
+    for await (const ws of openReader(path)) {
+      const rows = await readRows(ws as unknown as AsyncIterable<ExcelJS.Row>);
+      if (rows.length) return toSheet({ name: sheetName(ws), rows });
+    }
+  } catch {
+    // The streaming reader occasionally fails on valid files (seen on a real export); the in-memory reader below is slower but robust.
   }
   const tabs = await readWorkbookInMemory(path);
   if (tabs.length) return toSheet(tabs[0]);
