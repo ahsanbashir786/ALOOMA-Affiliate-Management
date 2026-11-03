@@ -28,6 +28,7 @@ export const uploadKindEnum = pgEnum("upload_kind", [
   "product_list",
   "sku_catalog",
   "staff_sheet",
+  "contact_list",
 ]);
 
 export const actionStatusEnum = pgEnum("action_status", [
@@ -343,6 +344,8 @@ export const actions = pgTable(
     title: text("title").notNull(),
     reason: text("reason").notNull(),
     instruction: text("instruction").notNull(),
+    /** The same message in Bahasa Melayu. */
+    instructionMs: text("instruction_ms"),
     expectedUplift: doublePrecision("expected_uplift").notNull().default(0),
     baselineGmv: doublePrecision("baseline_gmv").notNull().default(0),
     periodStart: date("period_start", { mode: "string" }).notNull(),
@@ -417,6 +420,8 @@ export const samples = pgTable(
     postedAt: timestamp("posted_at"),
     postVideoId: text("post_video_id"),
     postLink: text("post_link"),
+    /** TikTok product the sample belongs to (sizes of one product share it) – used to count sales once per product. */
+    productId: text("product_id"),
     /** Videos the creator posted after delivery that feature the sampled product (Video analysis + new videos seen in orders). */
     videoCount: integer("video_count").notNull().default(0),
     /** Videos posted after delivery that feature other products. */

@@ -4,8 +4,9 @@ import { AlertTriangle, CheckCircle2, CircleDashed } from "lucide-react";
 import { db } from "@/db";
 import { uploads, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { queryAffiliates } from "@/lib/affiliates/service";
 import { KINDS, KIND_META, REFERENCE_KINDS, type Kind } from "@/lib/ingest/kinds";
-import { Badge, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/primitives";
+import { Badge, buttonClasses, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/primitives";
 import { UploadWorkbench } from "@/components/data/upload-workbench";
 import { DeleteUploadButton } from "@/components/data/delete-upload-button";
 import { fmtDate, fmtInt } from "@/lib/utils";
@@ -26,6 +27,7 @@ export default async function DataPage() {
     .orderBy(desc(uploads.createdAt))
     .limit(100);
   const today = new Date().toISOString().slice(0, 10);
+  const { withoutPhone } = await queryAffiliates({ scope: "active" }, "gmv", "desc", 1, 0);
 
   const latest = new Map<Kind, (typeof list)[number]>();
   for (const u of list) {
@@ -43,6 +45,21 @@ export default async function DataPage() {
       />
 
       <UploadWorkbench />
+
+      <Card>
+        <CardHeader
+          title="WhatsApp numbers"
+          description="TikTok exports don't include WhatsApp numbers. Download the affiliates who still have none, fill in the WhatsApp column, then upload the file back above – only empty numbers are filled, saved numbers are kept."
+          action={
+            <a href="/api/affiliates/missing-contacts" className={buttonClasses({ variant: "secondary" })}>
+              Download affiliates without a number ({fmtInt(withoutPhone)})
+            </a>
+          }
+        />
+        <p className="px-5 pb-4 text-[12.5px] text-ink-3">
+          The file needs two columns, <b>Username</b> and <b>WhatsApp</b> (e.g. 60123456789 or 012-345 6789). Other columns are ignored.
+        </p>
+      </Card>
 
       <Card>
         <CardHeader title="Coverage" description="What's loaded, and where to export each report." />
@@ -69,7 +86,7 @@ export default async function DataPage() {
                   {!u
                     ? "Not uploaded yet"
                     : REFERENCE_KINDS.includes(k)
-                      ? `Uploaded ${fmtDate(u.createdAt)} · ${fmtInt(u.rowCount)} ${k === "staff_sheet" ? "creators" : "SKUs"}`
+                      ? `Uploaded ${fmtDate(u.createdAt)} · ${fmtInt(u.rowCount)} ${k === "staff_sheet" || k === "contact_list" ? "creators" : "SKUs"}`
                       : `${fmtDate(u.periodStart)} – ${fmtDate(u.periodEnd)} · ${fmtInt(u.rowCount)} rows`}
                 </p>
                 <p className="mt-1 text-[12px] text-ink-3">Export: {m.where}</p>

@@ -53,7 +53,7 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
   const rows = await db
     .select({
       id: actions.id, username: actions.username, type: actions.type, priority: actions.priority, title: actions.title,
-      reason: actions.reason, instruction: actions.instruction, expectedUplift: actions.expectedUplift,
+      reason: actions.reason, instruction: actions.instruction, instructionMs: actions.instructionMs, expectedUplift: actions.expectedUplift,
       baselineGmv: actions.baselineGmv, status: actions.status, assigneeId: actions.assigneeId,
       assigneeName: users.name, note: actions.note, createdAt: actions.createdAt, completedAt: actions.completedAt,
       phone: creators.phone,

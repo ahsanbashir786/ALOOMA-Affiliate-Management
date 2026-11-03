@@ -26,8 +26,8 @@ export function AppShell({
   const pathname = usePathname();
   const sp = useSearchParams();
   const period = computePeriod(bounds, {
-    // Sample pages default to every sample; other pages to the last 28 days.
-    range: sp.get("range") ?? (pathname.startsWith("/samples") ? "all" : null),
+    // Sample and affiliate pages default to all data; other pages to the last 28 days.
+    range: sp.get("range") ?? (pathname.startsWith("/samples") || pathname.startsWith("/affiliates") ? "all" : null),
     from: sp.get("from"),
     to: sp.get("to"),
   });

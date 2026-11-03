@@ -16,7 +16,7 @@ import { CONTENT_TYPE_LABEL, getCreatorSamples } from "@/lib/samples/analysis";
 import { db } from "@/db";
 import { creators } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { CopyButton } from "@/components/ui/copy-button";
+import { MessageBox } from "@/components/ui/message-box";
 import { fmtCompact, fmtDate, fmtInt, fmtPct, fmtRM, initials, pctChange } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/creators/[username]">): Promise<Metadata> {
@@ -170,12 +170,8 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
               </div>
             )}
           </div>
-          <div className="m-5 rounded-lg border border-line bg-surface-2 p-4">
-            <p className="mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">Message to send</p>
-            <pre className="font-sans text-[14px] leading-relaxed whitespace-pre-wrap text-ink">{rec.instruction}</pre>
-          </div>
+          <MessageBox className="m-5 rounded-lg border border-line bg-surface-2 p-4" en={rec.instruction} ms={rec.instructionMs} phone={c.phone} />
           <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-3.5">
-            <CopyButton text={rec.instruction} />
             {canEdit && !detail.doNotContact && <QueueActionButton username={username} />}
           </div>
         </Card>

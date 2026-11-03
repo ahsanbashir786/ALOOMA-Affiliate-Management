@@ -7,7 +7,7 @@ import { SEGMENTS, SEGMENT_ORDER, type SegmentKey } from "@/lib/segments";
 import { href, one, periodParams, type SP } from "@/lib/url";
 import { Card, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { SegmentBadge } from "@/components/creators/segment-badge";
-import { CopyButton } from "@/components/ui/copy-button";
+import { MessageBox } from "@/components/ui/message-box";
 import { ScatterPlot } from "@/components/charts/scatter-plot";
 import { cn, fmtCompact, fmtInt, fmtRM, initials } from "@/lib/utils";
 
@@ -121,17 +121,16 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/op
                           <ChevronDown className="size-4 shrink-0 text-ink-3 transition-transform group-open:rotate-180" />
                         </summary>
                         <div className="border-t border-line bg-surface-2/50 px-5 py-4">
-                          <p className="mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">Message to send</p>
-                          <pre className="max-w-3xl font-sans text-[14px] leading-relaxed whitespace-pre-wrap text-ink">{r.instruction}</pre>
-                          <div className="mt-3 flex items-center gap-3">
-                            <CopyButton text={r.instruction} />
-                            <Link
-                              href={`/creators/${encodeURIComponent(r.username)}?${qs}`}
-                              className="text-[13.5px] font-medium text-brand hover:underline"
-                            >
-                              Open profile
-                            </Link>
-                          </div>
+                          <MessageBox
+                            en={r.instruction}
+                            ms={r.instructionMs}
+                            phone={c?.phone}
+                            extra={
+                              <Link href={`/creators/${encodeURIComponent(r.username)}?${qs}`} className="text-[13.5px] font-medium text-brand hover:underline">
+                                Open profile
+                              </Link>
+                            }
+                          />
                         </div>
                       </details>
                     </li>

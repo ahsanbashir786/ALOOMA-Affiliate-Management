@@ -8,6 +8,7 @@ export const KINDS = [
   "product_list",
   "sku_catalog",
   "staff_sheet",
+  "contact_list",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -65,6 +66,13 @@ export const KIND_META: Record<
     transactional: false,
     where: "Your internal SKU / BOM workbooks",
   },
+  contact_list: {
+    label: "WhatsApp numbers",
+    description:
+      "A simple file with two columns – username and WhatsApp number. Only affiliates without a number are filled; numbers already saved are kept. TikTok exports don't include WhatsApp numbers.",
+    transactional: false,
+    where: "Your own list (download the “affiliates without a number” file in the Data hub, fill it in, upload it back)",
+  },
   staff_sheet: {
     label: "Staff affiliate sheet",
     description:
@@ -75,7 +83,7 @@ export const KIND_META: Record<
 };
 
 /** Kinds whose period is optional (they are reference data, not dated reports). */
-export const REFERENCE_KINDS: Kind[] = ["sku_catalog", "staff_sheet"];
+export const REFERENCE_KINDS: Kind[] = ["sku_catalog", "staff_sheet", "contact_list"];
 
 /** Which kinds are stored as dated snapshots (so a period is required). */
 export const SNAPSHOT_KINDS: Kind[] = [
@@ -96,6 +104,10 @@ export function detectKind(header: string[]): Kind | null {
   if (has("Creator name", "Samples requested", "45-day ROI")) return "sample_analysis";
   if (has("Product ID", "Product name", "Refunded GMV")) return "product_list";
   if (has("Order ID", "Order Status", "SKU Subtotal After Discount")) return "all_orders";
+  // A short file with just a username and a phone column is a contact list; the big staff sheet has many more columns.
+  const userCol = ["username", "tiktok username", "creator username", "creator name", "affiliate"].some((c) => h.has(c));
+  const phoneCol = ["whatsapp", "whatsapp number", "phone", "phone number", "mobile", "contact number"].some((c) => h.has(c));
+  if (userCol && phoneCol && header.filter(Boolean).length <= 6) return "contact_list";
   if (has("Username", "WhatsApp")) return "staff_sheet";
   if (has("SKU", "Variation Name") || has("Set SKU", "Variation Name")) return "sku_catalog";
   return null;

@@ -69,6 +69,7 @@ export async function queueCreatorAction(username: string): Promise<{ ok: boolea
         title: r.title,
         reason: r.reason,
         instruction: r.instruction,
+        instructionMs: r.instructionMs,
         expectedUplift: r.expectedUplift,
         baselineGmv: r.baselineGmv,
         periodStart: period.start,

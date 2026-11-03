@@ -174,6 +174,7 @@ async function computeSampleResults(postDays: number): Promise<void> {
       post_link = case
         when vid.prod or (vid.video_id is not null and not coalesce(ovid.prod, false)) then vid.link
         when ovid.video_id is not null then 'https://www.tiktok.com/@' || sp.creator || '/video/' || ovid.video_id end,
+      product_id = sp.pid,
       video_count = coalesce(vstats.vp, 0) + coalesce(ocnt.n, 0),
       other_video_count = coalesce(vstats.vo, 0),
       content_views = coalesce(vstats.views, 0),

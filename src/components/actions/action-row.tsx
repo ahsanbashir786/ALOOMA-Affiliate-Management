@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, Loader2, MessageCircle, Send, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, Send, X } from "lucide-react";
 import { assignAction, saveActionNote, setActionStatus } from "@/app/actions/actions";
 import { Badge, Button, Select } from "@/components/ui/primitives";
-import { CopyButton } from "@/components/ui/copy-button";
+import { MessageBox } from "@/components/ui/message-box";
 import { SegmentBadge } from "@/components/creators/segment-badge";
 import { cn, fmtDate, fmtRM, initials } from "@/lib/utils";
 import type { SegmentKey } from "@/lib/segments";
@@ -18,6 +18,7 @@ export type ActionItem = {
   title: string;
   reason: string;
   instruction: string;
+  instructionMs: string | null;
   expectedUplift: number;
   baselineGmv: number;
   status: "open" | "in_progress" | "sent" | "done" | "dismissed";
@@ -101,29 +102,21 @@ export function ActionRow({
               </Link>
               <span className="text-[12.5px] text-ink-3">· created {fmtDate(item.createdAt)}</span>
             </div>
-            <p className="mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">Message to send</p>
-            <pre className="font-sans text-[14px] leading-relaxed whitespace-pre-wrap text-ink">{item.instruction}</pre>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <CopyButton text={item.instruction} />
-              {item.phone && (
+            <MessageBox
+              en={item.instruction}
+              ms={item.instructionMs}
+              phone={item.phone}
+              extra={
                 <a
-                  href={`https://wa.me/${item.phone.replace(/\D/g, "")}?text=${encodeURIComponent(item.instruction.split("\n\nWhatsApp:")[0])}`}
+                  href={`https://www.tiktok.com/@${item.username}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-surface-2"
+                  className="inline-flex h-8 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-surface-2"
                 >
-                  <MessageCircle className="size-4 text-good" /> WhatsApp {item.phone}
+                  Open TikTok
                 </a>
-              )}
-              <a
-                href={`https://www.tiktok.com/@${item.username}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-8 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-surface-2"
-              >
-                Open TikTok
-              </a>
-            </div>
+              }
+            />
           </div>
 
           <div className="space-y-3">

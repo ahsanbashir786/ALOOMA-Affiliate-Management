@@ -18,7 +18,7 @@ export async function rows<T extends Record<string, unknown>>(query: SQL): Promi
  */
 export const AL = sql.raw(`(
   select
-    a.order_id, a.sku_id, a.product_id, a.creator, a.content_type, a.content_id, a.created_at,
+    a.order_id, a.sku_id, a.product_id, a.seller_sku, a.sku_name, a.creator, a.content_type, a.content_id, a.created_at,
     a.payment_amount as pay, a.quantity as qty, a.cod, a.status as aff_status,
     case when a.actual_commission + a.actual_ads_commission > 0
          then a.actual_commission + a.actual_ads_commission

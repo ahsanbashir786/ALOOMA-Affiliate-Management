@@ -13,6 +13,7 @@ find sellers who deserve more investment, and turn that into ready-to-send instr
 | **Action centre** | Work queue ranked by priority: assign, mark sent/done/dismissed, add notes. Re-generated from fresh data after every import; work already done is never overwritten. |
 | **Content** | How old are the videos that sell (evergreen dependence), evergreen winners, best posting times, hashtags that convert, top videos. |
 | **Samples** | **Tracker**: every free sample as a creator card – shipped → delivered → posted timeline, SKU (bundles broken into their items), videos posted, LIVEs, views and sales from the new content – plus a "what to do next" queue with estimated value: *chase*, *posted but not selling*, *performing – ask for more content*, *send more samples*, *old content still selling*, *stop samples*. WhatsApp links with a ready message. **Scorecard**: compare creators (every column sortable). A date filter at the top limits the Samples pages to samples approved in that range, and a bar shows which files they need and how fresh they are. **Products**: which sampled SKUs convert. Plus TikTok's own sample report. |
+| **Affiliates** | One table with every affiliate found in your files: TikTok link, WhatsApp (editable), Video or LIVE, samples received (SKU and quantity, bundles split), orders and GMV per SKU, GMV from samples, and a recommended action (more content, more samples, chase…) plus samples to offer. Open a row for the per-SKU details. **Export to Excel** gives three sheets: affiliates, sales by SKU and samples. |
 | **Products / Orders** | Product performance and under-promoted products; shop-wide cancellations (COD vs. online), payments, states, delivery. |
 | **Data hub** | Drag-and-drop the TikTok exports, your SKU / bundle lists and the staff sheet. File type is detected automatically; period is read from the filename. |
 | **Settings** (admin) | Team and roles, recommendation thresholds, brand-owned accounts. |
@@ -50,6 +51,7 @@ including shipped/delivered times and tracking. **Samples come only from there**
 | Creator list, Transaction analysis, Video analysis, Sample analysis, Product list | Affiliate Center | weekly / monthly (period in the filename) |
 | SKU list + bundle (SET) lists | your own workbooks | when SKUs change |
 | Staff affiliate sheet | your own sheet (.xlsx) | once, to bring in WhatsApp numbers |
+| WhatsApp numbers | simple file: Username + WhatsApp (download the "affiliates without a number" file in the Data hub, fill it in, upload it back) | when you add numbers – only empty numbers are filled, saved numbers are kept |
 
 ## Data model in one paragraph
 

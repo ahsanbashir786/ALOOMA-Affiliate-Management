@@ -109,6 +109,8 @@ export async function importFile(input: ImportInput): Promise<ImportResult> {
       return importSkuCatalog(input);
     case "staff_sheet":
       return importStaffSheet(input);
+    case "contact_list":
+      return importContactList(input);
   }
 }
 
@@ -789,9 +791,9 @@ async function importStaffSheet(input: ImportInput): Promise<ImportResult> {
         .values(part)
         .onConflictDoUpdate({
           target: creators.username,
-          // Never overwrite contact details the team has since edited in the app.
           set: {
-            phone: sql`case when ${creators.contactEdited} then ${creators.phone} else coalesce(excluded.phone, ${creators.phone}) end`,
+            // Fill empty numbers only – numbers already saved are kept.
+            phone: sql`coalesce(${creators.phone}, excluded.phone)`,
             approach: sql`case when ${creators.contactEdited} then ${creators.approach} else coalesce(excluded.approach, ${creators.approach}) end`,
             notes: sql`coalesce(${creators.notes}, excluded.notes)`,
             updatedAt: sql`now()`,
@@ -808,6 +810,63 @@ async function importStaffSheet(input: ImportInput): Promise<ImportResult> {
     skipped,
     replacedUploads: 0,
     notes: [`${people.size} creators read, ${withPhone} with a WhatsApp number. Samples are not taken from this sheet.`],
+  };
+}
+
+// ───────────────────────── WhatsApp number list ─────────────────────────
+
+/** A two-column file (username, WhatsApp). Only affiliates without a number are filled; saved numbers are kept. */
+async function importContactList(input: ImportInput): Promise<ImportResult> {
+  const h = input.header.map((x) => x.toLowerCase().trim());
+  const uCol = h.findIndex((x) => ["username", "tiktok username", "creator username", "creator name", "affiliate"].includes(x));
+  const pCol = h.findIndex((x) => ["whatsapp", "whatsapp number", "phone", "phone number", "mobile", "contact number"].includes(x));
+  if (uCol < 0 || pCol < 0) throw new Error("Expected a “Username” column and a “WhatsApp” column.");
+
+  const wanted = new Map<string, string>();
+  let invalid = 0;
+  let blank = 0;
+  for (const r of input.rows) {
+    const u = cleanUser(r[uCol]);
+    const raw = r[pCol];
+    if (!u) continue;
+    if (raw == null || String(raw).trim() === "") {
+      blank++; // the download template has empty numbers to fill in – not an error
+      continue;
+    }
+    const phone = normalisePhone(raw);
+    if (!phone) invalid++;
+    else wanted.set(u, phone);
+  }
+  const names = [...wanted.keys()];
+  const have = new Set<string>();
+  for (const part of chunk(names, 2000)) {
+    const found = await db
+      .select({ u: creators.username })
+      .from(creators)
+      .where(sql`${creators.username} in (${sql.join(part.map((x) => sql`${x}`), sql`, `)}) and ${creators.phone} is not null`);
+    for (const f of found) have.add(f.u);
+  }
+  const toAdd = names.filter((u) => !have.has(u));
+  const uploadId = await createUpload(input, input.rows.length, { added: toAdd.length, kept: have.size, invalid, blank });
+  for (const part of chunk(toAdd, 2000)) {
+    await db
+      .insert(creators)
+      .values(part.map((username) => ({ username, phone: wanted.get(username)! })))
+      .onConflictDoUpdate({
+        target: creators.username,
+        set: { phone: sql`coalesce(${creators.phone}, excluded.phone)`, updatedAt: sql`now()` },
+      });
+  }
+  return {
+    uploadId,
+    imported: toAdd.length,
+    skipped: invalid,
+    replacedUploads: 0,
+    notes: [
+      `${toAdd.length} number${toAdd.length === 1 ? "" : "s"} added. ${have.size} affiliate${have.size === 1 ? "" : "s"} already had a number (kept as is).` +
+        (invalid ? ` ${invalid} row${invalid === 1 ? "" : "s"} had a number that couldn't be read.` : "") +
+        (blank ? ` ${blank} row${blank === 1 ? "" : "s"} had no number.` : ""),
+    ],
   };
 }
 

@@ -7,7 +7,7 @@ import { lineState, type LineState, type ResultKey, type SampleVerdict } from ".
 
 /** Optional date window (inclusive, YYYY-MM-DD) applied to when the sample was approved. */
 export type DateRange = { start: string; end: string } | undefined;
-const rangeSql = (r: DateRange) => (r ? sql`and s.approved_at >= ${r.start}::date and s.approved_at < (${r.end}::date + 1)` : sql``);
+export const rangeSql = (r: DateRange) => (r ? sql`and s.approved_at >= ${r.start}::date and s.approved_at < (${r.end}::date + 1)` : sql``);
 
 // ───────────────────────── Creator content type ─────────────────────────
 
@@ -141,13 +141,18 @@ export async function getSampleScorecard(range?: DateRange): Promise<{ rows: Sco
         (count(*) filter (where r = 'not_posted'))::int as not_posted,
         (count(*) filter (where r in ('in_window', 'in_transit')))::int as waiting,
         (avg(extract(epoch from (posted_at - delivered_at)) / 86400) filter (where r in ${POSTED_SET} and posted_at is not null))::float8 as days,
-        coalesce(sum(content_gmv), 0)::float8 as gmv, coalesce(sum(content_orders), 0)::int as orders,
         to_char(min(delivered_at) filter (where r = 'not_posted'), 'YYYY-MM-DD') as oldest,
         to_char(min(delivered_at), 'YYYY-MM-DD') as first,
         to_char(max(approved_at), 'YYYY-MM-DD') as last,
         string_agg(distinct coalesce(k.name, s.variation, s.seller_sku), ', ') as products
       from s left join sku_items k on upper(k.sku) = upper(s.seller_sku)
       group by creator
+    ),
+    -- Sizes of one product share the same sales, so count each product once per creator.
+    gm as (
+      select creator, coalesce(sum(g), 0)::float8 as gmv, coalesce(sum(o), 0)::int as orders from (
+        select creator, max(content_gmv) as g, max(content_orders) as o from s group by creator, coalesce(product_id, id::text)
+      ) x group by creator
     ),
     first_d as (select creator, min(delivered_at) as d from s where delivered_at is not null group by creator),
     vids as (
@@ -179,10 +184,11 @@ export async function getSampleScorecard(range?: DateRange): Promise<{ rows: Sco
         coalesce(sum(payment_amount) filter (where content_type = 'Livestream'), 0)::float8 as lgmv
       from order_lines group by creator
     )
-    select agg.*, c.phone, c.approach, c.do_not_contact as dnc,
+    select agg.*, gm.gmv, gm.orders, c.phone, c.approach, c.do_not_contact as dnc,
       vids.n as videos_since, greatest(lastv.newest, vids.last) as newest, recent.gmv as recent,
       snap.videos, snap.lives, sold.vgmv, sold.lgmv
     from agg
+    left join gm on gm.creator = agg.creator
     left join creators c on c.username = agg.creator
     left join vids on vids.creator = agg.creator
     left join lastv on lastv.creator = agg.creator
@@ -254,6 +260,7 @@ export type SampleLine = {
   buyerMasked: string | null;
   creatorMatch: string | null;
   sku: string | null;
+  productId: string | null;
   name: string | null;
   variation: string | null;
   /** Contents of a bundle (SET) SKU, from the SKU lists. Empty for single items. */
@@ -308,6 +315,7 @@ async function queryLines(where: ReturnType<typeof sql>): Promise<SampleLine[]> 
       buyerMasked: (r.buyer_masked as string) ?? null,
       creatorMatch: (r.creator_match as string) ?? null,
       sku: (r.seller_sku as string) ?? null,
+      productId: (r.product_id as string) ?? null,
       name: (r.name as string) ?? null,
       variation: (r.variation as string) ?? null,
       parts: (r.parts as BundlePart[]) ?? [],
@@ -432,7 +440,7 @@ export async function getSampleTotals(range?: DateRange): Promise<{ sent: number
       (count(*) filter (where r = 'not_posted'))::int as chase,
       (count(*) filter (where r in ('posted_video','did_live','posted_other') and content_orders = 0))::int as nosales,
       (count(*) filter (where r in ('posted_video','did_live','posted_other') and content_orders > 0))::int as selling,
-      coalesce(sum(content_gmv), 0)::float8 as gmv,
+      (select coalesce(sum(g), 0) from (select max(content_gmv) as g from s group by creator, coalesce(product_id, id::text)) x)::float8 as gmv,
       (count(*) filter (where creator is null))::int as unknown
     from s`);
   return { sent: r.sent, qty: r.qty, delivered: r.delivered, chase: r.chase, noSales: r.nosales, selling: r.selling, gmv: r.gmv, unknown: r.unknown };

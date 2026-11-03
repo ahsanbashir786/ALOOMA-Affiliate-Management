@@ -34,7 +34,7 @@ type Item = {
 
 // Import order: orders first so later periods resolve against the data window.
 // SKU lists first (product names for samples); the staff sheet last (it matches against everything else).
-const ORDER = ["sku_catalog", "affiliate_orders", "all_orders", "product_list", "creator_list", "creator_transactions", "video_list", "sample_analysis", "staff_sheet"];
+const ORDER = ["sku_catalog", "affiliate_orders", "all_orders", "product_list", "creator_list", "creator_transactions", "video_list", "sample_analysis", "staff_sheet", "contact_list"];
 
 export function UploadWorkbench() {
   const router = useRouter();
@@ -174,6 +174,11 @@ export function UploadWorkbench() {
                     {it.result.replacedUploads ? ` · replaced ${it.result.replacedUploads} earlier upload for the same period` : ""}.
                   </p>
                 )}
+                {it.phase === "done" && it.result && it.result.notes.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 pl-[22px] text-[12.5px] text-ink-2">
+                    {it.result.notes.map((n) => <li key={n}>{n}</li>)}
+                  </ul>
+                )}
 
                 {it.phase === "ready" && it.info && (
                   <div className="mt-2.5 space-y-2.5">
@@ -191,6 +196,8 @@ export function UploadWorkbench() {
                       </div>
                     ) : it.info.kind === "sku_catalog" ? (
                       <p className="text-[13px] text-ink-2">SKU list – single items and bundle contents are added or updated. Upload every SKU workbook you have.</p>
+                    ) : it.info.kind === "contact_list" ? (
+                      <p className="text-[13px] text-ink-2">WhatsApp numbers – only affiliates without a number are filled; numbers already saved are kept.</p>
                     ) : it.info.kind === "staff_sheet" ? (
                       <p className="text-[13px] text-ink-2">
                         Staff sheet – WhatsApp numbers, notes and LIVE/video approach only. Contact details edited in the app are kept.

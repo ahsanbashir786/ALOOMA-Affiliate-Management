@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { Lightbulb, MessageCircle } from "lucide-react";
+import { Lightbulb } from "lucide-react";
 import type { SampleLine, ScoreRow } from "@/lib/samples/analysis";
 import { CONTENT_TYPE_LABEL } from "@/lib/samples/analysis";
-import { VERDICTS, waLink, waMessage } from "@/lib/samples/states";
+import { VERDICTS, waMessage } from "@/lib/samples/states";
+import { WaSendButton } from "@/components/ui/message-box";
 import { Badge, Card } from "@/components/ui/primitives";
 import { fmtDateShort, fmtInt, fmtRM, initials } from "@/lib/utils";
 import { VerdictBadge } from "./result-badge";
@@ -37,7 +38,7 @@ export function CreatorGroup({
 }) {
   const v = VERDICTS[r.verdict];
   const hasMessage = r.verdict !== "ok" && r.verdict !== "wait";
-  const text = waMessage({
+  const msg = {
     username: r.username,
     products: r.products || "our product",
     verdict: r.verdict,
@@ -46,7 +47,7 @@ export function CreatorGroup({
     videosSince: r.videosSince,
     posted: r.posted,
     lastVideoLabel: dayLabel(r.newestVideo),
-  });
+  };
   return (
     <Card className="overflow-hidden">
       <div className="space-y-3 border-b border-line bg-surface-2/50 px-5 py-4">
@@ -82,16 +83,7 @@ export function CreatorGroup({
               <span className="font-medium">{v.short}:</span> {r.advice || v.todo}
               {r.value > 0 && <span className="text-good"> · {r.verdict === "refresh" ? `${fmtRM(r.value)} / month at stake` : `est. +${fmtRM(r.value)}`}</span>}
             </p>
-            {r.phone && hasMessage && (
-              <a
-                href={waLink(r.phone, text)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-good px-3 text-[13px] font-medium text-white hover:opacity-90"
-              >
-                <MessageCircle className="size-4" /> WhatsApp this message
-              </a>
-            )}
+            {r.phone && hasMessage && <WaSendButton phone={r.phone} en={waMessage(msg, "en")} ms={waMessage(msg, "ms")} />}
             {!r.phone && canEdit && <span className="text-[12.5px] text-ink-3">Add a WhatsApp number to message them.</span>}
           </div>
         )}

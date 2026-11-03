@@ -68,8 +68,29 @@ export type MessageInput = {
 
 const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
 
-/** Ready-to-send WhatsApp text for each verdict. */
-export function waMessage(m: MessageInput): string {
+export type MsgLang = "en" | "ms";
+
+/** Ready-to-send WhatsApp text for each verdict, in English or Bahasa Melayu. */
+export function waMessage(m: MessageInput, lang: MsgLang = "en"): string {
+  if (lang === "ms") {
+    const hi = `Hai ${m.username}, `;
+    switch (m.verdict) {
+      case "chase":
+        return `${hi}harap awak sihat! 😊 Sampel percuma awak (${m.products}) telah sampai pada ${m.deliveredLabel}.\n\nKami teringin sangat nak tengok video awak! Boleh beritahu bila awak merancang untuk upload?\n• Tunjukkan produk sedang digunakan dalam beberapa saat pertama.\n• Tag produk supaya penonton boleh tekan bakul kuning dan terus beli.\nPerlukan brief atau bantuan? Balas sahaja mesej ini.`;
+      case "stop":
+        return `${hi}sekadar bertanya tentang sampel yang kami hantar (${m.products}). Kami teringin tengok video awak – selepas video itu siap, kami gembira nak hantar lebih banyak produk!`;
+      case "coach":
+        return `${hi}terima kasih sebab upload video dengan ${m.products}! 🙌 Jom ubah lebih ramai penonton jadi pembeli:\n• Tunjukkan produk digunakan dalam 5 saat pertama.\n• Sebut manfaat utama dan tawaran dengan jelas, dan minta penonton tekan bakul kuning.\n• Pin komen dengan nama produk dan baucar (jika ada).\nNak kami kongsikan brief atau kod baucar?`;
+      case "more_content":
+        return `${hi}kandungan awak dengan ${m.products} sudah menjana jualan ${rm(m.contentGmv)} – terima kasih! 🎉\n\nUntuk terus berkembang, boleh awak upload ${m.videosSince <= 1 ? "2 video lagi" : "satu video baharu"} minggu ini? "Part 2" video terbaik awak dengan sudut baharu memang berkesan. Perlukan brief atau sampel lagi? Balas sahaja.`;
+      case "more":
+        return `${hi}terima kasih untuk kandungan hebat dengan ${m.products} – jualannya sudah ${rm(m.contentGmv)}! 🎉\n\nKami nak hantar satu lagi sampel percuma. Produk atau saiz apa yang awak mahu seterusnya? Satu set (cadar + sarung bantal) sesuai untuk video "tukar suasana bilik".`;
+      case "refresh":
+        return `${hi}video awak sebelum ini${m.lastVideoLabel ? ` (${m.lastVideoLabel})` : ""} masih menjana jualan – syabas! 🔥\n\nSebelum ia reda, boleh awak upload video baharu atau sambungan? Kami boleh hantar sampel baharu atau brief jika perlu.`;
+      default:
+        return `${hi}terima kasih kerana bekerjasama dengan kami!`;
+    }
+  }
   const hi = `Hi ${m.username}, `;
   switch (m.verdict) {
     case "chase":
