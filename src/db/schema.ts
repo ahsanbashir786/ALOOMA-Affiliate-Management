@@ -98,6 +98,12 @@ export const creators = pgTable("creators", {
   ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
   /** True once phone/approach were edited in the app – the staff sheet import then leaves them alone. */
   contactEdited: boolean("contact_edited").notNull().default(false),
+  /** The platform of this account. Only TikTok today; the column lets other platforms attach without a rebuild. */
+  platform: text("platform").notNull().default("tiktok"),
+  /** "import" (seen in an export) or "manual" (added by staff to start outreach). */
+  source: text("source").notNull().default("import"),
+  addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
+  addedAt: timestamp("added_at"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

@@ -12,6 +12,7 @@
     "import:sample": "tsx --env-file=.env --conditions=react-server scripts/import-sample.ts",
     "test:workflow": "tsx --conditions=react-server scripts/test-workflow.ts",
     "test:regressions": "tsx --conditions=react-server scripts/test-regressions.ts",
+    "test:real": "tsx --conditions=react-server scripts/test-real-exports.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

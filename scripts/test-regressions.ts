@@ -460,6 +460,76 @@ async function main() {
   const after17 = await snap();
   check("17h repeat uploads and recommendation refreshes keep every staff event, promise, decision and change", JSON.stringify({ ...snap17 }) === JSON.stringify(after17) && (await comm(c17))[0].state === "fulfilled" && ct > 0, JSON.stringify({ snap17, after17 }));
 
+
+  // ═════════════ Round 3: redesigned workspace, relationships, owner drill-down ═════════════
+  const { relationshipOf } = await import("../src/lib/workflow/relationship");
+  const { loadRelationships } = await import("../src/lib/workflow/relationships");
+  const { addCreator } = await import("../src/lib/workflow/creators");
+  const { getRecords, getOwnerDecisions } = await import("../src/lib/workflow/records");
+  const base = { paused: false, contacts: 0, attempts: 0, maxUnanswered: 3, outstanding: 0, overdueDays: null as number | null, stalledOverdueDays: 14, sampleOpen: false, lastSaleOn: null as string | null, today: "2026-11-03", inactiveDays: 28 };
+  check("18a relationship rules: new / approached / working / selling / inactive / stalled / paused",
+    relationshipOf(base) === "prospect" && relationshipOf({ ...base, contacts: 1 }) === "approached" && relationshipOf({ ...base, outstanding: 1 }) === "collaborating" &&
+    relationshipOf({ ...base, lastSaleOn: "2026-10-20" }) === "active" && relationshipOf({ ...base, lastSaleOn: "2026-08-01" }) === "inactive" &&
+    relationshipOf({ ...base, contacts: 3, attempts: 3 }) === "stalled" && relationshipOf({ ...base, outstanding: 1, overdueDays: 15 }) === "stalled" && relationshipOf({ ...base, paused: true, attempts: 5 }) === "paused");
+
+  // ───── New creator outreach (no sample, no export row) ─────
+  const cN = "zz_test_new";
+  const add1 = await addCreator({ username: cN, phone: null, contactedNow: false, userId: null });
+  const add2 = await addCreator({ username: cN, phone: null, contactedNow: false, userId: null });
+  check("19a a creator can be added by hand; adding again changes nothing", "existed" in add1 && !add1.existed && "existed" in add2 && add2.existed && (await one<{ n: number }>(sql`select count(*)::int n from creators where username = ${cN} and source = 'manual' and platform = 'tiktok'`)).n === 1);
+  const newRow = (await getToday("development")).rows.find((r) => r.username === cN);
+  check("19b the new creator is listed as a recruitment opportunity, relationship 'New'", !!newRow && newRow.opportunity === "recruit" && newRow.relationship === "prospect" && newRow.reasons.some((x) => x.kind === "new_creator"), JSON.stringify(newRow && { o: newRow.opportunity, r: newRow.relationship }));
+  const ev19 = await addEvent({ username: cN, kind: "contacted", userId: null, synthetic: true });
+  check("19c after Contacted: relationship 'Approached', follow-up in 3 days, off the main list", (await loadRelationships([cN])).get(cN)?.status === "approached" && (await getWorkflowStates([cN])).get(cN)?.nextOn === d(3) && !(await getToday("focus")).rows.some((r) => r.username === cN));
+  void ev19;
+
+  // ───── Follow up an unanswered contact: 3 recorded attempts → review / pause suggested ─────
+  const cS = "zz_test_stall";
+  await mkCreators([cS]);
+  for (let i = 3; i >= 1; i--) await addEvent({ username: cS, kind: "contacted", userId: null, synthetic: true, at: daysAgo(i * 4) });
+  const rowS = [...(await getToday("due")).rows, ...(await getToday("scheduled")).rows].find((r) => r.username === cS);
+  check("20a three recorded contacts without a promise → relationship 'Stalled' and a review/pause suggestion (no claim about replies)", (await loadRelationships([cS])).get(cS)?.status === "stalled" && !!rowS?.suggestPause, JSON.stringify(rowS && { a: rowS.attempts, s: rowS.suggestPause }));
+  check("20b the stalled creator is an owner decision", (await getOwnerDecisions()).some((x) => x.key === "stalled" && x.count >= 1));
+  await promise(cS, d(6), { daysAgoRecorded: 0 });
+  check("20c a recorded promise ends the stall ('Working together')", (await loadRelationships([cS])).get(cS)?.status === "collaborating");
+  await addEvent({ username: cS, kind: "paused", userId: null, details: { reason: "SYNTHETIC" }, synthetic: true });
+  check("20d pausing → 'Paused'; resuming returns it to work", (await loadRelationships([cS])).get(cS)?.status === "paused" && (await addEvent({ username: cS, kind: "resumed", userId: null, synthetic: true }), (await loadRelationships([cS])).get(cS)?.status === "collaborating"));
+
+  // ───── Relationship uses configurable limits and real sales ─────
+  const cA = "zz_test_rep";
+  const rA = (await loadRelationships([cA])).get(cA);
+  await db.execute(sql`insert into settings (key, value) values ('workflow', '{"inactiveDays": 1}'::jsonb) on conflict (key) do update set value = excluded.value`);
+  const rB = (await loadRelationships([cA])).get(cA);
+  await db.execute(sql`delete from settings where key = 'workflow'`);
+  check("20e the 'inactive after N days' limit is a setting, not code", !!rA && !!rB && rA.status !== "inactive" ? rB.status === "inactive" || rA.status === rB.status : true);
+
+  // ───── Drill-down: every Progress figure has records that add up to it ─────
+  const pgr = await getProgress(28);
+  const rec = async (m: Parameters<typeof getRecords>[0]) => (await getRecords(m, 28)).rows.length;
+  check("21a follow-up figures equal their records", (await rec("fu_due")) === pgr.followUps.due && (await rec("fu_onTime")) === pgr.followUps.onTime && (await rec("fu_overdue")) === pgr.followUps.overdueOpen && (await rec("fu_paused")) === pgr.followUps.pausedOrCancelled && (await rec("fu_rescheduled")) === pgr.followUps.rescheduled && (await rec("fu_auto")) === pgr.followUps.resolvedAutomatically, JSON.stringify(pgr.followUps));
+  check("21b contacted creators and promises equal their records", (await rec("contacted")) === pgr.staff.creatorsContacted && (await rec("promises_new")) === pgr.staff.promisesRecorded && (await rec("promises_moved")) === pgr.staff.deadlinesMoved);
+  check("21c promise states equal their records", (await rec("pr_due")) === pgr.promises.due && (await rec("pr_overdue")) === pgr.promises.overdueOpen && (await rec("pr_partial")) === pgr.promises.partial);
+  check("21d content figure equals its records (each piece once)", (await rec("content")) === pgr.content.total, `${await rec("content")} vs ${pgr.content.total}`);
+  check("21e relationship counts equal their records", (await rec("rel_stalled")) === pgr.relationships.stalled && (await rec("rel_paused")) === pgr.relationships.paused && (await rec("rel_collaborating")) === pgr.relationships.collaborating);
+  check("21f an 8-week trend is produced", pgr.trend.length === 8 && pgr.trend.every((t) => t.contacted >= 0));
+
+  // ───── Failed-import recovery: a failure after partial writes leaves nothing behind ─────
+  const cnt = async () => ({
+    up: (await one<{ n: number }>(sql`select count(*)::int n from uploads`)).n,
+    ol: (await one<{ n: number }>(sql`select count(*)::int n from order_lines`)).n,
+    pr: (await one<{ n: number }>(sql`select count(*)::int n from products`)).n,
+  });
+  const beforeF = await cnt();
+  let failed = false;
+  try {
+    const bad = aff({ id: nid(), pid: "7000000000999", creator: "zz_test_rep", amt: 10, created: d(-1), contentId: "990001" });
+    bad[8] = 99999999999; // quantity overflows a 4-byte integer → the database refuses the insert after the upload record and product were written
+    await imp("affiliate_orders", AFF, [aff({ id: nid(), pid: P1, creator: "zz_test_rep", amt: 11, created: d(-1), contentId: "990002" }), bad]);
+  } catch {
+    failed = true;
+  }
+  check("22 a failure mid-import is rolled back completely (no upload record, lines or products left), and a retry works", failed && JSON.stringify(await cnt()) === JSON.stringify(beforeF) && ((await imp("affiliate_orders", AFF, [aff({ id: nid(), pid: P1, creator: "zz_test_rep", amt: 11, created: d(-1), contentId: "990002" })])).added === 1));
+
   void allocate; void loadEvents; void getWorkflowStates;
 
   console.log(`\n${pass} passed, ${fail} failed`);

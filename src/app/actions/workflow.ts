@@ -245,3 +245,28 @@ export async function undoDecision(decisionId: number): Promise<R> {
   done();
   return { ok: true };
 }
+
+const NewCreator = z.object({
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform((s) => s.replace(/^@/, "").replace(/^https?:\/\/(www\.)?tiktok\.com\/@/, "").replace(/[/?].*$/, ""))
+    .pipe(z.string().regex(/^[a-z0-9._]{2,40}$/, "Enter the TikTok username, e.g. @name.")),
+  phone: z.string().trim().max(30).optional(),
+  contactedNow: z.boolean().optional(),
+});
+
+/** Start outreach to a creator nobody has recorded yet. A sample is not needed. WhatsApp numbers keep their own permission. */
+export async function addCreatorAction(input: z.input<typeof NewCreator>): Promise<R & { username?: string; existed?: boolean }> {
+  const user = await requireUser("manager");
+  const p = NewCreator.safeParse(input);
+  if (!p.success) return { error: p.error.issues[0].message };
+  const { addCreator } = await import("@/lib/workflow/creators");
+  const { mayEditContacts } = await import("@/lib/auth");
+  if (p.data.phone && !mayEditContacts(user)) return { error: "You don't have permission to edit WhatsApp numbers. Add the creator without a number, or ask an admin." };
+  const res = await addCreator({ username: p.data.username, phone: p.data.phone ?? null, contactedNow: !!p.data.contactedNow, userId: user.id });
+  if ("error" in res) return { error: res.error };
+  done();
+  return { ok: true, username: p.data.username, existed: res.existed };
+}

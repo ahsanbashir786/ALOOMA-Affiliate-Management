@@ -1,32 +1,34 @@
-# Daily guide for the affiliate manager
+# Staff guide – the daily routine
 
-Open **Today's Work**. The list is short on purpose; everything due is on top.
+Open **Today's Work**. Each row answers four things: **who** (name and relationship), **why now** (coloured chips and one line of evidence),
+**what to do** (the buttons) and **by when** (the deadline chip on the right). Open **Details** for the full reasons, sample timeline, last actions and the message.
 
-| Row says | Meaning | What to do |
-|---|---|---|
-| Promise overdue | The creator gave a date and no matching content was seen | Message them |
-| Follow-up due | You contacted them earlier and the follow-up date arrived | Message them |
-| Sample needs attention | Delivered and nothing posted by the deadline | Message them |
-| Development idea | A creator worth growing | Optional |
+| Tab | What is in it |
+|---|---|
+| **Today** | Everything due, plus the most important sample cases and a few opportunities |
+| **Due & overdue** | Promises and follow-ups that need you now |
+| **To verify** | Possible content waiting for a yes or no |
+| **Samples** | Delivered samples with nothing posted by the deadline |
+| **Opportunities** | Recruit (new creators), Develop (existing creators, no sample needed), Reactivate (gone quiet) |
+| **Scheduled / Paused** | Already handled – waiting for their date, or on hold |
 
-Buttons on every row:
+A creator can have several promises at once. Each is shown separately on the row (for example *Bedsheet · video 1/2 · 1d late · due 2 Nov*) –
+a later promise never hides an earlier one.
 
-* **Open TikTok / WhatsApp message** – opens the app or shows a ready EN/BM message. This does **not** count as contact.
-* **Contacted** – press it after you really sent a message. Saves who and when; next follow-up in 3 days.
-* **Promised date** – the creator told you when they will post. Pick a date, nothing else needed. Optional **Add details**: video or LIVE, which product, how many (e.g. 2). Suggestions come from what the creator already sells. Works for creators who got no sample.
-  If they already have a promise, choose **Move this date** (the creator changed the date – the first date is kept) or **Add another promise** (a separate promise).
-  Two videos promised = it shows **1/2** after the first and finishes after the second.
+## Buttons
+
+* **Contacted** – press it after you really sent a message. Saves who and when; the next follow-up is 3 days later. Opening TikTok/WhatsApp or copying a message does **not** count.
+* **Promised date** – the creator told you when they will post. Pick a date; that is enough. Optional *Add details*: video or LIVE, product, how many (e.g. 2). If a promise already exists, choose **Move this date** (the creator changed it) or **Add another promise**.
 * **Needs help** – pick a reason and the next date.
-* **Pause** – type a short reason (e.g. holiday); optional date to come back.
-* **Undo** – appears after each action; the history still shows it was undone.
-* Tick several rows → **Mark selected as contacted** → confirm the count.
+* **Pause / Resume** – short reason; optional date to come back.
+* **Verify (n)** – the system found a video that *might* be the promised one. *This is it*, *Not this*, or paste a link.
+* **Undo** – appears after each action; history keeps that it was undone.
+* Tick several creators → **Mark selected as contacted** → confirm the count.
+* **Add creator** – start outreach to someone new (username; WhatsApp number optional; no sample needed).
 
-After 3 contacts with no new content the row suggests pausing. It never labels a creator as unsuccessful.
+After 3 recorded contacts without a promise or new content, the row suggests **Review or pause**. The system cannot see WhatsApp replies, so it never says they did not reply.
 
-**Check possible content** (on a row) appears when the system found a video that *might* be the promised one (for example no product is listed, or its posting date is unknown). Press *This is it* or *Not this*, or paste a link.
+## What you never do
 
-You never record "content posted" – the system finds it in the next upload. If a video is not recognised, open
-**Samples → Needs review**: press *This is it* / *Not this*, or paste the video link.
-
-The creator's page has an **Activity timeline** with every contact, promise, sample and confirmed video.
-The owner sees **Progress**.
+Log replies, type notes (optional), or record "content posted" – the next upload finds the videos and updates the promise by itself (1/2 → 2/2).
+Weekly: upload the three files in **Data hub**, then press **Refresh recommendations**.

@@ -124,6 +124,8 @@ const Workflow = z.object({
   todayLimit: z.coerce.number().int().min(3).max(100),
   developmentLimit: z.coerce.number().int().min(0).max(30),
   stuckTransitDays: z.coerce.number().int().min(3).max(60),
+  inactiveDays: z.coerce.number().int().min(7).max(365),
+  stalledOverdueDays: z.coerce.number().int().min(3).max(90),
 });
 
 /** Defaults for the daily workflow (follow-up spacing, list size). Changing them never rewrites past staff actions. */

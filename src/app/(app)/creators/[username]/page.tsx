@@ -19,6 +19,10 @@ import { eq } from "drizzle-orm";
 import { MessageBox } from "@/components/ui/message-box";
 import { getCreatorWorkspace } from "@/lib/workflow/timeline";
 import { CreatorTimeline } from "@/components/today/creator-timeline";
+import { CreatorActions } from "@/components/today/creator-actions";
+import { todayKL } from "@/lib/time";
+import { RELATIONSHIP } from "@/lib/workflow/relationship";
+import { loadRelationships } from "@/lib/workflow/relationships";
 import { fmtDayLabel, fmtDateTimeKL } from "@/lib/time";
 import { fmtCompact, fmtDate, fmtInt, fmtPct, fmtRM, initials, pctChange } from "@/lib/utils";
 
@@ -84,6 +88,29 @@ async function CreatorExtras({ username, canEdit }: { username: string; canEdit:
   );
 }
 
+type Workspace = Awaited<ReturnType<typeof getCreatorWorkspace>>;
+type RelRow = Awaited<ReturnType<typeof loadRelationships>> extends Map<string, infer V> ? V | undefined : never;
+
+/** Relationship, quick actions and the activity timeline – available for every creator, with or without sales or samples. */
+function WorkspaceCard({ username, ws, relRow, canEdit }: { username: string; ws: Workspace; relRow: RelRow; canEdit: boolean }) {
+  return (
+  <Card>
+        <CardHeader title="Activity timeline" description="Built automatically from staff actions, samples and verified content. Sales after a contact are shown for context only – they are not proof the contact caused them." />
+        {canEdit && <CreatorActions username={username} paused={ws.summary.status === "paused"} today={todayKL()} />}
+        {relRow && <p className="px-5 pb-2 text-[13px]"><span className="text-ink-3">Relationship:</span> <Badge tone={RELATIONSHIP[relRow.status].tone}>{RELATIONSHIP[relRow.status].label}</Badge> <span className="text-ink-3">{RELATIONSHIP[relRow.status].hint}</span></p>}
+        <div className="grid gap-3 px-5 pb-4 sm:grid-cols-2 lg:grid-cols-4 text-[13px]">
+          <p><span className="text-ink-3">Last contact</span><br />{ws.summary.lastContactedAt ? fmtDateTimeKL(ws.summary.lastContactedAt) : "–"}</p>
+          <p><span className="text-ink-3">Next action</span><br />{ws.summary.nextOn ? fmtDayLabel(ws.summary.nextOn) : "–"}{ws.summary.status === "paused" ? " (paused)" : ""}</p>
+          <p><span className="text-ink-3">Promised date</span><br />{ws.summary.promiseOn ? `${fmtDayLabel(ws.summary.promiseOn)} · ${(() => { const [st, prog] = (ws.summary.promiseState ?? "").split(":"); return st === "fulfilled" ? `content seen${prog ? ` (${prog})` : ""}` : st === "partial" ? `partly done (${prog})` : st === "review" ? "possible match to review" : "not seen yet"; })()}` : "–"}</p>
+          <p><span className="text-ink-3">Samples · confirmed content</span><br />{ws.summary.samples} · {ws.summary.verifiedContent}</p>
+          <p className="sm:col-span-2"><span className="text-ink-3">Sales since last contact (context only)</span><br />{ws.summary.gmvSinceContact == null ? "–" : fmtRM(ws.summary.gmvSinceContact)}</p>
+          <p className="sm:col-span-2"><span className="text-ink-3">Sales, last 28 days of data</span><br />{fmtRM(ws.summary.gmv28)}</p>
+        </div>
+        <CreatorTimeline entries={ws.entries} canUndo={canEdit} />
+  </Card>
+  );
+}
+
 export default async function CreatorPage({ params, searchParams }: PageProps<"/creators/[username]">) {
   const username = decodeURIComponent((await params).username);
   const period = await resolvePeriod(await searchParams);
@@ -101,12 +128,14 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
           <ArrowLeft className="size-4" /> Affiliates Overview
         </Link>
         <PageHeader title={username} description={`No sales for this creator in ${period.label.toLowerCase()} or the period before.`} />
+        <WorkspaceCard username={username} ws={await getCreatorWorkspace(username)} relRow={(await loadRelationships([username])).get(username)} canEdit={canEdit} />
         <CreatorExtras username={username} canEdit={canPhone} />
       </div>
     );
   }
   const detail = await getCreatorDetail(username, period);
   const ws = await getCreatorWorkspace(username);
+  const relRow = (await loadRelationships([username])).get(username);
   const rec = buildRecommendation(c, period, analysis.thresholds, analysis.names);
   const hasPrev = period.prevEnd >= period.dataMin;
   const maxProd = Math.max(1, ...detail.products.map((p) => p.gmv));
@@ -185,18 +214,7 @@ export default async function CreatorPage({ params, searchParams }: PageProps<"/
         </Card>
       )}
 
-      <Card>
-        <CardHeader title="Activity timeline" description="Built automatically from staff actions, samples and verified content. Sales after a contact are shown for context only – they are not proof the contact caused them." />
-        <div className="grid gap-3 px-5 pb-4 sm:grid-cols-2 lg:grid-cols-4 text-[13px]">
-          <p><span className="text-ink-3">Last contact</span><br />{ws.summary.lastContactedAt ? fmtDateTimeKL(ws.summary.lastContactedAt) : "–"}</p>
-          <p><span className="text-ink-3">Next action</span><br />{ws.summary.nextOn ? fmtDayLabel(ws.summary.nextOn) : "–"}{ws.summary.status === "paused" ? " (paused)" : ""}</p>
-          <p><span className="text-ink-3">Promised date</span><br />{ws.summary.promiseOn ? `${fmtDayLabel(ws.summary.promiseOn)} · ${(() => { const [st, prog] = (ws.summary.promiseState ?? "").split(":"); return st === "fulfilled" ? `content seen${prog ? ` (${prog})` : ""}` : st === "partial" ? `partly done (${prog})` : st === "review" ? "possible match to review" : "not seen yet"; })()}` : "–"}</p>
-          <p><span className="text-ink-3">Samples · confirmed content</span><br />{ws.summary.samples} · {ws.summary.verifiedContent}</p>
-          <p className="sm:col-span-2"><span className="text-ink-3">Sales since last contact (context only)</span><br />{ws.summary.gmvSinceContact == null ? "–" : fmtRM(ws.summary.gmvSinceContact)}</p>
-          <p className="sm:col-span-2"><span className="text-ink-3">Sales, last 28 days of data</span><br />{fmtRM(ws.summary.gmv28)}</p>
-        </div>
-        <CreatorTimeline entries={ws.entries} canUndo={canEdit} />
-      </Card>
+      <WorkspaceCard username={username} ws={ws} relRow={relRow} canEdit={canEdit} />
 
       <section className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">

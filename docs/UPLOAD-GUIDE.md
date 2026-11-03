@@ -1,36 +1,33 @@
-# Upload guide
+# Minimum upload guide
+
+Checked against the real exports (all 15 files in this project were imported and re-imported in an isolated database).
 
 ## Every week (about 5 minutes)
 
-1. TikTok Shop Seller Center → export **Affiliate orders** (all dates since your last upload – overlap is fine).
-2. Export **All shop orders** (same dates).
-3. Affiliate Center → **Video analysis** (last 7 days, or 28 days).
-4. Data hub → drop the three files in. Each shows *added / updated / skipped / rejected*.
-5. Today's Work → **Refresh recommendations**.
-
-Uploading the same file twice, or files that overlap, is safe.
-
-**What the system can and cannot promise about old files:** TikTok's exports have no "exported at" time, so a line is judged by its own
-dates (created / paid / shipped / delivered / cancelled). A line with an *older* date never replaces a newer one. If a file changes a line
-but the dates are the same, the system **keeps what it had** and lists the line in **Data hub → "to review"** – you choose
-"Keep what is stored" or "The file is newer – use its version". A new cancellation/return/refund is accepted; one that *disappears*
-is listed for review. Upload time is never used to decide which version is newer.
-
-**Gaps matter:** Progress compares sales only for periods your uploaded files fully cover. If a week is missing, it says so instead of showing zero.
-
-## Only when needed
-
-| File | When |
+| File | Why it cannot be dropped |
 |---|---|
-| SKU lists / bundles | once, and when you add products |
-| WhatsApp numbers | once, then type new numbers in the app |
-| Creator list | monthly, if you want ideas for creators who have not sold |
-| Sample analysis / Transaction analysis / Product list | optional |
+| **Affiliate orders** | Sales, LIVE evidence, first-sale dates |
+| **All shop orders** | Sample deliveries, cancellations/returns (the source of truth for valid sales) |
+| **Video analysis** | Video posting dates – the evidence that a promise or sample was fulfilled |
 
-## If something looks wrong
+Then press **Refresh recommendations** on Today's Work. In **Data hub** you can drop all files at once; each is detected automatically and shows
+*added · updated · unchanged · skipped (older) · to review · rejected*, the period it covers, and any warning.
 
-* **"Skipped (older)"** – those lines are older than what is stored; nothing was lost.
-* **"To review"** – same dates, different values; stored version kept until you decide (Data hub).
-* **"Unchanged"** – the line was already exactly as in the file.
-* **Rejected rows** – bad order id or date; the reasons are listed. If the *whole* file is invalid nothing is imported.
-* **Orders history starts on …** – Progress hides "newly selling" and sales comparisons until the history is long enough.
+## Setup data (upload once, again only when it changes)
+
+SKU lists / bundle mappings, WhatsApp numbers (contact list or staff sheet, or type them in the app).
+
+## Optional
+
+Creator list (followers → recruitment ideas), Transaction analysis (exact posting counts), Sample analysis (extra uncertain evidence), Product list (names also come from orders).
+Today's Work works without them; the screens say honestly what is unavailable.
+
+## Safety rules (all files)
+
+* Each file is imported in one transaction – on failure nothing changes.
+* Same or overlapping files never duplicate lines. Order lines are keyed by order + SKU.
+* Each line is judged by **its own** dates, never by the file's latest date or the upload time. A line with older dates never replaces newer data.
+  Same dates but different values are **kept as stored and listed in Data hub → "to review"** for you to keep or replace.
+  A new return/refund/cancellation is accepted; one that disappears is listed for review.
+* Accepting a correction also updates the linked sample and recalculates matching, deadlines, promise progress and sales attribution.
+* **Gaps matter:** Progress compares sales only where uploaded files fully cover both periods and shows the effective dates. Missing files are never read as zero.

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronDown, Clock, ExternalLink, Loader2, Pause, Play, Undo2, UserCheck } from "lucide-react";
+import { ChevronDown, ExternalLink, Loader2, Pause, Play, Undo2, UserCheck } from "lucide-react";
 import { addCommitmentLink, decideCommitmentContent, markContacted, markNeedsHelp, markPromised, pauseCreator, rescheduleCommitmentAction, resumeCreator, undoEvent } from "@/app/actions/workflow";
 import { HELP_REASONS_LIST } from "@/lib/workflow/reasons";
 import { Badge, Button, Input, Select } from "@/components/ui/primitives";
@@ -14,6 +14,11 @@ export type TodayItem = {
   username: string;
   phone: string | null;
   tier: 1 | 2 | 3 | 4;
+  relationship: { key: string; label: string; tone: "neutral" | "brand" | "good" | "warn" | "critical"; hint: string };
+  opportunity: "recruit" | "develop" | "reactivate" | null;
+  obligations: { id: number; label: string; contentType: "video" | "live" | null; done: number; needed: number; dueLabel: string; lateDays: number | null; moved: boolean }[];
+  deadline: { label: string; tone: "critical" | "warn" | "neutral" } | null;
+  history: { at: string; text: string }[];
   reasons: { kind: string; text: string }[];
   recs: { type: string; title: string; instruction: string; instructionMs: string | null }[];
   status: "active" | "paused";
@@ -36,19 +41,64 @@ export type TodayItem = {
   suggest: { products: { id: string; name: string }[]; kind: "video" | "live" | null };
   attempts: number;
   suggestPause: boolean;
-  samples: { id: number; product: string; deliveredLabel: string | null; postByLabel: string | null; agreed: boolean; result: string }[];
+  samples: { id: number; product: string; approvedLabel: string | null; shippedLabel: string | null; deliveredLabel: string | null; postByLabel: string | null; agreed: boolean; result: string }[];
   held: string | null;
   pausedLabel: string | null;
   followKind: "promise" | "follow_up" | "help" | "resume";
 };
 
 type Panel = null | "promise" | "help" | "pause" | "message" | "content";
-const TIER: Record<number, { label: string; tone: "critical" | "serious" | "warn" | "brand" }> = {
-  1: { label: "Promise overdue", tone: "critical" },
-  2: { label: "Follow-up due", tone: "serious" },
-  3: { label: "Sample needs attention", tone: "warn" },
-  4: { label: "Development idea", tone: "brand" },
-};
+type Tone = "critical" | "serious" | "warn" | "brand" | "good" | "neutral";
+const OPP: Record<string, string> = { recruit: "Recruit", develop: "Develop", reactivate: "Reactivate" };
+
+/** Short status chips (colour + words) derived from why the creator is on the list. */
+function chipsOf(it: TodayItem): { label: string; tone: Tone }[] {
+  const out: { label: string; tone: Tone }[] = [];
+  const add = (label: string, tone: Tone) => { if (!out.some((c) => c.label === label)) out.push({ label, tone }); };
+  for (const r of it.reasons) {
+    if (r.kind === "promise_overdue") add("Promise overdue", "critical");
+    else if (r.kind === "followup_due") add("Follow-up due", "serious");
+    else if (r.kind === "help_due") add("Help follow-up", "serious");
+    else if (r.kind === "resume_due") add("Resume?", "warn");
+    else if (r.kind === "promise_review" || r.kind === "sample_review") add("To verify", "warn");
+    else if (r.kind === "sample") add("Sample overdue", "warn");
+    else if (r.kind === "new_creator") add("New creator", "brand");
+    else if (r.kind === "development") add(it.opportunity ? OPP[it.opportunity] : "Opportunity", "brand");
+  }
+  return out;
+}
+
+function Bar({ done, needed, tone }: { done: number; needed: number; tone: string }) {
+  return (
+    <span className="inline-block h-1.5 w-12 overflow-hidden rounded-full bg-line align-middle" aria-hidden>
+      <span className={cn("block h-full rounded-full", tone)} style={{ width: `${Math.min(100, Math.round((done / Math.max(1, needed)) * 100))}%` }} />
+    </span>
+  );
+}
+
+/** Sample delivery → posting timeline: approved · shipped · delivered · post by. */
+function MiniTimeline({ s }: { s: TodayItem["samples"][number] }) {
+  const steps = [
+    { k: "Approved", d: s.approvedLabel, done: !!s.approvedLabel },
+    { k: "Shipped", d: s.shippedLabel, done: !!s.shippedLabel },
+    { k: "Delivered", d: s.deliveredLabel, done: !!s.deliveredLabel },
+    { k: s.agreed ? "Post by (agreed)" : "Post by", d: s.postByLabel, done: false },
+  ];
+  const late = s.result === "not_posted";
+  return (
+    <div className="flex items-center gap-1 text-[11.5px] text-ink-3" aria-label={`Sample: ${s.product}`}>
+      <span className="max-w-40 truncate font-medium text-ink-2" title={s.product}>{s.product}</span>
+      {steps.map((st, i) => (
+        <span key={st.k} className="inline-flex items-center gap-1">
+          <span className={cn("size-2 rounded-full", st.done ? "bg-good" : i === 3 ? (late ? "bg-critical" : "bg-warn") : "bg-line-strong")} />
+          <span className={cn(i === 3 && late && "font-medium text-critical")}>{st.k}{st.d ? ` ${st.d}` : ""}</span>
+          {i < steps.length - 1 && <span className="text-line-strong">–</span>}
+        </span>
+      ))}
+      {s.result === "uncertain" && <span className="font-medium text-warn">· possible content</span>}
+    </div>
+  );
+}
 
 export function TodayList({ items, today, helpDays, canAct }: { items: TodayItem[]; today: string; helpDays: number; canAct: boolean }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -138,7 +188,6 @@ function Row({
   const [helpDate, setHelpDate] = useState(addDays(today, helpDays));
   const [pauseReason, setPauseReason] = useState("");
   const [resumeOn, setResumeOn] = useState("");
-  const tier = TIER[it.tier];
   const rec = it.recs[0];
   const fallback = followUpMessage(it.username, it.followKind, it.commitment?.dueLabel);
   const en = rec?.instruction ?? fallback.en;
@@ -146,83 +195,90 @@ function Row({
   const tiktok = `https://www.tiktok.com/@${encodeURIComponent(it.username)}`;
   const toggle = (p: Panel) => setPanel(panel === p ? null : p);
 
+  const chips = chipsOf(it);
+  const [open, setOpen] = useState(false);
+  const lead = it.reasons[0]?.text;
   return (
-    <article className="rounded-xl border border-line bg-surface p-4" data-testid={`today-${it.username}`}>
-      <div className="flex flex-wrap items-start gap-3">
-        {canAct && !it.held && (
-          <input type="checkbox" aria-label={`Select ${it.username}`} checked={selected} onChange={onToggle} className="mt-1.5 size-4" />
+    <article className="rounded-xl border border-line bg-surface" data-testid={`today-${it.username}`}>
+      <div className="flex items-start gap-3 p-3">
+        {canAct && !it.held ? (
+          <input type="checkbox" aria-label={`Select ${it.username}`} checked={selected} onChange={onToggle} className="mt-1 size-4" />
+        ) : (
+          <span className="w-4" />
         )}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/creators/${encodeURIComponent(it.username)}`} className="text-[16px] font-semibold hover:underline">@{it.username}</Link>
-            {it.held ? <Badge tone="neutral">{it.status === "paused" ? "Paused" : "Scheduled"}</Badge> : <Badge tone={tier.tone}>{tier.label}</Badge>}
-            {it.commitment && (
-              <Badge tone="brand">
-                Promised {it.commitment.dueLabel}
-                {it.commitment.originalLabel ? ` (moved from ${it.commitment.originalLabel})` : ""}
-                {it.commitment.needed > 1 || it.commitment.done > 0 ? ` · ${it.commitment.done}/${it.commitment.needed}${it.commitment.contentType === "live" ? " LIVE" : it.commitment.contentType === "video" ? " video" : ""}` : ""}
-              </Badge>
-            )}
-            {it.otherCommitments > 0 && <span className="text-[12.5px] text-ink-3">+{it.otherCommitments} more promise{it.otherCommitments === 1 ? "" : "s"}</span>}
-            {it.lastContacted && <span className="text-[12.5px] text-ink-3">Last contacted {it.lastContacted}</span>}
-            {it.nextLabel && <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3"><Clock className="size-3.5" /> Next: {it.nextLabel}</span>}
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Link href={`/creators/${encodeURIComponent(it.username)}`} className="text-[15px] font-semibold hover:underline">@{it.username}</Link>
+            <span title={it.relationship.hint}><Badge tone={it.relationship.tone}>{it.relationship.label}</Badge></span>
+            {it.held ? <Badge tone="neutral">{it.status === "paused" ? "Paused" : "Scheduled"}</Badge> : chips.map((c) => <Badge key={c.label} tone={c.tone}>{c.label}</Badge>)}
+            {!it.phone && <span className="text-[11.5px] text-ink-3" title="No WhatsApp number saved">no number</span>}
           </div>
-          {it.held ? (
-            <p className="mt-1 text-[13.5px] text-ink-2">{it.held}</p>
-          ) : (
-            <ul className="mt-1.5 space-y-0.5 text-[13.5px] text-ink-2">
-              {it.reasons.map((r, i) => <li key={i}>{r.text}</li>)}
-            </ul>
-          )}
-          {it.recs.length > 1 && !it.held && (
-            <p className="mt-1 text-[12.5px] text-ink-3">Also: {it.recs.slice(1).map((r) => r.title).join(" · ")}</p>
-          )}
-          {it.samples.length > 0 && (
-            <ul className="mt-1.5 text-[12.5px] text-ink-3">
-              {it.samples.slice(0, 3).map((s) => (
-                <li key={s.id}>
-                  {s.product}{s.deliveredLabel ? ` · delivered ${s.deliveredLabel}` : " · on the way"}
-                  {s.postByLabel ? ` · post by ${s.postByLabel}${s.agreed ? " (agreed)" : ""}` : ""}
-                  {s.result === "uncertain" ? " · possible content to review" : ""}
+          <p className="truncate text-[13px] text-ink-2" title={it.held ?? lead}>{it.held ?? lead}</p>
+          {it.obligations.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Promises">
+              {it.obligations.map((o) => (
+                <li key={o.id} className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-[12px]", o.lateDays != null ? "border-critical/40 bg-critical-soft text-critical" : "border-line bg-surface-2 text-ink-2")}>
+                  <span className="max-w-32 truncate font-medium" title={o.label}>{o.label}</span>
+                  <span>{o.contentType === "live" ? "LIVE" : o.contentType === "video" ? "video" : ""}</span>
+                  <span className="tnum font-medium">{o.done}/{o.needed}</span>
+                  <Bar done={o.done} needed={o.needed} tone={o.lateDays != null ? "bg-critical" : "bg-brand"} />
+                  <span>{o.lateDays != null ? `${o.lateDays}d late · ` : "due "}{o.dueLabel}{o.moved ? " (moved)" : ""}</span>
                 </li>
               ))}
-              {it.samples.length > 3 && <li>+ {it.samples.length - 3} more</li>}
             </ul>
           )}
+          {it.samples.slice(0, 1).map((smp) => <MiniTimeline key={smp.id} s={smp} />)}
           {it.suggestPause && (
-            <p className="mt-2 rounded-lg bg-warn/10 px-3 py-1.5 text-[13px] text-ink">
-              Contacted {it.attempts} times with no new content. Consider pausing this creator for a while (this is only a suggestion).
-            </p>
+            <p className="text-[12.5px] text-ink"><span className="rounded bg-warn-soft px-1.5 py-0.5 font-medium text-warn">Review or pause?</span> {it.attempts} recorded contacts, no promise or new content yet.</p>
           )}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {it.deadline && <Badge tone={it.deadline.tone === "critical" ? "critical" : it.deadline.tone === "warn" ? "serious" : "neutral"}>{it.deadline.label}</Badge>}
         </div>
       </div>
 
       {canAct && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {!it.held || it.status === "active" ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-line px-3 py-2">
+          {it.status === "active" && (
             <>
-              <a href={tiktok} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-[13px] hover:bg-surface-2">
-                <ExternalLink className="size-3.5" /> Open TikTok
-              </a>
-              <Button size="sm" variant="secondary" onClick={() => toggle("message")}>
-                {it.phone ? "WhatsApp message" : "Message"} <ChevronDown className="size-3.5" />
-              </Button>
               <Button size="sm" disabled={pending} onClick={() => run(() => markContacted([it.username]), `Marked @${it.username} as contacted. Follow-up scheduled.`)}>
                 {pending ? <Loader2 className="size-3.5 animate-spin" /> : <UserCheck className="size-3.5" />} Contacted
               </Button>
               <Button size="sm" variant="secondary" onClick={() => toggle("promise")}>Promised date</Button>
               {it.commitment && it.commitment.candidates.length > 0 && (
-                <Button size="sm" variant="secondary" onClick={() => toggle("content")}>Check possible content ({it.commitment.candidates.length})</Button>
+                <Button size="sm" variant="secondary" onClick={() => toggle("content")}>Verify ({it.commitment.candidates.length})</Button>
               )}
               <Button size="sm" variant="secondary" onClick={() => toggle("help")}>Needs help</Button>
               <Button size="sm" variant="secondary" onClick={() => toggle("pause")}><Pause className="size-3.5" /> Pause</Button>
+              <span className="mx-1 h-5 w-px bg-line" aria-hidden />
+              <a href={tiktok} target="_blank" rel="noopener noreferrer" title="Opening TikTok does not count as contact" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 text-[13px] hover:bg-surface-2">
+                <ExternalLink className="size-3.5" /> TikTok
+              </a>
+              <Button size="sm" variant="secondary" onClick={() => toggle("message")}>{it.phone ? "WhatsApp" : "Message"} <ChevronDown className="size-3.5" /></Button>
             </>
-          ) : null}
+          )}
           {it.status === "paused" && (
             <Button size="sm" disabled={pending} onClick={() => run(() => resumeCreator(it.username), `Resumed @${it.username}.`)}>
               <Play className="size-3.5" /> Resume
             </Button>
           )}
+          <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="ml-auto inline-flex items-center gap-1 text-[12.5px] text-ink-3 hover:text-ink">
+            Details <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+          </button>
+        </div>
+      )}
+      {open && (
+        <div className="space-y-2 border-t border-line bg-surface-2/50 px-3 py-2.5 text-[13px] text-ink-2">
+          {it.reasons.length > 1 && <ul className="list-disc pl-5">{it.reasons.map((r, i) => <li key={i}>{r.text}</li>)}</ul>}
+          {it.recs.length > 0 && <p><span className="text-ink-3">Suggestions:</span> {it.recs.map((r) => r.title).join(" · ")}</p>}
+          {it.samples.length > 1 && <div className="space-y-1">{it.samples.slice(1).map((smp) => <MiniTimeline key={smp.id} s={smp} />)}</div>}
+          {it.lastContacted && <p><span className="text-ink-3">Last contacted:</span> {it.lastContacted}{it.nextLabel ? ` · next ${it.nextLabel}` : ""}</p>}
+          {it.history.length > 0 && (
+            <ul className="text-[12.5px]">
+              {it.history.map((h, i) => <li key={i}><span className="text-ink-3">{h.at.slice(0, 10)}</span> {h.text}</li>)}
+            </ul>
+          )}
+          <Link href={`/creators/${encodeURIComponent(it.username)}`} className="text-brand hover:underline">Open full timeline →</Link>
         </div>
       )}
 

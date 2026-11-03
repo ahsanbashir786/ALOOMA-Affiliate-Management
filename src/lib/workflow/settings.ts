@@ -20,6 +20,10 @@ export type WorkflowSettings = {
   developmentLimit: number;
   /** A sample that shipped but isn't delivered after this many days needs attention. */
   stuckTransitDays: number;
+  /** A creator who sold before but has no sale in this many days is "inactive". */
+  inactiveDays: number;
+  /** An overdue promise older than this many days makes the relationship "stalled" and needs an owner look. */
+  stalledOverdueDays: number;
 };
 
 export const DEFAULT_WORKFLOW: WorkflowSettings = {
@@ -30,6 +34,8 @@ export const DEFAULT_WORKFLOW: WorkflowSettings = {
   todayLimit: 15,
   developmentLimit: 5,
   stuckTransitDays: 10,
+  inactiveDays: 28,
+  stalledOverdueDays: 14,
 };
 
 export const getWorkflowSettings = cache(async (): Promise<WorkflowSettings> => {

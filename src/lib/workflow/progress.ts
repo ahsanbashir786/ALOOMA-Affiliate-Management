@@ -2,11 +2,13 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { AL, rows } from "@/lib/analytics/sql";
 import { comparable, coveredDays, intersect, type Comparable, type Span } from "@/lib/coverage";
-import { addDaysISO, dayKL, todayKL } from "@/lib/time";
+import { addDaysISO, dayKL, todayKL, weekStartISO } from "@/lib/time";
 import { getCommitments } from "./commitments";
 import { loadEvents } from "./events";
 import { replayEvents } from "./replay";
 import { getWorkflowSettings } from "./settings";
+import { loadRelationships } from "./relationships";
+import type { Relationship } from "./relationship";
 
 export type ProgressWindow = { start: string; end: string; days: number };
 
@@ -61,6 +63,10 @@ export type Progress = {
     fromCreatorsWithoutSamples: number;
     videoReportCoverage: { covered: number; total: number };
   };
+  /** Where collaborations stand overall (derived; see relationship.ts). */
+  relationships: Record<Relationship, number>;
+  /** Last 8 weeks (Mon–Sun, Malaysia time). */
+  trend: { weekStart: string; contacted: number; onTime: number; fulfilled: number; content: number }[];
   sales: {
     comparison: Comparable;
     coverage: { affiliate: number; shop: number; total: number };
@@ -76,6 +82,41 @@ export type Progress = {
 };
 
 export const PROGRESS_RANGES = [7, 28, 90] as const;
+
+export type FollowUpCategory = "onTime" | "late" | "overdue" | "rescheduled" | "paused" | "auto" | "notYet";
+export type FollowUpRecord = { username: string; kind: string; dueOn: string; completedAt: Date | null; category: FollowUpCategory; closerId: string | null };
+
+/** Every follow-up (one per obligation, plus the creator-level one) with its due date in [start, end], and how it ended. */
+export function classifyFollowUps(
+  events: Awaited<ReturnType<typeof loadEvents>>,
+  fulfilledByKey: Map<number, boolean>,
+  cfg: Awaited<ReturnType<typeof getWorkflowSettings>>,
+  start: string,
+  end: string,
+  today: string,
+): FollowUpRecord[] {
+  const by = new Map<string, typeof events>();
+  for (const e of events) by.set(e.username, [...(by.get(e.username) ?? []), e]);
+  const out: FollowUpRecord[] = [];
+  for (const [u, list] of by) {
+    const sorted = list.filter((e) => !e.revertedAt).sort((a, b) => a.at.getTime() - b.at.getTime() || a.id - b.id);
+    for (const f of replayEvents(u, list, cfg).followups) {
+      if (f.kind === "resume" || f.dueOn < start || f.dueOn > end) continue;
+      let category: FollowUpCategory;
+      let closerId: string | null = null;
+      if (f.outcome === "completed") {
+        category = f.onTime ? "onTime" : "late";
+        closerId = sorted.find((e) => f.completedAt && e.at.getTime() === f.completedAt.getTime())?.userId ?? null;
+      } else if (f.outcome === "rescheduled") category = "rescheduled";
+      else if (f.outcome === "paused" || f.outcome === "cancelled") category = "paused";
+      else if (f.kind === "promise" && f.promiseKey != null && fulfilledByKey.get(f.promiseKey)) category = "auto"; // the content appeared – nothing left to chase
+      else if (f.dueOn < today) category = "overdue";
+      else category = "notYet";
+      out.push({ username: u, kind: f.kind, dueOn: f.dueOn, completedAt: f.completedAt, category, closerId });
+    }
+  }
+  return out;
+}
 
 async function spans(kind: string): Promise<Span[]> {
   const r = await rows<{ s: string; e: string }>(sql`
@@ -100,8 +141,6 @@ export async function getProgress(days: number, endDay?: string): Promise<Progre
   const fulfilledByKey = new Map(comms.map((c) => [c.eventId, c.state === "fulfilled"]));
 
   // ── follow-ups, replayed from the same event log the daily screen uses ──
-  const by = new Map<string, typeof events>();
-  for (const e of events) by.set(e.username, [...(by.get(e.username) ?? []), e]);
   const fu = { due: 0, onTime: 0, late: 0, overdueOpen: 0, rescheduled: 0, pausedOrCancelled: 0, resolvedAutomatically: 0, notYetDue: 0 };
   const person = new Map<string, { contacts: number; creators: Set<string>; promises: number; onTime: number }>();
   const slot = (id: string | null) => {
@@ -109,23 +148,15 @@ export async function getProgress(days: number, endDay?: string): Promise<Progre
     if (!person.has(k)) person.set(k, { contacts: 0, creators: new Set(), promises: 0, onTime: 0 });
     return person.get(k)!;
   };
-  for (const [u, list] of by) {
-    const sorted = list.filter((e) => !e.revertedAt).sort((a, b) => a.at.getTime() - b.at.getTime() || a.id - b.id);
-    for (const f of replayEvents(u, list, cfg).followups) {
-      if (f.kind === "resume" || !inWin(f.dueOn)) continue;
-      fu.due++;
-      if (f.outcome === "completed") {
-        if (f.onTime) {
-          fu.onTime++;
-          const closer = sorted.find((e) => f.completedAt && e.at.getTime() === f.completedAt.getTime());
-          slot(closer?.userId ?? null).onTime++;
-        } else fu.late++;
-      } else if (f.outcome === "rescheduled") fu.rescheduled++;
-      else if (f.outcome === "paused" || f.outcome === "cancelled") fu.pausedOrCancelled++;
-      else if (f.kind === "promise" && f.promiseKey != null && fulfilledByKey.get(f.promiseKey)) fu.resolvedAutomatically++; // the content appeared – nothing left to chase
-      else if (f.dueOn < today) fu.overdueOpen++;
-      else fu.notYetDue++;
-    }
+  for (const f of classifyFollowUps(events, fulfilledByKey, cfg, start, end, today)) {
+    fu.due++;
+    if (f.category === "onTime") { fu.onTime++; slot(f.closerId).onTime++; }
+    else if (f.category === "late") fu.late++;
+    else if (f.category === "rescheduled") fu.rescheduled++;
+    else if (f.category === "paused") fu.pausedOrCancelled++;
+    else if (f.category === "auto") fu.resolvedAutomatically++;
+    else if (f.category === "overdue") fu.overdueOpen++;
+    else fu.notYetDue++;
   }
   const worked = fu.onTime + fu.late + fu.overdueOpen;
 
@@ -238,8 +269,27 @@ export async function getProgress(days: number, endDay?: string): Promise<Progre
     m = { now: mm?.now ?? 0, before: mm?.before ?? 0, up: mm?.up ?? 0, down: mm?.down ?? 0 };
   } else historyNote = null; // the withheld reason is shown once, by the page
 
+  const rel = await loadRelationships();
+  const relationships = { prospect: 0, approached: 0, collaborating: 0, active: 0, stalled: 0, inactive: 0, paused: 0 } as Record<Relationship, number>;
+  for (const r of rel.values()) relationships[r.status]++;
+
+  // weekly trend (8 weeks ending with the current one)
+  const weeks = [...Array(8).keys()].map((i) => addDaysISO(weekStartISO(today), -7 * (7 - i)));
+  const weekOf = (d: string) => weekStartISO(d);
+  const tr = new Map(weeks.map((w) => [w, { weekStart: w, contacted: new Set<string>(), onTime: 0, fulfilled: 0, content: new Set<string>() }]));
+  for (const e of events) if (!e.revertedAt && e.kind === "contacted") tr.get(weekOf(dayKL(e.at)))?.contacted.add(e.username);
+  for (const f of classifyFollowUps(events, fulfilledByKey, cfg, weeks[0], today, today)) if (f.category === "onTime" && f.completedAt) { const t = tr.get(weekOf(dayKL(f.completedAt))); if (t) t.onTime++; }
+  for (const c of comms) if (c.completedOn) { const t = tr.get(weekOf(c.completedOn)); if (t) t.fulfilled++; }
+  const cw = await rows<{ w: string; id: string }>(sql`
+    select to_char(date_trunc('week', ci.posted_at), 'YYYY-MM-DD') as w, ci.content_id as id
+    from content_items ci where ci.posted_at is not null and ci.posted_at::date >= ${weeks[0]}::date
+      and exists (select 1 from staff_events e where e.username = ci.creator and e.kind = 'contacted' and e.reverted_at is null and (e.at at time zone 'Asia/Kuala_Lumpur')::date < ci.posted_at::date)`);
+  for (const r of cw) tr.get(r.w)?.content.add(r.id);
+
   return {
     window,
+    relationships,
+    trend: [...tr.values()].map((t) => ({ weekStart: t.weekStart, contacted: t.contacted.size, onTime: t.onTime, fulfilled: t.fulfilled, content: t.content.size })),
     followUps: { ...fu, onTimeRate: worked ? fu.onTime / worked : null },
     staff: {
       creatorsContacted: contacted.size,

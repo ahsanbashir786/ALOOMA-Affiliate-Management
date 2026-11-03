@@ -156,7 +156,7 @@ export function OwnAccountsForm({ accounts, auto }: { accounts: string; auto: bo
   );
 }
 
-type W = { followUpDays: number; promiseFollowUpDays: number; helpDays: number; maxUnanswered: number; todayLimit: number; developmentLimit: number; stuckTransitDays: number };
+type W = { followUpDays: number; promiseFollowUpDays: number; helpDays: number; maxUnanswered: number; todayLimit: number; developmentLimit: number; stuckTransitDays: number; inactiveDays: number; stalledOverdueDays: number };
 const W_FIELDS: { name: keyof W; label: string; help: string }[] = [
   { name: "followUpDays", label: "Follow up after “Contacted” (days)", help: "Calendar days, Malaysia time. Default 3." },
   { name: "promiseFollowUpDays", label: "Follow up after a promised date (days)", help: "Checked the day after the promised date if no matching content is seen. Default 1." },
@@ -164,7 +164,9 @@ const W_FIELDS: { name: keyof W; label: string; help: string }[] = [
   { name: "maxUnanswered", label: "Suggest pausing after (contact attempts)", help: "Attempts with no new content or promise. Only a suggestion – nothing is labelled automatically. Default 3." },
   { name: "todayLimit", label: "Today's Work list size", help: "Due and overdue items are always shown; this caps the extra sample cases. Default 15." },
   { name: "developmentLimit", label: "Development ideas on the main list", help: "Others stay one click away under “Ideas”. Default 5." },
-  { name: "stuckTransitDays", label: "Sample stuck on the way after (days)", help: "Reserved for delivery checks. Default 10." },
+  { name: "inactiveDays", label: "Inactive after (days without a sale)", help: "A creator who sold before but not in this many days is shown as inactive. Default 28." },
+  { name: "stalledOverdueDays", label: "Stalled when a promise is overdue by (days)", help: "Also flags the creator for an owner decision. Default 14." },
+  { name: "stuckTransitDays", label: "Sample stuck on the way after (days)", help: "A shipped sample not delivered after this long is listed as an exception. Default 10." },
 ];
 
 export function WorkflowForm({ w }: { w: W }) {

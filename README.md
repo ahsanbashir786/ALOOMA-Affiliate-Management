@@ -93,7 +93,7 @@ The Action centre was replaced by **Today's Work**: staff press *Contacted*, *Pr
 follow-ups are scheduled automatically (Settings → Daily workflow; defaults 3 days after contact, the day after a promised date).
 Staff actions are an append-only log (`staff_events`) – undo only marks them reverted. Promises live in `commitments`,
 system suggestions in `recommendations`; neither imports nor "Refresh recommendations" touch staff work.
-See `docs/DATA-AUDIT.md`, `docs/UPLOAD-GUIDE.md` and `docs/STAFF-GUIDE.md`.
+Guides: `docs/STAFF-GUIDE.md`, `docs/OWNER-GUIDE.md`, `docs/UPLOAD-GUIDE.md`; rules in `docs/DATA-AUDIT.md`; upgrading in `docs/UPGRADE.md`; redesign report in `docs/REDESIGN.md`.
 
 ### Tests
 
@@ -102,6 +102,7 @@ createdb affiliate_test
 DATABASE_URL=postgres://…/affiliate_test npx drizzle-kit push --force
 DATABASE_URL=postgres://…/affiliate_test npm run test:workflow
 DATABASE_URL=postgres://…/affiliate_test npm run test:regressions   # run against a freshly created test database
+DATABASE_URL=postgres://…/affiliate_real npm run test:real -- /path/to/real/exports   # isolated DB ending _test or _real
 ```
 
 Upgrading a database that already has data: see `docs/UPGRADE.md` (`npm run db:migrate`, never `db:push`).
