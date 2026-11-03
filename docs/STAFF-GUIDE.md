@@ -15,16 +15,20 @@ Open **Today's Work**. Each row answers four things: **who** (name and relations
 A creator can have several promises at once. Each is shown separately on the row (for example *Bedsheet · video 1/2 · 1d late · due 2 Nov*) –
 a later promise never hides an earlier one.
 
-## Buttons
+## Each row has two controls
 
-* **Contacted** – press it after you really sent a message. Saves who and when; the next follow-up is 3 days later. Opening TikTok/WhatsApp or copying a message does **not** count.
-* **Promised date** – the creator told you when they will post. Pick a date; that is enough. Optional *Add details*: video or LIVE, product, how many (e.g. 2). If a promise already exists, choose **Move this date** (the creator changed it) or **Add another promise**.
-* **Needs help** – pick a reason and the next date.
-* **Pause / Resume** – short reason; optional date to come back.
-* **Verify (n)** – the system found a video that *might* be the promised one. *This is it*, *Not this*, or paste a link.
-* **Undo** – appears after each action; history keeps that it was undone.
-* Tick several creators → **Mark selected as contacted** → confirm the count.
-* **Add creator** – start outreach to someone new (username; WhatsApp number optional; no sample needed).
+* **Message** – shows the ready EN/BM text (WhatsApp link). Opening WhatsApp/TikTok or copying a message does **not** count as contact.
+* **Update** – record what happened:
+  * **Contacted** – after you really sent a message. Saves who and when; next follow-up in 3 days.
+  * **Promised date** – the creator gave a date. Pick a date; optional *Add details* (video or LIVE, product, how many). If a promise already exists choose **Move this date** or **Add another promise**.
+  * **Needs help** – pick a reason and the next date.
+  * **Pause** (or **Resume** on paused rows) – short reason; optional date to come back.
+  * **Verify content** – appears only when the system found a possible match.
+* **Undo** appears after every action. Tick several creators → **Mark selected as contacted** → confirm the count.
+* **Click the creator's name** – a side panel shows commitments (with 1/2 bars and deadlines), samples (delivery timeline), evidence and history, so you never leave the list. **Open full page** is there if you want more.
+* **Add creator** (top right) starts outreach to someone new; no sample needed.
+
+Filters: *Today, Due & overdue, To verify, Samples* are always visible; **More filters** holds Opportunities, Scheduled, Paused and sample exceptions. **Affiliates** is a searchable directory (relationship, next action, sample and content progress); **Detailed analysis** (SKU breakdowns) is under Analysis.
 
 After 3 recorded contacts without a promise or new content, the row suggests **Review or pause**. The system cannot see WhatsApp replies, so it never says they did not reply.
 

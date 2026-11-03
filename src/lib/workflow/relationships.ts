@@ -1,7 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { AL, rows } from "@/lib/analytics/sql";
-import { daysBetweenISO, todayKL } from "@/lib/time";
+import { daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { getCommitments } from "./commitments";
 import { getWorkflowStates } from "./events";
 import { unansweredAttempts } from "./replay";
@@ -16,6 +16,10 @@ export type RelationshipRow = {
   outstanding: number;
   overdueDays: number | null;
   lastSaleOn: string | null;
+  /** The next dated obligation or reminder, in plain words (null when nothing is scheduled). */
+  nextLabel: string | null;
+  nextOn: string | null;
+  overdue: boolean;
 };
 
 /**
@@ -47,8 +51,17 @@ export async function loadRelationships(usernames?: string[]): Promise<Map<strin
     const overdue = outs.filter((c) => c.dueOn < today).map((c) => daysBetweenISO(c.dueOn, today));
     const attempts = st ? unansweredAttempts(st, contentBy.get(u) ?? null) : 0;
     const contacts = st?.lastContactedAt ? Math.max(1, st.contactTimes.length) : 0; // ever contacted
+    const firstOut = [...outs].sort((a, b) => a.dueOn.localeCompare(b.dueOn))[0];
+    const nextOpen = st?.open[0];
+    const nextOn = firstOut?.dueOn ?? nextOpen?.dueOn ?? null;
+    const nextLabel = firstOut
+      ? firstOut.dueOn < today ? `Promise ${daysBetweenISO(firstOut.dueOn, today)}d overdue` : `Promise due ${fmtDayLabel(firstOut.dueOn)}`
+      : nextOpen ? `${nextOpen.kind === "resume" ? "Resume" : "Follow-up"} ${fmtDayLabel(nextOpen.dueOn)}` : null;
     out.set(u, {
       username: u,
+      nextLabel,
+      nextOn,
+      overdue: !!firstOut && firstOut.dueOn < today,
       status: relationshipOf({
         paused: st?.status === "paused",
         contacts,

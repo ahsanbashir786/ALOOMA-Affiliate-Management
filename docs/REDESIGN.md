@@ -56,3 +56,13 @@ unknown posting dates stay uncertain, verification time ≠ posting time, unrela
 Not tested / limitations: WhatsApp/TikTok apps are only linked (not driven); the browser tests ran on Chromium only; real-data screens were reviewed visually
 but the real exports contain no staff history, so promise/follow-up flows on real data use synthetic labelled records; GMV/profit/cost modules are intentionally not built
 (`creators`, `content_items`, `sample_sales` and `orders` give them stable records to attach to); permissions are verified in the browser walkthrough, not in the script suite.
+
+## Interface declutter (latest change)
+
+Today's Work rows show creator · one primary action · short reason · deadline chip · completion count · **Message** and **Update** only. The creator side panel
+(`components/creator/creator-panel.tsx`, data from `/api/creators/[username]/panel`) holds commitments, samples, evidence and history and is reused by the new
+**Affiliates** directory. The previous detailed affiliate page moved to **Affiliate analysis** (Analysis group). Progress is grouped into *Needs your decision*,
+*Staff execution* and *Affiliate output*, with supporting tables, sales movement and definitions expandable. Navigation: Work (4 items) first; Analysis and Administration are collapsed groups.
+Screenshots of populated screens (desktop 1366px and mobile 390px, real-data database with clearly synthetic staff work) are in `docs/screenshots/`.
+Verification executed: 100/100 regression checks, 37/37 browser checks at desktop and mobile widths (including find overdue creator → Message → Update → Contacted → history in the side panel without leaving Today's Work), type check, lint, production build.
+Found and fixed while testing: the Undo message disappeared when the last row left the list.

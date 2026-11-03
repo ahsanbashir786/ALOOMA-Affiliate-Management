@@ -84,53 +84,68 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const items = data.rows.map(toItem);
   const current = VIEWS.find((v) => v.key === view)!;
 
+  const PRIMARY: TodayView[] = ["focus", "due", "verify", "samples"];
+  const MORE = VIEWS.filter((v) => !PRIMARY.includes(v.key));
+  const inMore = MORE.some((v) => v.key === view);
+  const tabCls = (on: boolean) => cn("-mb-px flex items-center gap-2 border-b-2 px-3.5 py-3 text-[15px] font-medium whitespace-nowrap", on ? "border-brand text-ink" : "border-transparent text-ink-3 hover:text-ink");
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title="Today's Work"
-        description={`${fmtDayLabel(data.today)} · Malaysia time. Opening WhatsApp or copying a message does not count as contact – press “Contacted” after you send it.`}
+        description={`${fmtDayLabel(data.today)} · Malaysia time`}
         actions={canAct ? <div className="flex flex-wrap items-start gap-2"><AddCreator canPhone={mayEditContacts(user)} /><RegenerateButton /></div> : undefined}
       />
       <Card>
-        <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 pt-2">
-          {VIEWS.map((v) => (
-            <Link
-              key={v.key}
-              href={v.key === "focus" ? "/today" : `/today?view=${v.key}`}
-              aria-current={view === v.key ? "page" : undefined}
-              title={v.hint}
-              className={cn("-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-[14px] font-medium", view === v.key ? "border-brand text-ink" : "border-transparent text-ink-3 hover:text-ink")}
-            >
+        <div className="flex items-center border-b border-line px-3 pt-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {VIEWS.filter((v) => PRIMARY.includes(v.key)).map((v) => (
+            <Link key={v.key} href={v.key === "focus" ? "/today" : `/today?view=${v.key}`} aria-current={view === v.key ? "page" : undefined} title={v.hint} className={tabCls(view === v.key)}>
               {v.label}
-              <span className="tnum rounded-full bg-surface-2 px-1.5 text-[12px] text-ink-2">{counts[v.key]}</span>
+              <span className="tnum rounded-full bg-surface-2 px-2 text-[13px] text-ink-2">{counts[v.key]}</span>
             </Link>
           ))}
+          </div>
+          <details className="relative ml-2 shrink-0">
+            <summary className={cn("flex cursor-pointer list-none items-center gap-1.5 px-3.5 py-3 text-[15px] font-medium [&::-webkit-details-marker]:hidden", inMore ? "text-ink" : "text-ink-3 hover:text-ink")}>
+              {inMore ? MORE.find((m) => m.key === view)!.label : "More filters"} <span aria-hidden>▾</span>
+            </summary>
+            <div className="absolute right-0 z-20 w-64 rounded-xl border border-line-strong bg-surface p-2 shadow-lg">
+              {MORE.map((v) => (
+                <Link key={v.key} href={`/today?view=${v.key}`} className={cn("flex items-center justify-between rounded-lg px-3 py-2.5 text-[14.5px] hover:bg-surface-2", view === v.key && "bg-surface-2 font-medium")}>
+                  {v.label}<span className="tnum text-[13px] text-ink-3">{counts[v.key]}</span>
+                </Link>
+              ))}
+              {data.exceptions > 0 && (
+                <div className="mt-1 border-t border-line pt-2" aria-label="Sample exceptions">
+                  <p className="px-3 pb-1 text-[12.5px] font-medium text-ink-3">Sample exceptions</p>
+                  {data.sampleExceptions.review > 0 && <Link className="block rounded-lg px-3 py-2 text-[14px] hover:bg-surface-2" href="/samples?view=review">{data.sampleExceptions.review} to review</Link>}
+                  {data.sampleExceptions.unmatched > 0 && <Link className="block rounded-lg px-3 py-2 text-[14px] hover:bg-surface-2" href="/samples?view=unknown">{data.sampleExceptions.unmatched} receiver not matched</Link>}
+                  {data.sampleExceptions.stuck > 0 && <Link className="block rounded-lg px-3 py-2 text-[14px] hover:bg-surface-2" href="/samples?view=wait">{data.sampleExceptions.stuck} shipped, not delivered</Link>}
+                </div>
+              )}
+            </div>
+          </details>
         </div>
-        <div className="space-y-3 p-4">
-          <p className="text-[13px] text-ink-3">
+        <div className="space-y-4 p-4 sm:p-5">
+          <p className="text-[14px] text-ink-3">
             {current.hint}.
-            {view === "focus" && data.hiddenFromFocus > 0 && (
-              <> {data.hiddenFromFocus} more need work – see <Link className="underline" href="/today?view=samples">Samples</Link> or <Link className="underline" href="/today?view=development">Opportunities</Link>.</>
-            )}
+            {view === "focus" && data.hiddenFromFocus > 0 && <> {data.hiddenFromFocus} more are under the other filters.</>}
           </p>
-          {data.exceptions > 0 && (
-            <p className="flex flex-wrap items-center gap-2 text-[12.5px]" aria-label="Sample exceptions">
-              <span className="text-ink-3">Sample exceptions:</span>
-              {data.sampleExceptions.review > 0 && <Link className="rounded-full border border-warn/40 bg-warn-soft px-2 py-0.5 text-warn" href="/samples?view=review">{data.sampleExceptions.review} to review</Link>}
-              {data.sampleExceptions.unmatched > 0 && <Link className="rounded-full border border-warn/40 bg-warn-soft px-2 py-0.5 text-warn" href="/samples?view=unknown">{data.sampleExceptions.unmatched} receiver not matched</Link>}
-              {data.sampleExceptions.stuck > 0 && <Link className="rounded-full border border-critical/40 bg-critical-soft px-2 py-0.5 text-critical" href="/samples?view=wait">{data.sampleExceptions.stuck} shipped, not delivered</Link>}
-            </p>
-          )}
-
-          {items.length === 0 ? (
-            <EmptyState
-              icon={<CalendarCheck className="size-5" />}
-              title={view === "focus" ? "You're all caught up" : "Nothing here"}
-              description={view === "focus" ? "No promises or follow-ups are due. New work appears after the next data upload or refresh." : "No creators in this list right now."}
-            />
-          ) : (
-            <TodayList key={view} items={items} today={data.today} helpDays={data.cfg.helpDays} canAct={canAct} />
-          )}
+          <TodayList
+            key={view}
+            items={items}
+            today={data.today}
+            helpDays={data.cfg.helpDays}
+            canAct={canAct}
+            empty={
+              <EmptyState
+                icon={<CalendarCheck className="size-5" />}
+                title={view === "focus" ? "You're all caught up" : "Nothing here"}
+                description={view === "focus" ? "No promises or follow-ups are due. New work appears after the next data upload or refresh." : "No creators in this list right now."}
+              />
+            }
+          />
         </div>
       </Card>
     </div>

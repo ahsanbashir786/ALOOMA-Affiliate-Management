@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, ClipboardPlus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { saveCreatorNotes } from "@/app/actions/actions";
 import { saveCreatorContact } from "@/app/actions/samples";

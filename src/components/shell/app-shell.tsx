@@ -8,6 +8,7 @@ import { Sidebar } from "./sidebar";
 import { PeriodPicker } from "./period-picker";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
+import { CreatorPanelProvider } from "@/components/creator/creator-panel";
 
 const NO_PERIOD = ["/data", "/settings", "/today", "/progress"];
 
@@ -64,7 +65,7 @@ export function AppShell({
             <UserMenu name={user.name} email={user.email} role={user.role} />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-8"><CreatorPanelProvider>{children}</CreatorPanelProvider></main>
       </div>
     </div>
   );
