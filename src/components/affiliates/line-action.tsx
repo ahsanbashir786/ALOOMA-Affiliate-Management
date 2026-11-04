@@ -4,12 +4,14 @@ import { ArrowRight } from "lucide-react";
 import { useCreatorPanel } from "@/components/creator/creator-panel";
 import { ACTION_HINT, type CreatorAction } from "@/lib/affiliates/status";
 import type { DirLine } from "@/lib/workflow/directory";
+import { statsOf, type LineStats } from "@/lib/affiliates/action-messages";
 import { cn } from "@/lib/utils";
 
 const PASSIVE: CreatorAction[] = ["Keep", "Wait"];
 
 /** The action of one product line. Clicking opens the creator panel on that action: message, then record what happened. */
-export function LineAction({ username, line }: { username: string; line: DirLine }) {
+
+export function LineAction({ username, line, all, period }: { username: string; line: DirLine; all: LineStats[]; period: string }) {
   const { open } = useCreatorPanel();
   if (PASSIVE.includes(line.action)) {
     return (
@@ -24,7 +26,7 @@ export function LineAction({ username, line }: { username: string; line: DirLine
       <button
         type="button"
         data-testid={`act-${username}-${line.pid ?? "none"}`}
-        onClick={() => open(username, { action: line.action, status: line.status, product: line.noSample ? null : line.name, productId: line.pid, reason: line.reason, videos28: line.videos28, lastVideoLabel: line.lastVideoLabel })}
+        onClick={() => open(username, { action: line.action, status: line.status, product: line.noSample ? null : line.name, productId: line.pid, reason: line.reason, line: line.noSample ? null : statsOf(line), all, period })}
         title={`${ACTION_HINT[line.action]} – click to do it and record it`}
         className={cn("inline-flex items-center gap-1 rounded-full border border-brand bg-brand/10 px-2.5 py-0.5 text-[13.5px] font-semibold text-brand hover:bg-brand hover:text-white")}
       >

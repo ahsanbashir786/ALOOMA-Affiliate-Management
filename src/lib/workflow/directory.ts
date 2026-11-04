@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { AL, rows } from "@/lib/analytics/sql";
 import { creatorStatus, explainStatus, NEEDS_ACTION, winnerThreshold, type CreatorAction, type CreatorStatus, type StatusInput } from "@/lib/affiliates/status";
 import { addDaysISO, fmtDayLabel, todayKL } from "@/lib/time";
+import { listingName } from "@/lib/affiliates/product-name";
 import { loadRelationships } from "./relationships";
 
 /** One sampled product of a creator: its own sales, videos, status and action. */
@@ -33,6 +34,8 @@ export type DirRow = {
   type: "Video" | "LIVE" | "Video + LIVE" | null;
   phone: string | null;
   lines: DirLine[];
+  /** Every sampled product, even when filters hide some lines (used for the all-products message). */
+  allLines: DirLine[];
   gmvAll: number;
   overdue: boolean;
   paused: boolean;
@@ -51,6 +54,8 @@ export type DirOpts = {
   wa?: "yes" | "no" | "";
   contact?: "never" | "recent" | "overdue" | "";
   sort?: DirSort;
+  /** Period shown in the table's orders, GMV and videos (status always uses the latest 28 days). */
+  range?: { start: string; end: string };
   page?: number;
   size?: number;
 };
@@ -84,6 +89,8 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
   const p28s = ref ? addDaysISO(ref, -55) : null;
   const p28e = ref ? addDaysISO(ref, -28) : null;
 
+  const inR = (col: ReturnType<typeof sql>) => (opts.range ? sql`${col} between ${opts.range.start}::date and ${opts.range.end}::date` : sql`true`);
+
   const known = await rows<{ c: string }>(sql`
     select distinct creator as c from order_lines where creator is not null and creator <> '(unknown)'
     union select distinct creator from samples where creator is not null
@@ -97,22 +104,22 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     ref
       ? rows<CSale>(sql`
           select al.creator,
-            coalesce(sum(al.pay) filter (where al.valid), 0)::float8 as gmv_all,
+            coalesce(sum(al.pay) filter (where al.valid and ${inR(sql`al.created_at::date`)}), 0)::float8 as gmv_all,
             coalesce(sum(al.pay) filter (where al.valid and al.created_at::date between ${s28}::date and ${ref}::date), 0)::float8 as gmv28,
             coalesce(sum(al.pay) filter (where al.valid and al.created_at::date between ${p28s}::date and ${p28e}::date), 0)::float8 as prev28,
-            (count(distinct al.order_id) filter (where al.valid and al.content_type = 'Video'))::int as ov,
-            (count(distinct al.order_id) filter (where al.valid and al.content_type = 'Livestream'))::int as ol
+            (count(distinct al.order_id) filter (where al.valid and ${inR(sql`al.created_at::date`)} and al.content_type = 'Video'))::int as ov,
+            (count(distinct al.order_id) filter (where al.valid and ${inR(sql`al.created_at::date`)} and al.content_type = 'Livestream'))::int as ol
           from ${AL} where al.creator is not null and al.creator <> '(unknown)' group by al.creator`)
       : Promise.resolve([] as CSale[]),
     ref
       ? rows<PSale>(sql`
           select al.creator, al.product_id as pid,
-            (count(distinct al.order_id) filter (where al.valid and al.content_type = 'Video'))::int as ov,
-            (count(distinct al.order_id) filter (where al.valid and al.content_type = 'Livestream'))::int as ol,
-            (count(distinct al.order_id) filter (where al.valid))::int as ot,
-            coalesce(sum(al.pay) filter (where al.valid and al.content_type = 'Video'), 0)::float8 as gv,
-            coalesce(sum(al.pay) filter (where al.valid and al.content_type = 'Livestream'), 0)::float8 as gl,
-            coalesce(sum(al.pay) filter (where al.valid), 0)::float8 as gmv,
+            (count(distinct al.order_id) filter (where al.valid and ${inR(sql`al.created_at::date`)} and al.content_type = 'Video'))::int as ov,
+            (count(distinct al.order_id) filter (where al.valid and ${inR(sql`al.created_at::date`)} and al.content_type = 'Livestream'))::int as ol,
+            (count(distinct al.order_id) filter (where al.valid and ${inR(sql`al.created_at::date`)}))::int as ot,
+            coalesce(sum(al.pay) filter (where al.valid and ${inR(sql`al.created_at::date`)} and al.content_type = 'Video'), 0)::float8 as gv,
+            coalesce(sum(al.pay) filter (where al.valid and ${inR(sql`al.created_at::date`)} and al.content_type = 'Livestream'), 0)::float8 as gl,
+            coalesce(sum(al.pay) filter (where al.valid and ${inR(sql`al.created_at::date`)}), 0)::float8 as gmv,
             coalesce(sum(al.pay) filter (where al.valid and al.created_at::date between ${s28}::date and ${ref}::date), 0)::float8 as gmv28,
             coalesce(sum(al.pay) filter (where al.valid and al.created_at::date between ${p28s}::date and ${p28e}::date), 0)::float8 as prev28
           from ${AL} where al.creator is not null and al.product_id is not null group by al.creator, al.product_id`)
@@ -121,9 +128,9 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       ? rows<{ creator: string; n: number }>(sql`select creator, count(distinct content_id)::int as n from content_items where kind = 'video' and posted_at::date between ${s28}::date and ${ref}::date group by creator`)
       : Promise.resolve([] as { creator: string; n: number }[]),
     rows<{ username: string; phone: string | null; approach: string | null }>(sql`select username, phone, approach from creators`),
-    rows<{ creator: string; pid: string | null; name: string | null; skus: string[] | null; sent: number; waiting: number; not_posted: number; posted: number }>(sql`
+    rows<{ creator: string; pid: string | null; short: string | null; full: string | null; sku_name: string | null; smp_name: string | null; skus: string[] | null; sent: number; waiting: number; not_posted: number; posted: number }>(sql`
       select s.creator, s.product_id as pid,
-        case when max(p.short_name) like '%…' then coalesce(max(k.name), max(p.short_name)) else coalesce(max(p.short_name), max(k.name), max(s.product_name), 'Sample') end as name,
+        max(p.short_name) as short, max(p.name) as full, max(k.name) as sku_name, max(s.product_name) as smp_name,
         array_agg(distinct upper(s.seller_sku)) filter (where s.seller_sku is not null) as skus,
         count(*)::int as sent,
         (count(*) filter (where coalesce(s.result_override, s.result) in ('in_window', 'in_transit')))::int as waiting,
@@ -133,9 +140,9 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       where s.source = 'orders' and s.creator is not null and coalesce(s.order_status, '') <> 'Canceled'
       group by s.creator, s.product_id order by s.creator, min(s.approved_at)`),
     rows<{ creator: string; pid: string; n: number; n28: number; last: string | null; undated: number }>(sql`
-      select ci.creator, pid, count(distinct ci.content_id)::int as n,
+      select ci.creator, pid, (count(distinct ci.content_id) filter (where ${inR(sql`ci.posted_at::date`)}))::int as n,
         (count(distinct ci.content_id) filter (where ${ref ? sql`ci.posted_at::date between ${s28}::date and ${ref}::date` : sql`false`}))::int as n28,
-        to_char(max(ci.posted_at::date), 'YYYY-MM-DD') as last,
+        to_char(max(ci.posted_at::date) filter (where ${inR(sql`ci.posted_at::date`)}), 'YYYY-MM-DD') as last,
         (count(distinct ci.content_id) filter (where ci.posted_at is null))::int as undated
       from content_items ci cross join lateral unnest(ci.product_ids) as pid
       where ci.kind = 'video' and ci.creator is not null group by ci.creator, pid`),
@@ -173,7 +180,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       };
       const st = creatorStatus(input);
       lines.push({
-        pid: p.pid, name: p.name ?? "Sample", skus: p.skus ?? [], noSample: false,
+        pid: p.pid, name: listingName(p.short, p.full, p.sku_name ?? p.smp_name), skus: p.skus ?? [], noSample: false,
         ordersVideo: sp?.ov ?? 0, ordersLive: sp?.ol ?? 0, orders: sp?.ot ?? 0, gmvVideo: sp?.gv ?? 0, gmvLive: sp?.gl ?? 0, gmv: sp?.gmv ?? 0,
         videos: vp?.n ?? 0, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null, undatedVideos: vp?.undated ?? 0,
         status: st.status, action: st.action, reason: explainStatus(input, st.status),
@@ -194,7 +201,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     }
     const ov = cs?.ov ?? 0, ol = cs?.ol ?? 0;
     const type = ov > 0 && ol > 0 ? "Video + LIVE" : ov > 0 ? "Video" : ol > 0 ? "LIVE" : info?.approach === "both" ? "Video + LIVE" : info?.approach === "live" ? "LIVE" : info?.approach === "video" ? "Video" : null;
-    return { username: r.username, type, phone: info?.phone ?? null, lines, gmvAll: cs?.gmv_all ?? 0, overdue: r.overdue, paused, lastContactedOn: r.lastContactedOn };
+    return { username: r.username, type, phone: info?.phone ?? null, lines, allLines: lines, gmvAll: cs?.gmv_all ?? 0, overdue: r.overdue, paused, lastContactedOn: r.lastContactedOn };
   });
 
   const q = (opts.q ?? "").trim().toLowerCase().replace(/^@/, "");
@@ -243,7 +250,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
   for (const a of all) {
     if (!creatorOk(a)) continue;
     const ls = a.lines.filter((l) => lineOk(l));
-    if (ls.length) filtered.push({ ...a, lines: ls });
+    if (ls.length) filtered.push({ ...a, lines: ls, allLines: a.lines });
   }
   const lately = (a: DirRow) => a.lines.reduce((m, l) => Math.max(m, l.videos28), 0);
   const lastVid = (a: DirRow) => a.lines.reduce((m, l) => (l.lastVideoOn && l.lastVideoOn > m ? l.lastVideoOn : m), "");

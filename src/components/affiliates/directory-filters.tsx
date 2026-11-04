@@ -15,14 +15,13 @@ type Props = {
   actions: { key: CreatorAction; count: number }[];
   todo: number;
   statuses: { key: CreatorStatus; count: number }[];
-  sorts: { key: string; label: string }[];
   shown: string;
 };
 
 const DEFAULTS: Partial<DirFilterValues> = { samples: "with", sort: "gmv" };
 
 /** Every choice takes effect straight away (no Apply). Search waits a moment after typing. */
-export function DirectoryFilters({ values, products, actions, todo, statuses, sorts, shown }: Props) {
+export function DirectoryFilters({ values, products, actions, todo, statuses, shown }: Props) {
   const router = useRouter();
   const path = usePathname();
   const [pending, start] = useTransition();
@@ -38,8 +37,8 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, so
   };
   const go = (patch: Partial<DirFilterValues>) => start(() => router.replace(urlFor(patch), { scroll: false }));
   const exportHref = href("/api/affiliates/directory-export", Object.fromEntries(Object.entries({ ...values, samples: values.samples === "with" ? "" : values.samples, sort: values.sort === "gmv" ? "" : values.sort })));
-  const extra = [values.type, values.wa, values.contact].filter(Boolean).length + (values.samples !== "with" ? 1 : 0);
-  const dirty = Object.entries(values).some(([k, v]) => k !== "sort" && v !== ((DEFAULTS as Record<string, string>)[k] ?? ""));
+  const extra = [values.type, values.wa].filter(Boolean).length;
+  const dirty = Object.entries(values).some(([k, v]) => k !== "sort" && k !== "samples" && k !== "contact" && v !== "");
 
   const chip = (active: boolean) => cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13.5px] font-medium transition-colors", active ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2");
 
@@ -56,48 +55,34 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, so
               const v = e.target.value;
               timer.current = setTimeout(() => go({ q: v.trim() }), 350);
             }}
-            placeholder="Search username"
+            placeholder="Search Username"
             aria-label="Search creators"
             className="pl-9"
           />
         </div>
         <Select aria-label="Product" value={values.product} onChange={(e) => go({ product: e.target.value })} className="max-w-56">
-          <option value="">All products</option>
+          <option value="">All Products</option>
           {products.map((p) => <option key={p.pid} value={p.pid}>{p.name} ({p.creators})</option>)}
         </Select>
         <Select aria-label="Status" value={values.status} onChange={(e) => go({ status: e.target.value })}>
-          <option value="">Any status</option>
+          <option value="">Any Status</option>
           {statuses.map((s) => <option key={s.key} value={s.key}>{s.key} ({s.count})</option>)}
         </Select>
-        <button type="button" aria-expanded={more} onClick={() => setMore((m) => !m)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink-2 hover:bg-surface-2"><SlidersHorizontal className="size-4" /> More filters{extra > 0 ? ` (${extra})` : ""}</button>
-        <Select aria-label="Sort" value={values.sort} onChange={(e) => go({ sort: e.target.value })}>
-          {sorts.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </Select>
+        <button type="button" aria-expanded={more} onClick={() => setMore((m) => !m)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink-2 hover:bg-surface-2"><SlidersHorizontal className="size-4" /> More Filters{extra > 0 ? ` (${extra})` : ""}</button>
       </div>
 
       {(more || extra > 0) && (
         <div className="flex flex-wrap items-center gap-2.5" data-testid="more-filters">
-        <Select aria-label="Samples" value={values.samples} onChange={(e) => go({ samples: e.target.value })}>
-          <option value="with">Received samples</option>
-          <option value="all">All creators</option>
-          <option value="none">No samples yet</option>
-        </Select>
         <Select aria-label="Content type" value={values.type} onChange={(e) => go({ type: e.target.value })}>
-          <option value="">Video + LIVE</option>
-          <option value="video">Video only</option>
-          <option value="live">LIVE only</option>
-          <option value="both">Both video and LIVE</option>
+          <option value="">All Types</option>
+          <option value="both">Video + LIVE</option>
+          <option value="live">LIVE</option>
+          <option value="video">Video</option>
         </Select>
         <Select aria-label="WhatsApp" value={values.wa} onChange={(e) => go({ wa: e.target.value })}>
-          <option value="">WhatsApp: any</option>
-          <option value="yes">Has number</option>
-          <option value="no">No number</option>
-        </Select>
-        <Select aria-label="Contact" value={values.contact} onChange={(e) => go({ contact: e.target.value })}>
-          <option value="">Contact: any</option>
-          <option value="never">Never contacted</option>
-          <option value="recent">Contacted in 7 days</option>
-          <option value="overdue">Promise overdue</option>
+          <option value="">All</option>
+          <option value="yes">WhatsApp</option>
+          <option value="no">No WhatsApp</option>
         </Select>
         </div>
       )}
@@ -106,7 +91,7 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, so
         <span className="mr-1 text-[13px] font-medium text-ink-3">Action</span>
         <button type="button" className={chip(values.action === "")} aria-pressed={values.action === ""} onClick={() => go({ action: "" })}>All</button>
         <button type="button" className={chip(values.action === "todo")} aria-pressed={values.action === "todo"} onClick={() => go({ action: "todo" })} title="Every line that needs you to do something">
-          To do <span className="tnum opacity-80">{todo}</span>
+          To Do <span className="tnum opacity-80">{todo}</span>
         </button>
         {actions.filter((a) => a.count > 0 || values.action === a.key).map((a) => (
           <button key={a.key} type="button" className={chip(values.action === a.key)} aria-pressed={values.action === a.key} onClick={() => go({ action: values.action === a.key ? "" : a.key })} title={ACTION_HINT[a.key]}>
@@ -116,14 +101,14 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, so
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 text-[13.5px] text-ink-3">
-        <span>{shown}{pending ? " · updating…" : ""}</span>
+        <span>{shown}{pending ? " · Updating…" : ""}</span>
         <span className="flex items-center gap-3">
           {dirty && (
             <button type="button" onClick={() => { setQ(""); start(() => router.replace(href(path, values.sort === "gmv" ? {} : { sort: values.sort }), { scroll: false })); }} className="inline-flex items-center gap-1 text-ink-2 hover:text-brand">
-              <X className="size-3.5" /> Clear filters
+              <X className="size-3.5" /> Clear Filters
             </button>
           )}
-          <a href={exportHref} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 font-medium text-ink hover:bg-surface-2"><Download className="size-4" /> Export to Excel</a>
+          <a href={exportHref} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 font-medium text-ink hover:bg-surface-2"><Download className="size-4" /> Export To Excel</a>
         </span>
       </div>
     </div>

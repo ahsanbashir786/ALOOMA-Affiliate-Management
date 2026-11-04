@@ -3,11 +3,13 @@ import Link from "next/link";
 import { ExternalLink, MessageCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { ACTION_ORDER, getAffiliateDirectory, STATUS_ORDER, type DirLine, type DirRow } from "@/lib/workflow/directory";
-import { parseDirectoryParams, SORTS } from "@/lib/workflow/directory-params";
+import { parseDirectoryParams } from "@/lib/workflow/directory-params";
 import { ACTION_HELP, STATUS_HELP, type CreatorStatus } from "@/lib/affiliates/status";
 import { fmtDayLabel } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
+import { sampleRange } from "@/lib/samples/range";
+import { statsOf } from "@/lib/affiliates/action-messages";
 import { Pagination } from "@/components/ui/pagination";
 import { OpenPanelButton } from "@/components/creator/open-panel-button";
 import { DirectoryFilters } from "@/components/affiliates/directory-filters";
@@ -16,7 +18,7 @@ import { cn, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Affiliate Data Management" };
 const SIZE = 15;
-const COLS = "lg:grid-cols-[170px_minmax(120px,1.2fr)_minmax(85px,0.8fr)_62px_96px_76px_minmax(120px,1.1fr)_minmax(105px,0.9fr)_92px]";
+const COLS = "lg:grid-cols-[170px_minmax(120px,1.2fr)_minmax(85px,0.8fr)_62px_76px_96px_minmax(120px,1.1fr)_minmax(105px,0.9fr)_92px]";
 const TONE: Record<CreatorStatus, "good" | "brand" | "warn" | "critical" | "neutral"> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
 
 const rmShort = (n: number) => (n <= 0 ? "–" : fmtRM(n));
@@ -74,7 +76,10 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));
   const opts = parseDirectoryParams(raw);
-  const dir = await getAffiliateDirectory({ ...opts, size: SIZE });
+  const { period, range } = await sampleRange(sp);
+  const periodLabel = `${fmtDayLabel(period.start)} – ${fmtDayLabel(period.end)}`;
+  const dir = await getAffiliateDirectory({ ...opts, range, size: SIZE });
+  const statsAll = (r: DirRow) => r.allLines.filter((l) => !l.noSample).map(statsOf);
   const page = opts.page ?? 1;
   const pages = Math.max(1, Math.ceil(dir.total / SIZE));
   const values = { q: opts.q ?? "", samples: opts.samples ?? "with", product: opts.product ?? "", status: opts.status ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", sort: opts.sort ?? "gmv" };
@@ -82,7 +87,7 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Affiliate Data Management" actions={<Link href="/affiliates/analysis" className={buttonClasses({ variant: "secondary" })}>Detailed analysis</Link>} />
+      <PageHeader title="Affiliate Data Management" actions={<Link href="/affiliates/analysis" className={buttonClasses({ variant: "secondary" })}>Detailed Analysis</Link>} />
       <Card>
         <DirectoryFilters
           values={values}
@@ -90,16 +95,15 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
           actions={ACTION_ORDER.map((k) => ({ key: k, count: dir.actionCounts[k] }))}
           todo={dir.actionCounts.todo}
           statuses={STATUS_ORDER.map((k) => ({ key: k, count: dir.statusCounts[k] }))}
-          sorts={SORTS}
           shown={`${dir.total} creator${dir.total === 1 ? "" : "s"} · ${dir.totalLines} line${dir.totalLines === 1 ? "" : "s"}${dir.dataEnd ? ` · “lately” ends ${fmtDayLabel(dir.dataEnd)}` : ""}`}
         />
 
         {dir.rows.length === 0 ? (
-          <EmptyState title="No creators match" description="Clear a filter to see more." />
+          <EmptyState title="No Creators Match" description="Clear a filter to see more." />
         ) : (
           <>
             <div className={cn("hidden gap-x-3 border-b border-line px-5 py-2.5 text-[13px] font-medium text-ink-3 lg:grid", COLS)}>
-              <span>Creator</span><span>Sample product</span><span>SKU</span><span>Orders</span><span>GMV</span><span>Videos</span><span>Status</span><span>Action</span><span>Total GMV</span>
+              <span>Creator</span><span>Sample Product</span><span>SKU</span><span>Orders</span><span>Videos</span><span>GMV</span><span>Status</span><span>Action</span><span>Total GMV</span>
             </div>
             <ul className="divide-y divide-line">
               {dir.rows.map((r) => (
@@ -111,7 +115,7 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
                       <div key={l.pid ?? `n${i}`} data-testid="dir-line" className={cn("col-start-2 col-end-9 grid grid-cols-subgrid items-start gap-x-3", i > 0 && "border-t border-dashed border-line pt-3")} style={{ gridRow: i + 1 }}>
                         <p className={cn("min-w-0 text-[14.5px] leading-snug", l.noSample ? "text-ink-3" : "font-medium text-ink")} title={l.name}>{l.name}</p>
                         <div className="min-w-0 text-[13px] leading-snug text-ink-2">{l.skus.length ? l.skus.map((s) => <p key={s} className="break-words" title={s}>{s}</p>) : <span className="text-ink-3">–</span>}</div>
-                        <Orders l={l} /><Gmv l={l} /><Videos l={l} /><StatusCell l={l} /><LineAction username={r.username} line={l} />
+                        <Orders l={l} /><Videos l={l} /><Gmv l={l} /><StatusCell l={l} /><LineAction username={r.username} line={l} all={statsAll(r)} period={periodLabel} />
                       </div>
                     ))}
                     <div className="tnum whitespace-nowrap" style={{ gridColumn: 9, gridRow: `1 / span ${r.lines.length}` }}><p className="text-[16px] font-semibold text-ink">{rmShort(r.gmvAll)}</p></div>
@@ -128,11 +132,11 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
                         {l.skus.length > 0 && <p className="break-words text-[12.5px] text-ink-3">{l.skus.join(" · ")}</p>}
                         <div className="mt-2.5 grid grid-cols-3 gap-2 text-[13px]">
                           <div><p className="text-ink-3">Orders</p><Orders l={l} /></div>
-                          <div><p className="text-ink-3">GMV</p><Gmv l={l} /></div>
                           <div><p className="text-ink-3">Videos</p><Videos l={l} /></div>
+                          <div><p className="text-ink-3">GMV</p><Gmv l={l} /></div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-line pt-3">
-                          <StatusCell l={l} /><LineAction username={r.username} line={l} />
+                          <StatusCell l={l} /><LineAction username={r.username} line={l} all={statsAll(r)} period={periodLabel} />
                         </div>
                       </div>
                     ))}
@@ -142,11 +146,11 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
             </ul>
           </>
         )}
-        <div className="border-t border-line p-3"><Pagination page={Math.min(page, pages)} pages={pages} total={dir.total} pageSize={SIZE} hrefFor={(p) => href("/affiliates", { ...pageFilters, page: p })} /></div>
+        <div className="border-t border-line p-3"><Pagination page={Math.min(page, pages)} pages={pages} total={dir.total} pageSize={SIZE} hrefFor={(p) => href("/affiliates", { ...pageFilters, range: sp.range ? one(sp.range) : undefined, from: one(sp.from), to: one(sp.to), page: p })} /></div>
       </Card>
 
       <details className="rounded-xl border border-line bg-surface">
-        <summary className="cursor-pointer px-5 py-4 text-[15px] font-medium text-ink">What the status and action words mean</summary>
+        <summary className="cursor-pointer px-5 py-4 text-[15px] font-medium text-ink">What The Status And Action Words Mean</summary>
         <div className="grid gap-6 px-5 pb-5 text-[14px] text-ink-2 sm:grid-cols-2">
           <dl className="space-y-1.5"><dt className="font-semibold text-ink">Status</dt>{STATUS_ORDER.map((s) => <dd key={s}><b className="text-ink">{s}</b> – {STATUS_HELP[s]}</dd>)}</dl>
           <dl className="space-y-1.5"><dt className="font-semibold text-ink">Action</dt>{(Object.keys(ACTION_HELP) as (keyof typeof ACTION_HELP)[]).map((a) => <dd key={a}><b className="text-ink">{a}</b> – {ACTION_HELP[a]}</dd>)}</dl>

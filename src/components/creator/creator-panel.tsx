@@ -5,14 +5,14 @@ import Link from "next/link";
 import { ExternalLink, Loader2, X } from "lucide-react";
 import { addCommitmentLink, decideCommitmentContent, markContacted, markNeedsHelp, markPromised, resumeCreator, undoEvent } from "@/app/actions/workflow";
 import { MessageBox } from "@/components/ui/message-box";
-import { actionMessage } from "@/lib/affiliates/action-messages";
+import { lineMessage, overviewMessage, type LineStats } from "@/lib/affiliates/action-messages";
 import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/affiliates/status";
 import { Badge, Button, Input } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import type { PanelData } from "@/lib/workflow/panel";
 
 /** What the manager clicked: one action on one product line. The panel turns it into a message and outcome buttons. */
-export type PanelFocus = { action: CreatorAction; status: CreatorStatus; product: string | null; productId: string | null; reason: string; videos28: number; lastVideoLabel: string | null };
+export type PanelFocus = { action: CreatorAction; status: CreatorStatus; product: string | null; productId: string | null; reason: string; line: LineStats | null; all: LineStats[]; period: string };
 
 const Ctx = createContext<{ open: (username: string, focus?: PanelFocus) => void }>({ open: () => {} });
 
@@ -52,7 +52,10 @@ function ActionCard({ username, focus, phone, canAct, paused, onSaved }: { usern
   const [date, setDate] = useState("");
   const [reason, setReason] = useState(HELP_REASONS[0]);
   const [done, setDone] = useState<{ text: string; undo?: number } | null>(null);
-  const msgs = actionMessage(focus.action, { username, product: focus.product ?? "our product", videos28: focus.videos28, lastVideoLabel: focus.lastVideoLabel });
+  const [scope, setScope] = useState<"line" | "all">("line");
+  const one = lineMessage(focus.action, username, focus.product, focus.line, focus.period);
+  const every = focus.product ? overviewMessage(username, focus.all, focus.period) : null;
+  const msgs = scope === "all" && every ? every : one ?? every;
   const ctx = { action: focus.action, product: focus.product, productId: focus.productId, status: focus.status };
   const save = async (fn: () => Promise<{ ok?: true; error?: string; eventId?: number }>, ok: string) => {
     setBusy(true);
@@ -70,6 +73,12 @@ function ActionCard({ username, focus, phone, canAct, paused, onSaved }: { usern
       </div>
       <p className="mt-1.5 text-[14px] font-medium text-ink">{ACTION_HINT[focus.action]}</p>
       <p className="text-[13px] text-ink-3">{focus.reason}</p>
+      {one && every && (
+        <div role="group" aria-label="Message about" className="mt-3 inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface text-[13px] font-medium">
+          <button type="button" aria-pressed={scope === "line"} onClick={() => setScope("line")} className={cn("px-3 py-1.5", scope === "line" ? "bg-brand text-white" : "text-ink-2 hover:bg-surface-2")}>This Product</button>
+          <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")} className={cn("px-3 py-1.5", scope === "all" ? "bg-brand text-white" : "text-ink-2 hover:bg-surface-2")}>All Products ({focus.all.length})</button>
+        </div>
+      )}
       {msgs && <MessageBox className="mt-3" en={msgs.en} ms={msgs.ms} phone={phone} />}
       {canAct ? (
         <div className="mt-4 border-t border-line pt-3">
