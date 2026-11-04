@@ -45,6 +45,7 @@ async function main() {
       const at = tok ? Number(tok) : 0;
       return body({ orders: all.slice(at, at + 2), next_page_token: at + 2 < all.length ? String(at + 2) : undefined });
     }
+    if (p === "/order/202309/orders" && (u.searchParams.get("ids") ?? "").includes("BAD")) return j({ code: 36009003, message: "Internal error. Please try again." });
     if (p === "/order/202309/orders") { const ids = (u.searchParams.get("ids") ?? "").split(","); return body({ orders: ids.map((id) => ({ id, status: id === "O9" ? "DELIVERED" : "COMPLETED", is_sample_order: true, create_time: now - 86400 * 5, update_time: now, delivery_time: now - 86400, paid_time: now - 86400 * 5, tracking_number: "TRK" + id, shipping_provider: "J&T", payment: { total_amount: "0.00", currency: "MYR" }, line_items: [{ sku_id: "SKU1", product_id: "P1", seller_sku: "S-1", display_status: "DELIVERED", package_status: "DELIVERED", tracking_number: "TRK" + id, product_name: "SECRET NAME LEAK" }], buyer_email: "secret@example.com", recipient_address: { full_address: "SECRET ROAD 1" } })) }); }
     if (p.includes("/open_collaborations/search")) return body({ open_collaborations: [{ id: "OC1", status: "ONGOING", content_creator_count: 12, showcase_creator_count: 5, require_seller_approve_creator: false, current_commission: { rate: "1500", start_time: now - 86400, end_time: now + 86400 * 30 }, product: { id: "P1", title: "Pillow", inventory: 40, original_price: { minimum_amount: "20", maximum_amount: "35", currency: "MYR" } } }] });
     if (p.includes("/sample_applications/search")) return body({ sample_applications: [{ id: "SR1", status: "PENDING", commission_rate: "1500", order_id: "O9", is_approvable: true, approve_expiration_time: now + 3600, available_quantity: 3, creator: { user_id: "U1", username: "amy", nickname: "Amy", follower_count: "12000", gmv: { amount: "5000", currency: "MYR" }, content_count: 40, ec_video_view: 90000, fulfillment_percentage: 98.5 }, product: { id: "P1", sku_id: "SKU1", sku_name: "Bed", title: "Pillow" } }] });
@@ -134,6 +135,10 @@ async function main() {
   const afterOv = await syncOverview();
   const rerun = await runDataset("returns", "manual", null, deps);
   check("31 after a restart, runs left running are marked interrupted at once, the screen stops waiting, and the dataset can run again", stuckBefore === true && cleared === 2 && afterOv.running === false && rerun.status === "ok");
+  await q(sql`insert into tt_sample_requests (id, order_id, creator) values ('SRB1', 'BAD1', 'zed'), ('SRB2', 'GOOD1', 'zed'), ('SRB3', 'GOOD2', 'zed')`);
+  const isolated = await runDataset("sample_orders", "manual", null, deps);
+  const got = (await q(sql`select order_id from tt_orders where order_id in ('GOOD1','GOOD2','BAD1')`)).map((r) => r.order_id).sort();
+  check("32 one order TikTok cannot read does not fail the dataset: the group is split, the bad one is skipped and the others are saved", isolated.status === "ok" && got.join() === "GOOD1,GOOD2", JSON.stringify([isolated, got]));
   const { schedulerTick } = await import("../src/lib/tiktok/scheduler");
   const { saveSyncSettings } = await import("../src/lib/tiktok/sync");
   await q(sql`delete from tt_sync_runs`);

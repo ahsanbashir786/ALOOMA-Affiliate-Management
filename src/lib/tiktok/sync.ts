@@ -95,6 +95,7 @@ async function callRetry(path: string, o: CallOpts, deps: SyncDeps, state: { siz
       const msg = e instanceof Error ? e.message : "";
       if (/36009002|rate limit|too many requests/i.test(msg) && attempt < 6) { coolUntil = Date.now() + 3000 * (attempt + 1); await sleep(3000 * (attempt + 1)); continue; }
       if (o.sizes && /page.?size/i.test(msg) && state.size < o.sizes.length - 1) { state.size++; continue; }
+      if (/36009003|internal error/i.test(msg) && attempt < 3) { await sleep(1500 * (attempt + 1)); continue; }
       throw e;
     }
   }
@@ -233,14 +234,24 @@ const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
       select distinct r.order_id from tt_sample_requests r left join tt_orders o on o.order_id = r.order_id
       where r.order_id is not null and r.order_id <> '' and (o.order_id is null or o.is_final = false) order by 1`);
     const state = { size: 0 };
-    await inGroups(need.map((n) => n.order_id), 50, 2, async (ids) => {
-      const data = await callRetry("/order/202309/orders", { method: "GET", query: { ids: ids.join(",") } }, ctx.deps, state);
-      const out = (pick("orders")(data) as Record<string, unknown>[]).map(M.order);
-      c.pages++; c.seen += out.length;
-      { const ch = await upsertRows(TABLES.tt_orders, out); c.changed += ch; }
-      await progress(ctx, c);
-      await (ctx.deps.sleep ?? defaultSleep)(ctx.deps.pauseMs ?? 120);
-    });
+    // If TikTok fails on a group of ids, split it in half until the one id TikTok cannot handle is found, skip that one and carry on.
+    const fetchIds = async (ids: string[]): Promise<void> => {
+      try {
+        const data = await callRetry("/order/202309/orders", { method: "GET", query: { ids: ids.join(",") } }, ctx.deps, state);
+        const out = (pick("orders")(data) as Record<string, unknown>[]).map(M.order);
+        c.pages++; c.seen += out.length;
+        const ch = await upsertRows(TABLES.tt_orders, out); c.changed += ch;
+        await progress(ctx, c);
+        await (ctx.deps.sleep ?? defaultSleep)(ctx.deps.pauseMs ?? 120);
+      } catch (e) {
+        if (ids.length === 1) return; // this order cannot be read; it is simply left out
+        if (!/36009003|internal error|invalid|not found|36004/i.test(e instanceof Error ? e.message : "")) throw e;
+        const mid = Math.ceil(ids.length / 2);
+        await fetchIds(ids.slice(0, mid));
+        await fetchIds(ids.slice(mid));
+      }
+    };
+    await inGroups(need.map((n) => n.order_id), 20, 2, fetchIds);
   },
 };
 
