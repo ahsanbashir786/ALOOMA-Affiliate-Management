@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   if (!user || !can(user, "admin")) return NextResponse.json({ error: "Owner only." }, { status: 403 });
   const group = ((await request.json().catch(() => null)) as { group?: string } | null)?.group;
   const run = async (name: string, path: string, o: Parameters<typeof callApi>[1], pick: (d: Record<string, unknown>) => unknown): Promise<Check> => {
+    await new Promise((r) => setTimeout(r, 400)); // stay under TikTok's shared rate limit
     try {
       const d = (await callApi<Record<string, unknown>>(path, o)) ?? {};
       const items = pick(d);
@@ -32,10 +33,11 @@ export async function POST(request: Request) {
     const q = (extra: Record<string, string> = {}) => ({ query: { start_date_ge: iso(new Date(Date.now() - 28 * 86400000)), end_date_lt: iso(end), page_size: "10", ...extra } });
     const checks = [
       await run("Video performance", "/analytics/202409/shop_videos/performance", q(), firstList),
-      await run("Video performance (older)", "/analytics/202405/shop_videos/performance", q(), firstList),
       await run("Product performance", "/analytics/202405/shop_products/performance", q(), firstList),
       await run("Shop performance", "/analytics/202405/shop/performance", q({ granularity: "ALL" }), (d) => (d.performance ? [d.performance] : firstList(d))),
-      await run("LIVE performance", "/analytics/202405/shop_lives/performance", q(), firstList),
+      await run("LIVE performance", "/analytics/202409/shop_lives/performance", q(), firstList),
+      await run("LIVE performance (newer)", "/analytics/202410/shop_lives/performance", q(), firstList),
+      await run("LIVE performance (overview)", "/analytics/202409/shop_lives/overview_performance", q(), (d) => (d.performance ? [d.performance] : firstList(d))),
     ];
     return NextResponse.json({ checks });
   }
