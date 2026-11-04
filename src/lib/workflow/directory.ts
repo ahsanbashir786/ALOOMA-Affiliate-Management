@@ -19,6 +19,9 @@ export type DirLine = {
   gmvVideo: number;
   gmvLive: number;
   gmv: number;
+  /** Valid sales in the latest 28 days, and the 28 days before (for the trend arrow). */
+  gmv28: number;
+  prev28: number;
   videos: number;
   videos28: number;
   lastVideoOn: string | null;
@@ -46,7 +49,7 @@ export type DirRow = {
   lastContactedOn: string | null;
 };
 
-export type DirSort = "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "name";
+export type DirSort = "orders" | "orders_asc" | "videos_all" | "videos_all_asc" | "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "name";
 export type DirOpts = {
   q?: string;
   samples?: "with" | "none" | "all";
@@ -189,7 +192,7 @@ export async function loadDirectoryRows(opts: { range?: { start: string; end: st
       const st = creatorStatus(input);
       lines.push({
         pid: p.pid, name: listingName(p.short, p.full, p.sku_name ?? p.smp_name), skus: p.skus ?? [], noSample: false,
-        ordersVideo: sp?.ov ?? 0, ordersLive: sp?.ol ?? 0, orders: sp?.ot ?? 0, gmvVideo: sp?.gv ?? 0, gmvLive: sp?.gl ?? 0, gmv: sp?.gmv ?? 0,
+        ordersVideo: sp?.ov ?? 0, ordersLive: sp?.ol ?? 0, orders: sp?.ot ?? 0, gmvVideo: sp?.gv ?? 0, gmvLive: sp?.gl ?? 0, gmv: sp?.gmv ?? 0, gmv28: sp?.gmv28 ?? 0, prev28: sp?.prev28 ?? 0,
         videos: vp?.n ?? 0, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null, lastVideoDaysAgo: vp?.last && ref ? Math.max(0, Math.round((Date.parse(ref) - Date.parse(vp.last)) / 86400000)) : null, undatedVideos: vp?.undated ?? 0,
         status: st.status, action: st.action, reason: explainStatus(input, st.status), doneOn: doneBy.get(`${r.username}|${p.pid ?? ''}|${st.action}`) ?? null,
       });
@@ -203,7 +206,7 @@ export async function loadDirectoryRows(opts: { range?: { start: string; end: st
       const st = creatorStatus(input);
       lines.push({
         pid: null, name: "No sample sent", skus: [], noSample: true, ordersVideo: cs?.ov ?? 0, ordersLive: cs?.ol ?? 0, orders: 0,
-        gmvVideo: 0, gmvLive: 0, gmv: 0, videos: 0, videos28: v28By.get(r.username) ?? 0, lastVideoOn: null, lastVideoLabel: null, lastVideoDaysAgo: null, undatedVideos: 0,
+        gmvVideo: 0, gmvLive: 0, gmv: 0, gmv28: cs?.gmv28 ?? 0, prev28: cs?.prev28 ?? 0, videos: 0, videos28: v28By.get(r.username) ?? 0, lastVideoOn: null, lastVideoLabel: null, lastVideoDaysAgo: null, undatedVideos: 0,
         status: st.status, action: st.action, reason: explainStatus(input, st.status), doneOn: doneBy.get(`${r.username}||${st.action}`) ?? null,
       });
     }
@@ -268,6 +271,8 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
   }
   const lately = (a: DirRow) => a.lines.reduce((m, l) => Math.max(m, l.videos28), 0);
   const lastVid = (a: DirRow) => a.lines.reduce((m, l) => (l.lastVideoOn && l.lastVideoOn > m ? l.lastVideoOn : m), "");
+  const topOrders = (a: DirRow) => a.lines.reduce((m, l) => Math.max(m, l.orders), 0);
+  const topVideos = (a: DirRow) => a.lines.reduce((m, l) => Math.max(m, l.videos), 0);
   const topLine = (a: DirRow) => a.lines.reduce((m, l) => Math.max(m, l.gmv), 0);
   const best = (a: DirRow) => Math.min(...a.lines.map((l) => ATTN[l.action]));
   filtered.sort((a, b) => {
@@ -275,6 +280,10 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       case "gmv_asc": return a.gmvAll - b.gmvAll || a.username.localeCompare(b.username);
       case "linegmv": return topLine(b) - topLine(a) || a.username.localeCompare(b.username);
       case "linegmv_asc": return topLine(a) - topLine(b) || a.username.localeCompare(b.username);
+      case "orders": return topOrders(b) - topOrders(a) || a.username.localeCompare(b.username);
+      case "orders_asc": return topOrders(a) - topOrders(b) || a.username.localeCompare(b.username);
+      case "videos_all": return topVideos(b) - topVideos(a) || a.username.localeCompare(b.username);
+      case "videos_all_asc": return topVideos(a) - topVideos(b) || a.username.localeCompare(b.username);
       case "name": return a.username.localeCompare(b.username);
       case "video": return lately(b) - lately(a) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
       case "stale": {

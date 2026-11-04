@@ -37,8 +37,8 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, sh
   };
   const go = (patch: Partial<DirFilterValues>) => start(() => router.replace(urlFor(patch), { scroll: false }));
   const exportHref = href("/api/affiliates/directory-export", Object.fromEntries(Object.entries({ ...values, samples: values.samples === "with" ? "" : values.samples, sort: values.sort === "gmv" ? "" : values.sort })));
-  const extra = [values.type, values.wa].filter(Boolean).length;
-  const dirty = Object.entries(values).some(([k, v]) => k !== "sort" && k !== "samples" && k !== "contact" && v !== "");
+  const extra = [values.type, values.wa, values.contact].filter(Boolean).length;
+  const dirty = Object.entries(values).some(([k, v]) => k !== "sort" && k !== "samples" && v !== "");
 
   const chip = (active: boolean) => cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13.5px] font-medium transition-colors", active ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2");
 
@@ -79,6 +79,12 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, sh
           <option value="live">LIVE</option>
           <option value="video">Video</option>
         </Select>
+        <Select aria-label="Contact" value={values.contact} onChange={(e) => go({ contact: e.target.value })}>
+          <option value="">Contact: All</option>
+          <option value="never">Not Contacted</option>
+          <option value="recent">Contacted This Week</option>
+          <option value="overdue">Promise Overdue</option>
+        </Select>
         <Select aria-label="WhatsApp" value={values.wa} onChange={(e) => go({ wa: e.target.value })}>
           <option value="">All</option>
           <option value="yes">WhatsApp</option>
@@ -90,7 +96,7 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, sh
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Action to take">
         <span className="mr-1 text-[13px] font-medium text-ink-3">Action</span>
         <button type="button" className={chip(values.action === "")} aria-pressed={values.action === ""} onClick={() => go({ action: "" })}>All</button>
-        <button type="button" className={chip(values.action === "todo")} aria-pressed={values.action === "todo"} onClick={() => go({ action: "todo" })} title="Every line that needs you to do something">
+        <button type="button" className={chip(values.action === "todo")} aria-pressed={values.action === "todo"} onClick={() => go({ action: "todo" })} title="Product lines that need you to do something (Daily Actions counts creators, so its number is smaller)">
           To Do <span className="tnum opacity-80">{todo}</span>
         </button>
         {actions.filter((a) => a.count > 0 || values.action === a.key).map((a) => (

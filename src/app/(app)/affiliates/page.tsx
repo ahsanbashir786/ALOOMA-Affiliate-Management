@@ -51,7 +51,14 @@ function Videos({ l }: { l: DirLine }) {
 function StatusCell({ l }: { l: DirLine }) {
   return (
     <div>
-      <span title={STATUS_HELP[l.status]}><Badge tone={TONE[l.status]}>{l.status}</Badge></span>
+      <span className="inline-flex items-center gap-1.5">
+        <span title={STATUS_HELP[l.status]}><Badge tone={TONE[l.status]}>{l.status}</Badge></span>
+        {l.prev28 > 0 && l.gmv28 !== l.prev28 && (
+          <span className={cn("tnum text-[12px] font-semibold", l.gmv28 > l.prev28 ? "text-good" : "text-critical")} title={`Last 28 days RM ${Math.round(l.gmv28).toLocaleString("en-MY")} vs RM ${Math.round(l.prev28).toLocaleString("en-MY")} before`}>
+            {l.gmv28 > l.prev28 ? "▲" : "▼"} {Math.abs(Math.round((l.gmv28 / l.prev28 - 1) * 100))}%
+          </span>
+        )}
+      </span>
       <p className="mt-1 text-[12px] leading-snug text-ink-3">{l.reason}</p>
     </div>
   );
@@ -110,7 +117,7 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
         ) : (
           <>
             <div className={cn("hidden gap-x-3 border-b border-line px-5 py-2.5 text-[13px] font-medium text-ink-3 lg:grid", COLS)}>
-              <span>Creator</span><span>Sample Product</span><span>SKU</span><span>Orders</span><span>Videos</span>{head("GMV", "linegmv_asc", "linegmv")}{head("Total GMV", "gmv_asc", "gmv")}<span>Status</span><span>Action</span>
+              <span>Creator</span><span>Sample Product</span><span>SKU</span>{head("Orders", "orders_asc", "orders")}{head("Videos", "videos_all_asc", "videos_all")}{head("GMV", "linegmv_asc", "linegmv")}{head("Total GMV", "gmv_asc", "gmv")}<span>Status</span><span>Action</span>
             </div>
             <ul className="divide-y divide-line">
               {dir.rows.map((r) => (

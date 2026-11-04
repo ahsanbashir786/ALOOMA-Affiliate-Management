@@ -7,6 +7,7 @@ import { addCommitmentLink, decideCommitmentContent, markContacted, markNeedsHel
 import { MessageBox } from "@/components/ui/message-box";
 import { lineMessage, overviewMessage, type LineStats } from "@/lib/affiliates/action-messages";
 import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/affiliates/status";
+import { Sparkline } from "@/components/viz/sparkline";
 import { Badge, Button, Input } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import type { PanelData } from "@/lib/workflow/panel";
@@ -16,7 +17,7 @@ export type PanelFocus = { action: CreatorAction; status: CreatorStatus; product
 
 const Ctx = createContext<{ open: (username: string, focus?: PanelFocus) => void }>({ open: () => {} });
 
-/** Open the creator side panel from anywhere (Today's Work, Affiliates…). */
+/** Open the creator side panel from anywhere (Daily Actions, Affiliates…). */
 export const useCreatorPanel = () => useContext(Ctx);
 
 export function CreatorPanelProvider({ children }: { children: React.ReactNode }) {
@@ -45,7 +46,7 @@ function Section({ title, count, defaultOpen, children }: { title: string; count
 
 const HELP_REASONS = ["Not replying", "Needs a brief", "Needs a voucher", "Product problem", "Other"];
 
-/** Do the action: message, then record what happened. Recorded in the same log Today's Work uses. */
+/** Do the action: message, then record what happened. Recorded in the same log Daily Actions uses. */
 function ActionCard({ username, focus, phone, canAct, paused, onSaved }: { username: string; focus: PanelFocus; phone: string | null; canAct: boolean; paused: boolean; onSaved: () => void }) {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<null | "promise" | "help">(null);
@@ -82,7 +83,7 @@ function ActionCard({ username, focus, phone, canAct, paused, onSaved }: { usern
       {msgs && <MessageBox className="mt-3" en={msgs.en} ms={msgs.ms} phone={phone} />}
       {canAct ? (
         <div className="mt-4 border-t border-line pt-3">
-          <p className="mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">What happened? (saved to Today&apos;s Work)</p>
+          <p className="mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">What happened? (saved to Daily Actions)</p>
           <div className="flex flex-wrap gap-2">
             {focus.action === "Resume" || paused ? (
               <Button size="sm" disabled={busy} onClick={() => save(() => resumeCreator(username), "Resumed.")}>Resume</Button>
@@ -185,6 +186,32 @@ function Panel({ username, focus, onClose }: { username: string; focus?: PanelFo
             </dl>
             {focus && <ActionCard username={username} focus={focus} phone={data.phone} canAct={data.canAct} paused={data.paused} onSaved={() => setTick((t) => t + 1)} />}
             {msg && <p role="status" className="mx-5 mb-2 rounded-lg bg-surface-2 px-3 py-2 text-[13.5px] text-ink-2">{msg}</p>}
+
+            <Section title="Performance" defaultOpen>
+              {(() => {
+                const pf = data.performance;
+                const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
+                const change = pf.prev28 > 0 ? Math.round((pf.gmv28 / pf.prev28 - 1) * 100) : null;
+                return (
+                  <div className="space-y-3" data-testid="performance">
+                    <div className="rounded-xl bg-surface-2 p-3.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-[13px] text-ink-3">GMV, last 28 days</span>
+                        <span className="tnum text-[18px] font-semibold text-ink">{rm(pf.gmv28)}{change != null && <span className={cn("ml-2 text-[13.5px] font-medium", change >= 0 ? "text-good" : "text-critical")}>{change >= 0 ? "▲" : "▼"} {Math.abs(change)}%</span>}</span>
+                      </div>
+                      <Sparkline values={pf.weeks} tone={change != null && change < 0 ? "critical" : "good"} label="GMV per week, last 8 weeks" />
+                      <p className="text-[12px] text-ink-3">Weekly GMV, last 8 weeks{pf.prev28 > 0 ? ` · before: ${rm(pf.prev28)}` : ""}</p>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-2.5 text-[13.5px]">
+                      <div className="rounded-xl bg-surface-2 p-3"><dt className="text-ink-3">Posting rate</dt><dd className="tnum font-semibold text-ink">{pf.postingRate ? `${pf.postingRate.posted}/${pf.postingRate.judged} samples posted` : "–"}</dd></div>
+                      <div className="rounded-xl bg-surface-2 p-3"><dt className="text-ink-3">Days to post</dt><dd className="tnum font-semibold text-ink">{pf.avgDaysToPost != null ? `${pf.avgDaysToPost} days on average` : "–"}</dd></div>
+                      <div className="rounded-xl bg-surface-2 p-3"><dt className="text-ink-3">Last action</dt><dd className="font-semibold text-ink">{pf.lastAction ? `${pf.lastAction.text}` : "None yet"}{pf.lastAction && <span className="block text-[12.5px] font-normal text-ink-3">{pf.lastAction.at}{pf.lastAction.by ? ` · ${pf.lastAction.by}` : ""}</span>}</dd></div>
+                      <div className="rounded-xl bg-surface-2 p-3"><dt className="text-ink-3">Next follow-up</dt><dd className="font-semibold text-ink">{pf.nextFollowUp ?? "None set"}<span className="block text-[12.5px] font-normal text-ink-3">{pf.contacts} contact{pf.contacts === 1 ? "" : "s"} recorded</span></dd></div>
+                    </dl>
+                  </div>
+                );
+              })()}
+            </Section>
 
             <Section title="Commitments" count={data.obligations.length} defaultOpen>
               {data.obligations.length === 0 ? (

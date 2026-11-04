@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { rows } from "@/lib/analytics/sql";
+import { AL, rows } from "@/lib/analytics/sql";
 import { getSampleLines } from "@/lib/samples/analysis";
 import { LINE_STATES } from "@/lib/samples/states";
 import { fmtDateTimeKL, fmtDayLabel, todayKL, daysBetweenISO } from "@/lib/time";
@@ -29,6 +29,17 @@ export type PanelData = {
   history: { at: string; text: string; by: string | null; undone: boolean; eventId?: number }[];
   /** Plain track record from the records: promises kept, recent output, last sale. */
   profile: { promisesJudged: number; promisesOnTime: number; videos28: number; lastSaleLabel: string | null };
+  /** How this creator is doing: 8 weekly GMV points, 28-day change, posting rate for samples, last action and next follow-up. */
+  performance: {
+    weeks: number[];
+    gmv28: number;
+    prev28: number;
+    postingRate: { posted: number; judged: number } | null;
+    avgDaysToPost: number | null;
+    lastAction: { text: string; by: string | null; at: string } | null;
+    nextFollowUp: string | null;
+    contacts: number;
+  };
   canAct: boolean;
 };
 
@@ -52,6 +63,20 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
       : null;
   const sampleLines = lines.get(username) ?? [];
   const [vid] = await rows<{ n: number }>(sql`select count(*)::int as n from content_items where creator = ${username} and posted_at is not null and posted_at::date >= (${today}::date - 27)`);
+  const [ref] = await rows<{ d: string | null }>(sql`select to_char(max(created_at), 'YYYY-MM-DD') as d from order_lines`);
+  const wk = ref?.d
+    ? await rows<{ w: number; g: number }>(sql`
+        select floor((${ref.d}::date - al.created_at::date) / 7)::int as w, coalesce(sum(al.pay) filter (where al.valid), 0)::float8 as g
+        from ${AL} where al.creator = ${username} and al.created_at::date > ${ref.d}::date - 56 and al.created_at::date <= ${ref.d}::date group by 1`)
+    : [];
+  const weeks = Array.from({ length: 8 }, (_, i) => wk.find((x) => x.w === 7 - i)?.g ?? 0);
+  const posted = sampleLines.filter((l) => l.result === "posted_video" || l.result === "did_live");
+  const judgedLines = sampleLines.filter((l) => ["posted_video", "did_live", "not_posted"].includes(l.result));
+  const days = posted.map((l) => {
+    const first = l.videos.map((v) => v.postedAt).filter(Boolean).sort()[0];
+    return first && l.deliveredAt ? daysBetweenISO(String(l.deliveredAt).slice(0, 10), String(first).slice(0, 10)) : null;
+  }).filter((x): x is number => x != null && x >= 0);
+  const lastA = ws.entries.find((e) => !e.undone && e.kind === "contacted");
   const judged = comms.filter((c) => c.state === "fulfilled" || c.dueOn < today);
 
   // evidence: pieces counted for promises, plus videos found for samples – each piece once
@@ -108,6 +133,16 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
       promisesOnTime: judged.filter((c) => c.state === "fulfilled" && c.timing === "on_time").length,
       videos28: vid?.n ?? 0,
       lastSaleLabel: rel.get(username)?.lastSaleOn ? fmtDayLabel(rel.get(username)!.lastSaleOn!) : null,
+    },
+    performance: {
+      weeks,
+      gmv28: weeks.slice(4).reduce((a, b) => a + b, 0),
+      prev28: weeks.slice(0, 4).reduce((a, b) => a + b, 0),
+      postingRate: judgedLines.length ? { posted: posted.length, judged: judgedLines.length } : null,
+      avgDaysToPost: days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : null,
+      lastAction: lastA ? { text: lastA.text, by: lastA.by ?? null, at: fmtDayLabel(lastA.day) } : null,
+      nextFollowUp: st?.nextOn ? fmtDayLabel(st.nextOn) : null,
+      contacts: st?.contactTimes.length ?? 0,
     },
     canAct,
   };

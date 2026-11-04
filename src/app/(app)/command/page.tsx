@@ -12,6 +12,7 @@ import { StatTile } from "@/components/viz/stat-tile";
 import { Sparkline } from "@/components/viz/sparkline";
 import { ComboChart } from "@/components/viz/combo-chart";
 import { ForecastChart, type ForecastPoint } from "@/components/viz/forecast-chart";
+import { getAffiliateDirectory, STATUS_ORDER, ACTION_ORDER } from "@/lib/workflow/directory";
 import { Badge, PageHeader } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +20,7 @@ export const metadata: Metadata = { title: "Command centre" };
 
 export default async function CommandPage() {
   await requireUser("admin");
-  const d = await getCommand();
+  const [d, dir] = await Promise.all([getCommand(), getAffiliateDirectory({ samples: "with", page: 1, size: 1 })]);
   const rel = d.progress.relationships;
   const o = d.orders;
   const gaugeTone = (v: number | null, good: number, ok: number) => (v == null ? "brand" : v >= good ? "good" : v >= ok ? "warn" : "critical") as "good" | "warn" | "critical" | "brand";
@@ -71,6 +72,28 @@ export default async function CommandPage() {
         </Section>
       </div>
 
+      <Section title="Creator performance" hint="Product lines by status and by action – click to open the table already filtered" href="/affiliates" linkLabel="Affiliate Data Management">
+        <div className="grid gap-5 sm:grid-cols-2" data-testid="command-links">
+          <div>
+            <p className="mb-2 text-[13.5px] font-medium text-ink-2">By status</p>
+            <p className="flex flex-wrap gap-2">
+              {STATUS_ORDER.filter((k) => dir.statusCounts[k] > 0).map((k) => (
+                <Link key={k} href={`/affiliates?status=${k}`} className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3 py-1 text-[14px] hover:bg-surface-2">{k} <b className="tnum">{dir.statusCounts[k]}</b></Link>
+              ))}
+            </p>
+          </div>
+          <div>
+            <p className="mb-2 text-[13.5px] font-medium text-ink-2">What needs doing</p>
+            <p className="flex flex-wrap gap-2">
+              <Link href="/affiliates?action=todo" className="inline-flex items-center gap-1.5 rounded-full border border-brand bg-brand/10 px-3 py-1 text-[14px] font-medium text-brand hover:bg-brand hover:text-white">To Do <b className="tnum">{dir.actionCounts.todo}</b></Link>
+              {ACTION_ORDER.filter((k) => dir.actionCounts[k] > 0 && k !== "Wait" && k !== "Keep").map((k) => (
+                <Link key={k} href={`/affiliates?action=${k}`} className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3 py-1 text-[14px] hover:bg-surface-2">{k} <b className="tnum">{dir.actionCounts[k]}</b></Link>
+              ))}
+            </p>
+          </div>
+        </div>
+      </Section>
+
       {/* affiliates */}
       <div className="grid gap-5 lg:grid-cols-2">
         <Section title="Creator pipeline" hint="Where collaborations stand" href="/affiliates" linkLabel="Directory">
@@ -87,7 +110,7 @@ export default async function CommandPage() {
             <Link href="/progress/records?m=rel_inactive&days=28"><Badge tone="warn">{rel.inactive} inactive</Badge></Link>
           </p>
         </Section>
-        <Section title="Sample journey" hint="From shipping to selling" href="/samples" linkLabel="Samples">
+        <Section title="Sample journey" hint="From shipping to selling" href="/affiliates?action=Chase" linkLabel="Chase list">
           <Funnel
             stages={[
               { label: "Sent", value: d.sampleFunnel.sent, tone: "brand" },

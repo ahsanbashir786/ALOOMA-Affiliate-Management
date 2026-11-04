@@ -50,6 +50,8 @@ Everything else (Overview, Content, Products, Orders, Opportunities, Samples, Or
 |---|---|
 | 1. Today's Work reads the table engine (D1, D2, D6 for Today) | Done – status and action come from the same code as the table; messages open in the shared panel; Done Today view added |
 
+| 2. Table + panel Performance, Progress staff performance and results after action, Command centre links, Samples hidden from the menu | Done (Samples pages still exist at their old addresses) |
+
 ## 4. Order of clean-up (one section at a time)
 
 | Step | Section | Result | Risk |

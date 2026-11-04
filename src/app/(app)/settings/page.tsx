@@ -35,7 +35,7 @@ export default async function SettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Daily workflow" description="How often to follow up and how long the Today's Work list is. All dates use Malaysia time." />
+        <CardHeader title="Daily workflow" description="How often to follow up and when a creator is suggested for a pause. All dates use Malaysia time." />
         <div className="border-t border-line p-5"><WorkflowForm w={w} /></div>
       </Card>
 

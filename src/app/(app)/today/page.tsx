@@ -5,16 +5,17 @@ import { can, mayEditContacts, requireUser } from "@/lib/auth";
 import { getToday, type TodayRow, type TodayView } from "@/lib/workflow/today";
 import { fmtDateTimeKL, fmtDayLabel } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
+import { Pagination } from "@/components/ui/pagination";
 import { Card, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { AddCreator } from "@/components/today/add-creator";
 import { TodayList, type TodayItem } from "@/components/today/today-list";
 import { cn } from "@/lib/utils";
 import { RELATIONSHIP } from "@/lib/workflow/relationship";
 
-export const metadata: Metadata = { title: "Today's Work" };
+export const metadata: Metadata = { title: "Daily Actions" };
 
 const VIEWS: { key: TodayView; label: string; hint: string }[] = [
-  { key: "focus", label: "To Do", hint: "Everything due, plus the most important table actions" },
+  { key: "focus", label: "To Do", hint: "Every creator who needs action, most urgent and most valuable first" },
   { key: "due", label: "Due & Overdue", hint: "Promises and follow-ups that need you now" },
   { key: "verify", label: "To Verify", hint: "Possible content waiting for a yes or no" },
   { key: "samples", label: "Chase & Coach", hint: "Creators whose product line needs a chase, coaching or a fresh video" },
@@ -85,7 +86,11 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const data = await getToday(view);
   const counts = data.counts;
   const canAct = can(user, "manager");
-  const items = data.rows.map((r) => toItem(r, data.period));
+  const PAGE = 25;
+  const pageNo = Math.max(1, Number(one(sp.page)) || 1);
+  const pages = Math.max(1, Math.ceil(data.rows.length / PAGE));
+  const items = data.rows.slice((Math.min(pageNo, pages) - 1) * PAGE, Math.min(pageNo, pages) * PAGE).map((r) => toItem(r, data.period));
+  const byStaff = [...data.doneToday.reduce((m, d) => m.set(d.by ?? "System", (m.get(d.by ?? "System") ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const current = VIEWS.find((v) => v.key === view)!;
 
   const PRIMARY: TodayView[] = ["focus", "due", "verify", "done"];
@@ -96,13 +101,13 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Today's Work"
+        title="Daily Actions"
         description={`${fmtDayLabel(data.today)} · Malaysia time`}
         actions={canAct ? <div className="flex flex-wrap items-start gap-2"><AddCreator canPhone={mayEditContacts(user)} /></div> : undefined}
       />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Today at a glance">
         {([
-          { k: "focus", label: "To Do", n: counts.focus, hint: data.hiddenFromFocus > 0 ? `+${data.hiddenFromFocus} more in Chase & Growth` : "creators with something to do", tone: "text-ink" },
+          { k: "focus", label: "To Do", n: counts.focus, hint: "creators who need action", tone: "text-ink" },
           { k: "due", label: "Due & Overdue", n: counts.due, hint: "promises and follow-ups", tone: counts.due > 0 ? "text-critical" : "text-ink" },
           { k: "done", label: "Done Today", n: counts.done, hint: "actions recorded", tone: "text-good" },
           { k: "scheduled", label: "Waiting", n: counts.scheduled, hint: "follow-up already set", tone: "text-ink" },
@@ -114,6 +119,12 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
           </Link>
         ))}
       </div>
+      {byStaff.length > 0 && (
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-ink-3" data-testid="by-staff">
+          <span className="font-medium text-ink-2">Done today by</span>
+          {byStaff.map(([name, n]) => <span key={name}><b className="text-ink">{name === user.name ? `${name} (you)` : name}</b> {n}</span>)}
+        </p>
+      )}
       <Card>
         <div className="flex items-center border-b border-line px-3 pt-1">
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -148,11 +159,11 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
         <div className="space-y-4 p-4 sm:p-5">
           <p className="text-[14px] text-ink-3">
             {current.hint}.
-            {view === "focus" && data.hiddenFromFocus > 0 && <> {data.hiddenFromFocus} more are under the other filters.</>}
+            
           </p>
           {view === "done" ? (
             data.doneToday.length === 0 ? (
-              <EmptyState icon={<CalendarCheck className="size-5" />} title="Nothing recorded yet today" description="Actions staff record from Today's Work or the Affiliate Data table appear here." />
+              <EmptyState icon={<CalendarCheck className="size-5" />} title="Nothing recorded yet today" description="Actions staff record here or in the Affiliate Data table appear here." />
             ) : (
               <ul className="divide-y divide-line rounded-xl border border-line" data-testid="done-list">
                 {data.doneToday.map((d) => (
@@ -180,6 +191,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
             }
           />
           )}
+          {view !== "done" && pages > 1 && <Pagination page={Math.min(pageNo, pages)} pages={pages} total={data.rows.length} pageSize={PAGE} hrefFor={(n) => (view === "focus" ? `/today?page=${n}` : `/today?view=${view}&page=${n}`)} />}
         </div>
       </Card>
     </div>

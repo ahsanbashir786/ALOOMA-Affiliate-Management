@@ -318,7 +318,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
   const verify = active.filter((r) => r.needsVerify);
   const samples = active.filter((r) => r.tier === 3);
   const dev = active.filter((r) => r.tier === 4);
-  const focus = [...due, ...samples.slice(0, Math.max(0, cfg.todayLimit - due.length)), ...dev.slice(0, cfg.developmentLimit)];
+  const focus = active;
 
   const [ex] = await rows<{ unmatched: number; stuck: number; review: number }>(sql`
     select

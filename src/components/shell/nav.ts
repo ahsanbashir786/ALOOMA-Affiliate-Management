@@ -36,9 +36,8 @@ export const NAV: NavGroup[] = [
     label: "Work",
     items: [
       { href: "/command", label: "Command centre", icon: Gauge, min: "admin" },
-      { href: "/today", label: "Today's Work", icon: ClipboardList, badge: "actions" },
+      { href: "/today", label: "Daily Actions", icon: ClipboardList, badge: "actions" },
       { href: "/affiliates", label: "Affiliate Data Management", icon: Contact, usesPeriod: true, exact: true },
-      { href: "/samples", label: "Samples", icon: Beaker, usesPeriod: true },
       { href: "/progress", label: "Progress", icon: LineChart, min: "admin" },
     ],
   },
@@ -56,6 +55,8 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/", label: "Sales overview", icon: LayoutDashboard, usesPeriod: true, exact: true },
       { href: "/affiliates/analysis", label: "Affiliate analysis", icon: Contact, usesPeriod: true },
+      { href: "/samples/products", label: "Sample products", icon: Beaker, usesPeriod: true },
+      { href: "/samples/report", label: "Sample report", icon: Beaker, usesPeriod: true },
       { href: "/content", label: "Content", icon: Video, usesPeriod: true },
       { href: "/products", label: "Products", icon: Package, usesPeriod: true },
       { href: "/opportunities", label: "Segments & scenarios", icon: Target, usesPeriod: true },

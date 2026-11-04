@@ -600,6 +600,30 @@ async function main() {
   const dn = (await getToday("done")).doneToday;
   check("24c 'Done Today' lists what staff recorded today, with the action and product", dn.some((x) => x.username === cM && /^Contacted – \w+/.test(x.text)) && Number((await getToday("done")).counts.done) === dn.length, JSON.stringify(dn.slice(0, 2)));
 
+  const byOrders = await D({ samples: "with", sort: "orders", size: 500 });
+  const topO = (r: (typeof byOrders.rows)[number]) => Math.max(...r.lines.map((l) => l.orders));
+  const byOrdersAsc = await D({ samples: "with", sort: "orders_asc", size: 500 });
+  check("25a the table sorts by orders high to low and low to high", byOrders.rows.every((r, i, a) => i === 0 || topO(a[i - 1]) >= topO(r)) && byOrdersAsc.rows.every((r, i, a) => i === 0 || topO(a[i - 1]) <= topO(r)));
+  check("25b every line carries last-28-day and previous-28-day sales for the trend arrow", dirM!.lines.every((l) => typeof l.gmv28 === "number" && typeof l.prev28 === "number"));
+  const { getCreatorPanel } = await import("../src/lib/workflow/panel");
+  const pnl = await getCreatorPanel(cM, true);
+  check("25c the creator panel has a Performance block: 8 weekly points, 28-day change, posting rate, last action, follow-up", pnl.performance.weeks.length === 8 && pnl.performance.gmv28 + pnl.performance.prev28 > 0 && !!pnl.performance.lastAction && /^Contacted/.test(pnl.performance.lastAction.text) && pnl.performance.contacts >= 1, JSON.stringify(pnl.performance));
+
+  const cR = "zz_test_results";
+  await mkCreators([cR]);
+  await imp("affiliate_orders", AFF, [
+    aff({ id: nid(), pid: P1, creator: cR, amt: 100, created: d(-45), contentId: "6001", type: "Video" }),
+    aff({ id: nid(), pid: P1, creator: cR, amt: 300, created: d(-30), contentId: "6002", type: "Video" }),
+  ]);
+  await imp("video_list", VID, [vid("6002", cR, mdyDate(d(-30)), P1)], d(-60));
+  await refresh();
+  await addEvent({ username: cR, kind: "contacted", userId: null, at: new Date(d(-40) + "T04:00:00Z"), details: { action: "Chase", product: "Test", productId: P1 } });
+  const { getActionResults } = await import("../src/lib/workflow/results");
+  const rs = await getActionResults(90);
+  const chase = rs.byAction.find((a) => a.action === "Chase");
+  check("26a results after action: sales 28 days after first contact vs 28 days before, only for creators with 28 complete days", rs.measured >= 1 && !!chase && chase.before >= 100 && chase.after >= 300 && chase.posted >= 1, JSON.stringify(rs.byAction));
+  check("26b a creator contacted today is not measured yet (counted as waiting), so results are never claimed early", rs.waiting >= 1);
+
   void allocate; void loadEvents; void getWorkflowStates;
 
   console.log(`\n${pass} passed, ${fail} failed`);

@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { getProgress, PROGRESS_RANGES } from "@/lib/workflow/progress";
 import { getOwnerDecisions } from "@/lib/workflow/records";
+import { getActionResults } from "@/lib/workflow/results";
 import { RELATIONSHIP, type Relationship } from "@/lib/workflow/relationship";
 import { fmtDayLabel } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
@@ -68,7 +69,8 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
   await requireUser("admin");
   const sp = (await searchParams) as SP;
   const days = PROGRESS_RANGES.find((d) => String(d) === one(sp.days)) ?? 28;
-  const [p, decisions] = await Promise.all([getProgress(days), getOwnerDecisions(days)]);
+  const [p, decisions, res] = await Promise.all([getProgress(days), getOwnerDecisions(days), getActionResults(days)]);
+  const resChange = res.before > 0 ? Math.round((res.after / res.before - 1) * 100) : null;
   const f = p.followUps;
   const pr = p.promises;
   const c = p.content;
@@ -107,6 +109,40 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
               </li>
             ))}
           </ul>
+        )}
+      </Frame>
+
+      <Frame title="Staff performance" tag="Who did what – staff-confirmed" accent="border-l-brand">
+        {p.staff.byPerson.length === 0 ? (
+          <p className="text-[14.5px] text-ink-2" data-testid="staff-performance">No staff actions recorded in this period yet.</p>
+        ) : (
+          <div className="overflow-x-auto" data-testid="staff-performance">
+            <table className="w-full min-w-[520px] border-collapse text-[14px]">
+              <thead><tr className="text-left text-ink-3"><th className="py-2 pr-3 font-medium">Person</th><th className="px-3 font-medium">Actions</th><th className="px-3 font-medium">Creators reached</th><th className="px-3 font-medium">Promises recorded</th><th className="px-3 font-medium">Follow-ups on time</th><th className="px-3 font-medium">Creators who posted after</th></tr></thead>
+              <tbody>{p.staff.byPerson.map((b) => { const r = res.byStaff.find((x) => x.name === b.name); return <tr key={b.name} className="border-t border-line"><td className="py-2 pr-3 font-medium">{b.name}</td><td className="tnum px-3">{b.contacts}</td><td className="tnum px-3">{b.creators}</td><td className="tnum px-3">{b.promises}</td><td className="tnum px-3">{b.followUpsOnTime}</td><td className="tnum px-3">{r ? `${r.posted} of ${r.n}` : "–"}</td></tr>; })}</tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[13px] text-ink-3">Opening WhatsApp or copying a message is never counted – only the buttons staff press. “Posted after” counts creators with a video in the 28 days after their first contact.</p>
+      </Frame>
+
+      <Frame title="Results after action" tag="Sales 28 days after first contact, against the 28 days before – context, not proof" accent="border-l-good">
+        {res.measured === 0 ? (
+          <p className="text-[14.5px] text-ink-2" data-testid="results-empty">Not enough history yet. A creator is measured once 28 days have passed since staff first contacted them{res.waiting > 0 ? ` (${res.waiting} contacted too recently)` : ""}. Keep recording actions and this fills in.</p>
+        ) : (
+          <div className="space-y-4" data-testid="results">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-xl bg-surface-2 p-3.5"><p className="text-[13px] text-ink-3">Creators measured</p><p className="tnum text-[22px] font-semibold">{res.measured}</p></div>
+              <div className="rounded-xl bg-surface-2 p-3.5"><p className="text-[13px] text-ink-3">GMV before</p><p className="tnum text-[22px] font-semibold">{fmtRM(res.before)}</p></div>
+              <div className="rounded-xl bg-surface-2 p-3.5"><p className="text-[13px] text-ink-3">GMV after</p><p className="tnum text-[22px] font-semibold">{fmtRM(res.after)}{resChange != null && <span className={cn("ml-2 text-[14px]", resChange >= 0 ? "text-good" : "text-critical")}>{resChange >= 0 ? "▲" : "▼"} {Math.abs(resChange)}%</span>}</p></div>
+              <div className="rounded-xl bg-surface-2 p-3.5"><p className="text-[13px] text-ink-3">Posted a video after</p><p className="tnum text-[22px] font-semibold">{res.posted} of {res.measured}</p></div>
+            </div>
+            <table className="w-full min-w-[420px] border-collapse text-[14px]">
+              <thead><tr className="text-left text-ink-3"><th className="py-2 pr-3 font-medium">Action</th><th className="px-3 font-medium">Creators</th><th className="px-3 font-medium">GMV before</th><th className="px-3 font-medium">GMV after</th><th className="px-3 font-medium">Posted after</th></tr></thead>
+              <tbody>{res.byAction.map((a) => <tr key={a.action} className="border-t border-line"><td className="py-2 pr-3 font-medium">{a.action}</td><td className="tnum px-3">{a.n}</td><td className="tnum px-3">{fmtRM(a.before)}</td><td className="tnum px-3">{fmtRM(a.after)}</td><td className="tnum px-3">{a.posted} of {a.n}</td></tr>)}</tbody>
+            </table>
+            <p className="text-[13px] text-ink-3">{res.waiting > 0 ? `${res.waiting} more creators were contacted too recently to measure. ` : ""}Sales also move for other reasons (season, promotions, new videos), so read this as a direction, not as proof.</p>
+          </div>
         )}
       </Frame>
 

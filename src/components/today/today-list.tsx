@@ -194,6 +194,7 @@ function Row({
           <div className="min-w-0">
             <button type="button" onClick={() => panelApi.open(it.username)} className="block max-w-full truncate text-left text-[16px] font-semibold text-ink hover:underline" title="Open details">@{it.username}</button>
             <p className="flex items-center gap-1.5 text-[13.5px] text-ink-3" title={it.relationship.hint}><span className={cn("size-2 rounded-full", DOT[it.relationship.tone])} />{it.relationship.label}</p>
+            {(it.creatorType || it.gmvLabel) && <p className="text-[12.5px] text-ink-3">{[it.creatorType, it.gmvLabel && `${it.gmvLabel} total`].filter(Boolean).join(" · ")}</p>}
           </div>
         </div>
         {/* action + reason */}

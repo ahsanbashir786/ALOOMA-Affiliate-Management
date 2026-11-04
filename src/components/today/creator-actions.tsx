@@ -5,7 +5,7 @@ import { Pause, Play, UserCheck } from "lucide-react";
 import { markContacted, markPromised, pauseCreator, resumeCreator, undoEvent } from "@/app/actions/workflow";
 import { Button, Input } from "@/components/ui/primitives";
 
-/** The same quick actions as Today's Work, on the creator's own page. */
+/** The same quick actions as Daily Actions, on the creator's own page. */
 export function CreatorActions({ username, paused, today }: { username: string; paused: boolean; today: string }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ text: string; undo?: number } | null>(null);
