@@ -25,6 +25,20 @@ export async function POST(request: Request) {
       return { name, path, ok: false, message: e instanceof Error ? e.message : "Failed", count: null, fields: [] };
     }
   };
+  if (group === "analytics") {
+    // Shop analytics reports (videos, products, shop totals) for the last 28 days. Path versions are tried in turn because the shop may only support one.
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 86400000);
+    const q = (extra: Record<string, string> = {}) => ({ query: { start_date_ge: iso(new Date(Date.now() - 28 * 86400000)), end_date_lt: iso(end), page_size: "10", ...extra } });
+    const checks = [
+      await run("Video performance", "/analytics/202409/shop_videos/performance", q(), firstList),
+      await run("Video performance (older)", "/analytics/202405/shop_videos/performance", q(), firstList),
+      await run("Product performance", "/analytics/202405/shop_products/performance", q(), firstList),
+      await run("Shop performance", "/analytics/202405/shop/performance", q({ granularity: "ALL" }), (d) => (d.performance ? [d.performance] : firstList(d))),
+      await run("LIVE performance", "/analytics/202405/shop_lives/performance", q(), firstList),
+    ];
+    return NextResponse.json({ checks });
+  }
   if (group === "affiliate") {
     // We do not know for sure which version of each affiliate endpoint this shop can use, so we try the likely ones and report each.
     const post = (query: Record<string, string> = { page_size: "1" }, body: Record<string, unknown> = {}) => ({ method: "POST" as const, query, body });
