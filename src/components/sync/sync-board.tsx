@@ -163,6 +163,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
                 {d.running ? `Syncing${d.progress ? ` · ${d.progress.toLocaleString("en-MY")}` : "…"}` : d.lastError ? <span className="text-critical" title={d.lastError}>Failed</span> : ago(d.lastSuccessAt, now)}
               </div>
               {d.lastError && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-critical">{d.lastError}</p>}
+              {!d.lastError && d.note && <p className="mt-1 line-clamp-3 text-[12px] leading-snug text-warn" title={d.note} data-testid={`note-${d.key}`}>{d.note}</p>}
             </article>
           );
         })}
@@ -180,7 +181,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
                 <li key={r.id} className="flex items-center gap-3 px-5 py-2.5 text-[14px]">
                   <span className={cn("size-2 shrink-0 rounded-full", r.status === "ok" ? "bg-good" : r.status === "failed" ? "bg-critical" : "animate-pulse bg-brand")} />
                   <span className="w-36 shrink-0 truncate font-medium text-ink">{r.label}</span>
-                  <span className="min-w-0 flex-1 truncate text-ink-3">{r.status === "failed" ? <span className="text-critical">{r.error}</span> : r.status === "running" ? "Running…" : r.changed > 0 ? `${r.changed.toLocaleString("en-MY")} updated` : "No changes"}</span>
+                  <span className="min-w-0 flex-1 truncate text-ink-3">{r.status === "failed" ? <span className="text-critical">{r.error}</span> : r.status === "running" ? "Running…" : <>{r.changed > 0 ? `${r.changed.toLocaleString("en-MY")} updated` : "No changes"}{r.error && <span className="ml-2 text-warn" title={r.error}>· {r.error.split(" (")[0]}</span>}</>}</span>
                   <span className="hidden text-[12.5px] text-ink-3 sm:inline">{r.trigger === "schedule" ? "Auto" : (r.by ?? "Manual")}</span>
                   <span className="w-20 shrink-0 text-right text-[12.5px] text-ink-3">{ago(r.startedAt, now)}</span>
                 </li>

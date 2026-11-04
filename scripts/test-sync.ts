@@ -138,6 +138,8 @@ async function main() {
   await q(sql`insert into tt_sample_requests (id, order_id, creator) values ('SRB1', 'BAD1', 'zed'), ('SRB2', 'GOOD1', 'zed'), ('SRB3', 'GOOD2', 'zed')`);
   const isolated = await runDataset("sample_orders", "manual", null, deps);
   const got = (await q(sql`select order_id from tt_orders where order_id in ('GOOD1','GOOD2','BAD1')`)).map((r) => r.order_id).sort();
+  const ovSk = (await syncOverview()).datasets.find((d) => d.key === "sample_orders")!;
+  check("33 skipped orders are counted and shown as a warning (with an example id and TikTok's message), not hidden, and the card is not red", ovSk.lastError === null && /1 skipped/.test(ovSk.note ?? "") && /BAD1/.test(ovSk.note ?? ""), String(ovSk.note));
   check("32 one order TikTok cannot read does not fail the dataset: the group is split, the bad one is skipped and the others are saved", isolated.status === "ok" && got.join() === "GOOD1,GOOD2", JSON.stringify([isolated, got]));
   const { schedulerTick } = await import("../src/lib/tiktok/scheduler");
   const { saveSyncSettings } = await import("../src/lib/tiktok/sync");

@@ -122,7 +122,7 @@ const pick = (...names: string[]) => (d: Record<string, unknown>) => {
 };
 
 type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number };
-type Counter = { pages: number; seen: number; changed: number };
+type Counter = { pages: number; seen: number; changed: number; skipped?: number; skipExamples?: string[]; skipWhy?: string };
 /** Lets the screen show "1,200 so far" while a dataset runs. */
 const progress = (ctx: Ctx, c: Counter) => rows(sql`update tt_sync_runs set pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed} where id = ${ctx.runId}`);
 
@@ -244,7 +244,12 @@ const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
         await progress(ctx, c);
         await (ctx.deps.sleep ?? defaultSleep)(ctx.deps.pauseMs ?? 120);
       } catch (e) {
-        if (ids.length === 1) return; // this order cannot be read; it is simply left out
+        if (ids.length === 1) { // this order cannot be read: it is left out, counted, and an example is kept so the reason can be seen
+          c.skipped = (c.skipped ?? 0) + 1;
+          if ((c.skipExamples ?? []).length < 3) c.skipExamples = [...(c.skipExamples ?? []), ids[0]];
+          c.skipWhy = e instanceof Error ? e.message.replace(/^TikTok said no \(\d+\): /, "").slice(0, 80) : undefined;
+          return;
+        }
         if (!/36009003|internal error|invalid|not found|36004/i.test(e instanceof Error ? e.message : "")) throw e;
         const mid = Math.ceil(ids.length / 2);
         await fetchIds(ids.slice(0, mid));
@@ -272,12 +277,13 @@ export async function runDataset(key: DatasetKey, trigger: "manual" | "schedule"
   try {
     await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id }, c);
     const [cnt] = await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`);
-    await rows(sql`update tt_sync_runs set status = 'ok', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed} where id = ${run.id}`);
+    const note = c.skipped ? `${c.skipped.toLocaleString("en-MY")} skipped (TikTok would not return them${c.skipWhy ? `: ${c.skipWhy}` : ""}; e.g. ${(c.skipExamples ?? []).join(", ")})` : null;
+    await rows(sql`update tt_sync_runs set status = 'ok', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed}, error = ${note} where id = ${run.id}`);
     await rows(sql`
       insert into tt_sync_state (dataset, watermark, last_success_at, records, last_error)
       values (${key}, ${full ? now.toISOString() : (watermark ?? now).toISOString()}::timestamptz, now(), ${cnt.n}, null)
       on conflict (dataset) do update set watermark = excluded.watermark, last_success_at = now(), records = excluded.records, last_error = null, updated_at = now()`);
-    return { dataset: key, status: "ok", ...c };
+    return { dataset: key, status: "ok", pages: c.pages, seen: c.seen, changed: c.changed, ...(note ? { error: note } : {}) };
   } catch (e) {
     const msg = lastError(e);
     await rows(sql`update tt_sync_runs set status = 'failed', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed}, error = ${msg} where id = ${run.id}`);
@@ -343,12 +349,12 @@ export function isDue(nowMs: number, lastStartedMs: number | null, s: SyncSettin
 }
 
 // ───────── what the screen shows ─────────
-export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; running: boolean; progress: number | null };
+export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; /** A warning from the latest successful run, e.g. how many records TikTok would not return. */ note: string | null; running: boolean; progress: number | null };
 export type RunView = { id: number; dataset: DatasetKey; label: string; startedAt: string; durationSec: number | null; status: string; trigger: string; changed: number; seen: number; error: string | null; by: string | null };
 export type SyncOverview = { /** The server's clock when this was built (lets the first browser render match the server's). */ now: number; datasets: DatasetView[]; runs: RunView[]; running: boolean; lastFullAt: string | null; nextAt: string | null; settings: SyncSettings };
 
 export async function syncOverview(): Promise<SyncOverview> {
-  const [states, running, runs, lastSched, settings] = await Promise.all([
+  const [states, running, runs, lastSched, settings, latest] = await Promise.all([
     rows<{ dataset: string; records: number; last_success_at: Date | null; last_error: string | null }>(sql`select dataset, records, last_success_at, last_error from tt_sync_state`),
     rows<{ dataset: string; seen: number }>(sql`select dataset, max(rows_seen)::int as seen from tt_sync_runs where status = 'running' and started_at > now() - (case when dataset = ${CYCLE} then ${CYCLE_WINDOW_MIN}::int else ${REPEAT_WINDOW_MIN}::int end * interval '1 minute') group by dataset`),
     rows<{ id: number; dataset: string; started_at: Date; finished_at: Date | null; status: string; trigger: string; rows_changed: number; rows_seen: number; error: string | null; by: string | null }>(sql`
@@ -356,7 +362,9 @@ export async function syncOverview(): Promise<SyncOverview> {
       from tt_sync_runs r left join users u on u.id = r.user_id where r.dataset <> ${CYCLE} order by r.started_at desc, r.id desc limit 30`),
     rows<{ t: Date | null }>(sql`select max(started_at) as t from tt_sync_runs where dataset = ${CYCLE}`),
     getSyncSettings(),
+    rows<{ dataset: string; status: string; error: string | null }>(sql`select distinct on (dataset) dataset, status, error from tt_sync_runs where dataset <> ${CYCLE} order by dataset, started_at desc, id desc`),
   ]);
+  const lastRun = new Map(latest.map((r) => [r.dataset, r]));
   const st = new Map(states.map((s) => [s.dataset, s]));
   const run = new Map(running.map((r) => [r.dataset, r.seen]));
   const label = new Map(DATASETS.map((d) => [d.key, d.label]));
@@ -364,7 +372,7 @@ export async function syncOverview(): Promise<SyncOverview> {
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   return {
     now: Date.now(),
-    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: st.get(d.key)?.last_error ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
+    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,
     lastFullAt: times.length ? new Date(Math.min(...times)).toISOString() : null,
