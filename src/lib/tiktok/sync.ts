@@ -408,7 +408,7 @@ export function isDue(nowMs: number, lastStartedMs: number | null, s: Pick<SyncS
 }
 
 // ───────── what the screen shows ─────────
-export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; /** The oldest and newest record held (dates), so you can see how far back the data goes. */ oldest: string | null; newest: string | null; /** A warning from the latest successful run, e.g. how many records TikTok would not return. */ note: string | null; running: boolean; progress: number | null };
+export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; /** A short extra line, e.g. how many products the SKUs belong to. */ detail: string | null; /** The oldest and newest record held (dates), so you can see how far back the data goes. */ oldest: string | null; newest: string | null; /** A warning from the latest successful run, e.g. how many records TikTok would not return. */ note: string | null; running: boolean; progress: number | null };
 export type RunView = { id: number; dataset: DatasetKey; label: string; startedAt: string; durationSec: number | null; status: string; trigger: string; changed: number; seen: number; error: string | null; by: string | null };
 export type SyncOverview = { /** The server's clock when this was built (lets the first browser render match the server's). */ now: number; datasets: DatasetView[]; runs: RunView[]; running: boolean; lastFullAt: string | null; nextAt: string | null; settings: SyncSettings };
 
@@ -424,6 +424,7 @@ export async function syncOverview(): Promise<SyncOverview> {
     rows<{ dataset: string; status: string; error: string | null }>(sql`select distinct on (dataset) dataset, status, error from tt_sync_runs where dataset <> ${CYCLE} order by dataset, started_at desc, id desc`),
   ]);
   const lastRun = new Map(latest.map((r) => [r.dataset, r]));
+  const [pc] = await rows<{ n: number }>(sql`select count(distinct product_id)::int as n from tt_skus`);
   const spans = new Map<string, { a: string | null; b: string | null }>();
   for (const d of DATASETS) {
     const col = DATE_COL[d.table];
@@ -438,7 +439,7 @@ export async function syncOverview(): Promise<SyncOverview> {
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   return {
     now: Date.now(),
-    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
+    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, detail: d.key === "products" && pc?.n ? `variations of ${pc.n.toLocaleString("en-MY")} products` : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,
     lastFullAt: times.length ? new Date(Math.min(...times)).toISOString() : null,

@@ -174,6 +174,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
                 {d.running ? `Syncing${d.progress ? ` · ${d.progress.toLocaleString("en-MY")}` : "…"}` : d.lastError ? <span className="text-critical" title={d.lastError}>Failed</span> : ago(d.lastSuccessAt, now)}
               </div>
               {d.oldest && <p className="mt-0.5 text-[12px] text-ink-3" data-testid={`span-${d.key}`}>{span(d.oldest, d.newest)}</p>}
+              {d.detail && <p className="mt-0.5 text-[12px] text-ink-3">{d.detail}</p>}
               {d.lastError && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-critical">{d.lastError}</p>}
               {!d.lastError && d.note && <p className="mt-1 line-clamp-6 text-[12px] leading-snug text-warn" title={d.note} data-testid={`note-${d.key}`}>{d.note}</p>}
             </article>
