@@ -11,10 +11,10 @@ export function TikTokActions({ v }: { v: TikTokView }) {
   const [pending, start] = useTransition();
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const test = () =>
+  const test = (group?: string) =>
     start(async () => {
       setErr(null);
-      const r = await fetch("/api/tiktok/test", { method: "POST" });
+      const r = await fetch("/api/tiktok/test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ group }) });
       const j = (await r.json().catch(() => null)) as { checks?: Check[]; error?: string } | null;
       if (!r.ok || !j?.checks) setErr(j?.error ?? "The test could not run.");
       else setChecks(j.checks);
@@ -34,7 +34,8 @@ export function TikTokActions({ v }: { v: TikTokView }) {
       )}
       <div className="flex flex-wrap gap-2">
         {v.configured && v.hasAuthLink && <a href="/api/tiktok/connect" className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-[14px] font-medium text-white hover:opacity-90">{v.connected ? "Reconnect" : "Connect TikTok Shop"}</a>}
-        {v.connected && <Button variant="secondary" disabled={pending} onClick={test}>{pending ? "Testing…" : "Run connection test"}</Button>}
+        {v.connected && <Button variant="secondary" disabled={pending} onClick={() => test()}>{pending ? "Testing…" : "Run connection test"}</Button>}
+        {v.connected && <Button variant="secondary" disabled={pending} onClick={() => test("affiliate")}>Test affiliate data</Button>}
         {v.connected && <Button variant="secondary" disabled={pending} onClick={() => start(async () => { await disconnectTikTok(); setChecks(null); })}>Disconnect</Button>}
       </div>
       {!v.configured && <p className="text-[13.5px] text-ink-2">Add <code>TIKTOK_APP_KEY</code> and <code>TIKTOK_APP_SECRET</code> to the private <code>.env</code> file on the server, then restart. See docs/TIKTOK-API.md.</p>}
@@ -44,7 +45,7 @@ export function TikTokActions({ v }: { v: TikTokView }) {
         <ul className="space-y-3" data-testid="tiktok-checks">
           {checks.map((c) => (
             <li key={c.name} className="rounded-xl border border-line p-3.5">
-              <p className="flex items-center gap-2 text-[14.5px] font-medium text-ink">{c.name} <Badge tone={c.ok ? "good" : "critical"}>{c.ok ? "OK" : "Failed"}</Badge>{c.count != null && <span className="text-[13px] font-normal text-ink-3">{c.count} returned</span>}</p>
+              <p className="flex items-center gap-2 text-[14.5px] font-medium text-ink">{c.name}{c.path && <span className="font-mono text-[11.5px] font-normal text-ink-3">{c.path}</span>} <Badge tone={c.ok ? "good" : "critical"}>{c.ok ? "OK" : "Failed"}</Badge>{c.count != null && <span className="text-[13px] font-normal text-ink-3">{c.count} returned</span>}</p>
               {!c.ok && <p className="mt-1 text-[13.5px] text-critical">{c.message}</p>}
               {c.fields.length > 0 && <details className="mt-1.5"><summary className="cursor-pointer text-[13px] text-ink-3">{c.fields.length} fields come back (names only)</summary><p className="mt-1.5 break-words text-[12px] leading-relaxed text-ink-2">{c.fields.join(" · ")}</p></details>}
             </li>
