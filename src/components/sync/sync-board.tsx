@@ -60,11 +60,11 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
     if (starting && (ov.running || Date.now() - startedAt.current > 8000)) setStarting(false);
   }, [ov.running, starting, now]);
 
-  const run = async (dataset?: string, history = false) => {
+  const run = async (dataset?: string, history = false, reread = false) => {
     setErr(null);
     setStarting(true);
     startedAt.current = Date.now();
-    const r = await fetch("/api/tiktok/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataset, history }) });
+    const r = await fetch("/api/tiktok/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataset, history, reread }) });
     if (!r.ok) {
       setStarting(false);
       setErr(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? "Could not start the sync.");
@@ -148,7 +148,8 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
           <span>History</span>
           <HistoryRange from={ov.settings.historyFrom} to={ov.settings.historyTo} canEdit={canAdmin} onSave={(f, t) => start(async () => { const r = await setHistoryRange(f, t); if (!r.ok) setErr(r.error ?? "Could not save the range."); await refresh(); })} />
           <button data-testid="load-history" disabled={busy} onClick={() => run(undefined, true)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/40 px-3 font-medium text-white hover:bg-white/10 disabled:opacity-50">Load full history</button>
-          <span className="text-white/60">Reads this range once. It can take a while.</span>
+          {canAdmin && <button type="button" disabled={busy} onClick={() => run(undefined, true, true)} className="text-[12.5px] text-white/70 underline hover:text-white disabled:opacity-50" title="Reads the whole range again, even parts already loaded">Re-read all</button>}
+          <span className="text-white/60">Loads only what is missing. It can take a while.</span>
         </div>
         {err && <p role="alert" className="relative mt-4 rounded-lg bg-white/15 px-3 py-2 text-[13.5px]">{err}</p>}
       </section>

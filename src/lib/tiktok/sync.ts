@@ -9,7 +9,7 @@ import { str } from "./map";
 
 export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "orders" | "sample_orders" | "open_collabs" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily";
 
-export type SyncDeps = { cfg?: TikTokConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date; /** Read the whole history (back to the "history from" date), not just the recent days. */ backfill?: boolean };
+export type SyncDeps = { cfg?: TikTokConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date; /** Read the whole history (back to the "history from" date), not just the recent days. */ backfill?: boolean; /** With a backfill: read everything again, even ranges already loaded. */ reread?: boolean };
 export type RunResult = { dataset: DatasetKey; status: "ok" | "failed" | "skipped"; pages: number; seen: number; changed: number; error?: string };
 
 /** Display order = run order. `table` is where the rows land. */
@@ -123,8 +123,8 @@ const pick = (...names: string[]) => (d: Record<string, unknown>) => {
   return firstList(d);
 };
 
-type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number; /** Reading the whole history (first sync, or the Load full history button). */ backfill: boolean; historyFrom: string; historyTo: string };
-type Counter = { pages: number; seen: number; changed: number; skipped?: number; skipExamples?: string[]; skipWhy?: string; /** Something worth telling the person, e.g. where TikTok's history stops. */ note?: string };
+type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number; /** Reading the whole history (first sync, or the Load full history button). */ backfill: boolean; historyFrom: string; historyTo: string; /** The range already loaded for this dataset (skipped by a backfill unless re-reading). */ loaded: { from: string; to: string } | null };
+type Counter = { pages: number; seen: number; changed: number; skipped?: number; skipExamples?: string[]; skipWhy?: string; /** Something worth telling the person, e.g. where TikTok's history stops. */ note?: string; /** The range this run actually loaded, remembered for next time. */ loadedFrom?: string; loadedTo?: string };
 /** Lets the screen show "1,200 so far" while a dataset runs. */
 const progress = (ctx: Ctx, c: Counter) => rows(sql`update tt_sync_runs set pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed} where id = ${ctx.runId}`);
 
@@ -193,7 +193,9 @@ async function windowed(spec: WSpec, ctx: Ctx, c: Counter) {
   const W = 30 * DAY;
   const wins: [number, number][] = [];
   for (let hi = hiAll; hi > floorS && wins.length < 400; hi -= W) wins.push([Math.max(hi - W, floorS), hi]);
-  for (let k = 0; k < wins.length; k += 3) await Promise.all(wins.slice(k, k + 3).map(([lo, hi]) => scan(lo, hi)));
+  const todo = wins.filter(([lo, hi]) => !covered(ctx, dateOf(lo), dateOf(hi)));
+  for (let k = 0; k < todo.length; k += 3) await Promise.all(todo.slice(k, k + 3).map(([lo, hi]) => scan(lo, hi)));
+  if (ctx.backfill) { c.loadedFrom = dateOf(floorS); c.loadedTo = dateOf(hiAll - DAY); }
 }
 
 /** Date windows from "end" back to "floor", newest first. */
@@ -211,7 +213,9 @@ async function byWindows(ctx: Ctx, c: Counter, days: number, recentDays: number,
   const end = ctx.backfill && ctx.historyTo ? addDaysISO(ctx.historyTo, 1) : addDaysISO(todayKL(), 1);
   if (!ctx.backfill && ctx.watermark) { await each(backWindows(end, addDaysISO(end, -recentDays), recentDays)[0]); return; }
   const wins = backWindows(end, ctx.backfill ? ctx.historyFrom : addDaysISO(end, -3 * days), days);
+  let oldest = wins.length ? wins[wins.length - 1].start : end;
   for (let i = 0; i < wins.length; i++) {
+    if (i > 0 && covered(ctx, wins[i].start, wins[i].end)) continue;
     try { await each(wins[i]); } catch (e) {
       if (i === 0) throw e; // the newest window must work
       // TikTok refused this window as too old. Try again from later start days (a week at a time) to find the exact edge and keep the days it allows.
@@ -222,10 +226,12 @@ async function byWindows(ctx: Ctx, c: Counter, days: number, recentDays: number,
         if (start >= w.end) break;
         try { await each({ start, end: w.end }); edge = start; } catch { /* still too old */ }
       }
+      oldest = edge ?? w.end;
       c.note = `TikTok only allows this report back to ${edge ?? w.end} (${(e instanceof Error ? e.message : "").replace(/^TikTok said no \(\d+\): /, "").slice(0, 120)})`;
-      return;
+      break;
     }
   }
+  if (ctx.backfill) { c.loadedFrom = oldest; c.loadedTo = addDaysISO(end, -1); }
 }
 
 /** Runs the same job for a list of ids in groups, two groups at a time. */
@@ -306,7 +312,8 @@ export async function runDataset(key: DatasetKey, trigger: "manual" | "schedule"
   const full = !watermark || now.getTime() - watermark.getTime() > 24 * 3600_000;
   const c: Counter = { pages: 0, seen: 0, changed: 0 };
   try {
-    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id, backfill: !!deps.backfill || !watermark, ...(await (async () => { const h = await getSyncSettings(); return { historyFrom: h.historyFrom, historyTo: h.historyTo }; })()) }, c);
+    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id, backfill: !!deps.backfill || !watermark, ...(await (async () => { const h = await getSyncSettings(); return { historyFrom: h.historyFrom, historyTo: h.historyTo }; })()), loaded: (await getLoaded())[key] ?? null }, c);
+    if (c.loadedFrom && c.loadedTo && (!!deps.backfill || !watermark)) await saveLoaded(key, c.loadedFrom, c.loadedTo);
     const [cnt] = await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`);
     const note = [c.skipped ? `${c.skipped.toLocaleString("en-MY")} skipped (TikTok would not return them${c.skipWhy ? `: ${c.skipWhy}` : ""}; e.g. ${(c.skipExamples ?? []).join(", ")})` : null, c.note ?? null].filter(Boolean).join(" · ") || null;
     await rows(sql`update tt_sync_runs set status = 'ok', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed}, error = ${note} where id = ${run.id}`);
@@ -352,6 +359,23 @@ export async function runAll(trigger: "manual" | "schedule", userId: string | nu
   }
   return out;
 }
+
+const HKEY = "tiktok_history";
+type Loaded = Record<string, { from: string; to: string }>;
+async function getLoaded(): Promise<Loaded> {
+  const [r] = await rows<{ value: Loaded }>(sql`select value from settings where key = ${HKEY}`);
+  return r?.value ?? {};
+}
+/** Remembers the loaded range for a dataset. A new range that touches or overlaps the old one extends it; a separate one replaces it (so a gap is never claimed as loaded). */
+async function saveLoaded(key: string, from: string, to: string) {
+  const all = await getLoaded();
+  const old = all[key];
+  const touches = old && from <= addDaysISO(old.to, 1) && to >= addDaysISO(old.from, -1);
+  all[key] = touches ? { from: from < old.from ? from : old.from, to: to > old.to ? to : old.to } : { from, to };
+  await rows(sql`insert into settings (key, value) values (${HKEY}, ${JSON.stringify(all)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`);
+}
+const dateOf = (sec: number) => new Date(sec * 1000).toISOString().slice(0, 10);
+const covered = (ctx: Ctx, from: string, toExclusive: string) => !!ctx.loaded && ctx.backfill && !ctx.deps.reread && from >= ctx.loaded.from && toExclusive <= addDaysISO(ctx.loaded.to, 1);
 
 /** Marks every run still shown as "running" as interrupted. Used when the app starts (a restart kills any sync in progress) and by the Reset button. */
 export async function clearInterrupted(reason = "Interrupted – the app was restarted"): Promise<number> {

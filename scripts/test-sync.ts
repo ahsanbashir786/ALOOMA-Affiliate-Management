@@ -13,6 +13,7 @@ async function main() {
   const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
   const secret = "s3cret";
   await q(sql`delete from settings where key = 'tiktok_sync'`);
+  await q(sql`delete from settings where key = 'tiktok_history'`);
   const cfg = { appKey: "K", appSecret: secret, serviceId: null, authUrl: null };
   for (const t of ["tt_sync_runs", "tt_sync_state", "tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_skus", "tt_returns", "tt_cancellations", "tt_shop_daily", "tt_orders", "tt_open_collabs"]) await q(sql.raw(`delete from ${t}`));
   const now = Math.floor(Date.now() / 1000);
@@ -112,7 +113,7 @@ async function main() {
   check("20 the upsert never writes a half-keyed row", (await upsertRows({ name: "tt_shop_daily", pk: ["day"], cols: { day: "date", gmv: "numeric" } }, [{ day: null, gmv: 1 }])) === 0);
 
   // ── filter modes: fast path, ignored filter, rejected filter ──
-  const reset = async () => { await q(sql`delete from tt_affiliate_order_lines`); await q(sql`delete from tt_sync_state where dataset = 'affiliate_orders'`); bodies.length = 0; };
+  const reset = async () => { await q(sql`delete from settings where key = 'tiktok_history'`); await q(sql`delete from tt_affiliate_order_lines`); await q(sql`delete from tt_sync_state where dataset = 'affiliate_orders'`); bodies.length = 0; };
   for (const m of ["ignore", "reject"] as const) {
     mode = m; await reset();
     const r = await runDataset("affiliate_orders", "manual", null, deps);
@@ -152,7 +153,7 @@ async function main() {
   const ao = spanOv.find((d) => d.key === "affiliate_orders")!;
   check("34 each card can show how far back its data goes (oldest and newest date)", !!ao.oldest && !!ao.newest && ao.oldest <= ao.newest && spanOv.find((d) => d.key === "videos")!.oldest !== null, JSON.stringify([ao.oldest, ao.newest]));
   // ── history: back to a start date, stopping politely where TikTok stops ──
-  await q(sql`delete from tt_videos`); await q(sql`delete from tt_video_windows`); await q(sql`delete from tt_sync_state where dataset = 'videos'`);
+  await q(sql`delete from settings where key = 'tiktok_history'`); await q(sql`delete from tt_videos`); await q(sql`delete from tt_video_windows`); await q(sql`delete from tt_sync_state where dataset = 'videos'`);
   const { saveSyncSettings: save } = await import("../src/lib/tiktok/sync");
   const todayIso = new Date().toISOString().slice(0, 10);
   const monthsAgo = new Date(Date.now() - 200 * 86400_000).toISOString().slice(0, 10);
@@ -165,6 +166,7 @@ async function main() {
   check("36 a video's lifetime sales are the sum over its windows", Number(life[0].g) === 200 * Number(life[0].n));
   videoLimit = null;
   await save({ historyFrom: monthsAgo });
+  await q(sql`delete from settings where key = 'tiktok_history'`); await q(sql`delete from tt_sync_state where dataset = 'affiliate_orders'`);
   bodies.length = 0;
   const hist = await runDataset("affiliate_orders", "manual", null, { ...deps, backfill: true });
   const winsAsked = bodies.filter((b) => b.create_time_ge !== undefined).length;
@@ -172,17 +174,27 @@ async function main() {
   check("38 the start date is saved and read back", (await (await import("../src/lib/tiktok/sync")).getSyncSettings()).historyFrom === monthsAgo && todayIso.length === 10);
   await save({ historyFrom: "2025-03-01" });
   // history range with an end day, and shop orders
-  await q(sql`delete from tt_affiliate_order_lines`); await q(sql`delete from tt_sync_state where dataset = 'affiliate_orders'`);
+  await q(sql`delete from settings where key = 'tiktok_history'`); await q(sql`delete from tt_affiliate_order_lines`); await q(sql`delete from tt_sync_state where dataset = 'affiliate_orders'`);
   const fiftyAgo = new Date(Date.now() - 50 * 86400_000).toISOString().slice(0, 10);
   await save({ historyFrom: monthsAgo, historyTo: fiftyAgo });
   await runDataset("affiliate_orders", "manual", null, { ...deps, backfill: true });
   check("39 a history range with an end day loads only that range (orders older than 50 days: 2 of 7)", (await count("tt_affiliate_order_lines")) === 2, String(await count("tt_affiliate_order_lines")));
   await save({ historyFrom: "2025-03-01", historyTo: "" });
-  await q(sql`delete from tt_orders where order_id like 'SO%'`); await q(sql`delete from tt_sync_state where dataset = 'orders'`);
+  await q(sql`delete from settings where key = 'tiktok_history'`); await q(sql`delete from tt_orders where order_id like 'SO%'`); await q(sql`delete from tt_sync_state where dataset = 'orders'`);
   const oo = await runDataset("orders", "manual", null, deps);
   const orows = await q(sql`select order_id, total_amount, lines::text as lines, tracking_number from tt_orders where order_id like 'SO%' order by order_id`);
   check("40 shop orders sync into the orders table (4 found across windows) with totals and line prices", oo.status === "ok" && orows.length === 4 && Number(orows[0].total_amount) === 55.5 && /55.5/.test(String(orows[0].lines)), JSON.stringify([oo, orows.length]));
   check("41 shop orders carry no customer data (emails, addresses, product names)", !JSON.stringify(orows).includes("SECRET") && !JSON.stringify(orows).includes("secret@"));
+  // loaded ranges are remembered: a second "Load full history" skips what is already there, "Re-read all" does not
+  await q(sql`delete from settings where key = 'tiktok_history'`); await q(sql`delete from tt_affiliate_order_lines`); await q(sql`delete from tt_sync_state where dataset = 'affiliate_orders'`);
+  await save({ historyFrom: monthsAgo, historyTo: "" });
+  bodies.length = 0; await runDataset("affiliate_orders", "manual", null, { ...deps, backfill: true });
+  const firstWins = bodies.filter((b) => b.create_time_ge !== undefined).length;
+  bodies.length = 0; const second = await runDataset("affiliate_orders", "manual", null, { ...deps, backfill: true });
+  const secondWins = bodies.filter((b) => b.create_time_ge !== undefined).length;
+  bodies.length = 0; await runDataset("affiliate_orders", "manual", null, { ...deps, backfill: true, reread: true });
+  const rereadWins = bodies.filter((b) => b.create_time_ge !== undefined).length;
+  check("42 a second Load full history skips the range already loaded (only the 2 filter checks are sent), and Re-read all reads every window again", firstWins >= 7 && secondWins <= 2 && second.seen === 0 && rereadWins >= 7 && (await count("tt_affiliate_order_lines")) === 7, JSON.stringify([firstWins, secondWins, rereadWins, second.seen]));
   const { schedulerTick } = await import("../src/lib/tiktok/scheduler");
   const { saveSyncSettings } = await import("../src/lib/tiktok/sync");
   await q(sql`delete from tt_sync_runs`);
