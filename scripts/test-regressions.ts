@@ -530,6 +530,41 @@ async function main() {
   }
   check("22 a failure mid-import is rolled back completely (no upload record, lines or products left), and a retry works", failed && JSON.stringify(await cnt()) === JSON.stringify(beforeF) && ((await imp("affiliate_orders", AFF, [aff({ id: nid(), pid: P1, creator: "zz_test_rep", amt: 11, created: d(-1), contentId: "990002" })])).added === 1));
 
+
+  // ═════════════ Round 4: Affiliates directory (per-product lines) ═════════════
+  const { getAffiliateDirectory } = await import("../src/lib/workflow/directory");
+  const cM = "zz_test_multi2";
+  await mkCreators([cM, "zz_test_nosamp"]);
+  const P3 = "7000000000003";
+  await imp("all_orders", SHOP, [
+    smp({ id: nid(), pid: P1, masked: "z*********ulti2", created: d(-20), delivered: d(-18) }),
+    [nid(), "SKU" + P1 + "B", "Completed", "", "ZZ TEST " + P1, "variant B", "SKU-" + P1 + "-B", 1, 0, 0, dmy(d(-20)), dmy(d(-18)), dmy(d(-20)), "", "z*********ulti2", ""], // second SIZE of the same product
+    smp({ id: nid(), pid: P2, masked: "z*********ulti2", created: d(-20), delivered: d(-18) }),
+  ]);
+  await imp("affiliate_orders", AFF, [
+    aff({ id: nid(), pid: P1, creator: cM, amt: 100, created: d(-10), contentId: "5001", type: "Video" }),
+    aff({ id: nid(), pid: P1, creator: cM, amt: 50, created: d(-9), contentId: "5001", type: "Video" }),
+    aff({ id: nid(), pid: P1, creator: cM, amt: 80, created: d(-8), contentId: "5009", type: "Livestream" }),
+    aff({ id: nid(), pid: P2, creator: cM, amt: 40, created: d(-7), contentId: "5002", type: "Video" }),
+    aff({ id: nid(), pid: P1, creator: cM, amt: 999, created: d(-6), contentId: "5001", type: "Video", status: "Ineligible" }),
+    aff({ id: nid(), pid: P1, creator: "zz_test_nosamp", amt: 25, created: d(-5), contentId: "5010", type: "Video" }),
+  ]);
+  await imp("video_list", VID, [vid("5001", cM, mdyDate(d(-10)), P1), vid("5003", cM, mdyDate(d(-4)), P1), vid("5002", cM, mdyDate(d(-7)), P2), vid("5004", cM, mdyDate(d(-3)), P3)], d(-60));
+  await refresh();
+  const dirM = (await getAffiliateDirectory({ q: cM, status: "", sort: "gmv", samples: "with", page: 1, size: 10 })).rows.find((r) => r.username === cM);
+  const pr1 = dirM?.products.find((x) => x.pid === P1);
+  const pr2 = dirM?.products.find((x) => x.pid === P2);
+  check("23a a creator with samples of two products gets one line per product (a second size of the same product is not a new line)", dirM?.products.length === 2 && !!pr1 && !!pr2 && pr1.skus.length === 2, JSON.stringify(dirM?.products.map((x) => [x.pid, x.skus])));
+  check("23b orders per product split by video and LIVE; cancelled orders excluded", pr1?.orders === 3 && pr1?.ordersVideo === 2 && pr1?.ordersLive === 1 && pr2?.orders === 1 && pr2?.ordersVideo === 1 && pr2?.ordersLive === 0, JSON.stringify([pr1?.orders, pr1?.ordersVideo, pr1?.ordersLive, pr2?.orders]));
+  check("23c GMV per product, and the total equals the sum (nothing counted twice or taken from another product)", pr1?.gmv === 230 && pr2?.gmv === 40 && dirM?.gmvAll === 270, JSON.stringify([pr1?.gmv, pr2?.gmv, dirM?.gmvAll]));
+  check("23d videos per product with the latest posting date; a video of another product is not counted", pr1?.videos === 2 && pr1?.lastVideoOn === d(-4) && pr2?.videos === 1 && pr2?.lastVideoOn === d(-7), JSON.stringify([pr1?.videos, pr1?.lastVideoOn, pr2?.videos, pr2?.lastVideoOn]));
+  check("23e type is Video + LIVE when sales came from both, and a one-word status and action are given", dirM?.type === "Video + LIVE" && /^[A-Za-z]+$/.test(dirM.status) && /^[A-Za-z]+$/.test(dirM.action), JSON.stringify([dirM?.type, dirM?.status, dirM?.action]));
+  const noS = await getAffiliateDirectory({ q: "zz_test_nosamp", status: "", sort: "gmv", samples: "all", page: 1, size: 10 });
+  const onlyWith = await getAffiliateDirectory({ q: "zz_test_nosamp", status: "", sort: "gmv", samples: "with", page: 1, size: 10 });
+  check("23f a creator with no sample has no product lines, still shows total GMV, and is hidden by the 'received samples' filter", noS.rows[0]?.products.length === 0 && noS.rows[0]?.gmvAll === 25 && onlyWith.rows.length === 0);
+  const sortedAll = await getAffiliateDirectory({ q: "", status: "", sort: "gmv", samples: "all", page: 1, size: 500 });
+  check("23g the default order is highest total GMV first", sortedAll.rows.every((r, i, a) => i === 0 || a[i - 1].gmvAll >= r.gmvAll));
+
   void allocate; void loadEvents; void getWorkflowStates;
 
   console.log(`\n${pass} passed, ${fail} failed`);

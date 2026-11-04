@@ -28,7 +28,7 @@ a later promise never hides an earlier one.
 * **Click the creator's name** – a side panel shows commitments (with 1/2 bars and deadlines), samples (delivery timeline), evidence and history, so you never leave the list. **Open full page** is there if you want more.
 * **Add creator** (top right) starts outreach to someone new; no sample needed.
 
-Filters: *Today, Due & overdue, To verify, Samples* are always visible; **More filters** holds Opportunities, Scheduled, Paused and sample exceptions. **Affiliates** is a searchable directory (relationship, next action, sample and content progress); **Detailed analysis** (SKU breakdowns) is under Analysis.
+Filters: *Today, Due & overdue, To verify, Samples* are always visible; **More filters** holds Opportunities, Scheduled, Paused and sample exceptions. **Affiliates** is a searchable list with one card per creator: type (video/LIVE), WhatsApp number, every product they received a sample of with its SKU, orders (V = from videos, L = from LIVE), GMV, videos posted and the last video date, total GMV, and a one-word **Status** and **Action** (hover a word to see what it means; the full list is under the table); **Detailed analysis** (SKU breakdowns) is under Analysis.
 
 After 3 recorded contacts without a promise or new content, the row suggests **Review or pause**. The system cannot see WhatsApp replies, so it never says they did not reply.
 
