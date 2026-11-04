@@ -39,6 +39,7 @@ function toItem(r: TodayRow): TodayItem {
     recs: r.recs,
     status: r.status,
     nextLabel: r.nextOn ? fmtDayLabel(r.nextOn) : null,
+    lastAction: r.lastAction,
     lastContacted: r.lastContactedAt ? `${fmtDateTimeKL(r.lastContactedAt)}${r.lastContactedBy ? ` by ${r.lastContactedBy}` : ""}` : null,
     commitment: c
       ? {

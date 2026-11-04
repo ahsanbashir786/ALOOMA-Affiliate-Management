@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { recommendations } from "@/db/schema";
 import { AL, rows } from "@/lib/analytics/sql";
-import { daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
+import { dayKL, daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { getCommitments, type CommitmentRow } from "./commitments";
 import { getWorkflowStates, loadEvents } from "./events";
 import { unansweredAttempts, type FollowupKind } from "./replay";
@@ -51,6 +51,8 @@ export type TodayRow = {
   nextKind: FollowupKind | null;
   lastContactedAt: string | null;
   lastContactedBy: string | null;
+  /** The latest action recorded from the Affiliate Data table, e.g. "Chase – Pillow · 2 Nov". */
+  lastAction: string | null;
   help: { reason: string; nextOn: string } | null;
   /** The outstanding promise with the earliest CURRENT deadline – the same one sample deadlines use. */
   commitment: CommitmentRow | null;
@@ -267,6 +269,10 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
       nextOn: st?.nextOn ?? null,
       nextKind: st?.nextKind ?? null,
       lastContactedAt: st?.lastContactedAt?.toISOString() ?? null,
+      lastAction: (() => {
+        const e = evAll.filter((x) => x.username === u && !x.revertedAt && x.kind === "contacted" && x.details?.action).at(-1);
+        return e ? `${e.details!.action}${e.details!.product ? ` – ${e.details!.product}` : ""} · ${fmtDayLabel(dayKL(e.at))}` : null;
+      })(),
       lastContactedBy: st?.lastContactedBy ? (userBy.get(st.lastContactedBy) ?? null) : null,
       help: st?.help ? { reason: st.help.reason, nextOn: st.help.nextOn } : null,
       commitment: comm,

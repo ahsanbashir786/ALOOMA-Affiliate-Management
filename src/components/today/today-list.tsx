@@ -25,6 +25,7 @@ export type TodayItem = {
   status: "active" | "paused";
   nextLabel: string | null;
   lastContacted: string | null;
+  lastAction: string | null;
   commitment: {
     id: number;
     dueLabel: string;
@@ -190,6 +191,7 @@ function Row({
         <div className="min-w-0">
           <p className="text-[14px] font-semibold text-ink">{primaryAction(it)}</p>
           <p className="text-[14px] leading-snug text-ink-2">{lead}</p>
+          {it.lastAction && <p className="mt-0.5 text-[13px] text-ink-3" data-testid="last-action">Last action: {it.lastAction}</p>}
           {it.suggestPause && <p className="mt-1 text-[13.5px] font-medium text-warn">Review or pause? {it.attempts} recorded contacts, no promise or new content.</p>}
         </div>
         {/* deadline */}

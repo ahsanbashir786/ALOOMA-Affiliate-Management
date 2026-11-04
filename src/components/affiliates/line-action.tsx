@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
+import { fmtDayLabel } from "@/lib/time";
 import { useCreatorPanel } from "@/components/creator/creator-panel";
 import { ACTION_HINT, type CreatorAction } from "@/lib/affiliates/status";
 import type { DirLine } from "@/lib/workflow/directory";
@@ -33,6 +34,7 @@ export function LineAction({ username, line, all, period }: { username: string; 
         {line.action} <ArrowRight className="size-3.5" />
       </button>
       <p className="mt-1 text-[12px] leading-snug text-ink-3">{ACTION_HINT[line.action]}</p>
+      {line.doneOn && <p className="mt-0.5 inline-flex items-center gap-1 text-[12px] font-medium text-good" data-testid="done-mark"><Check className="size-3" /> Done {fmtDayLabel(line.doneOn)}</p>}
     </div>
   );
 }

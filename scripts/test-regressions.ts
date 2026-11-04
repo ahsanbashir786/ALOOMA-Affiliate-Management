@@ -586,9 +586,11 @@ async function main() {
   await wbk.xlsx.load(Buffer.from(await buildDirectoryWorkbook(exp.rows, exp.dataEnd)) as never);
   const sheet = wbk.getWorksheet("Affiliate data")!;
   check("23o the Excel export has one row per creator × product line with V/L GMV, status and action", sheet.rowCount - 1 === exp.totalLines && sheet.getRow(1).values?.toString().includes("GMV – video (RM)") && String(sheet.getRow(2).getCell(18).value).length > 2);
-  await addEvent({ username: cM, kind: "contacted", userId: null, details: { action: "Chase", product: "Test product", productId: P1, status: "Silent" } });
+  await addEvent({ username: cM, kind: "contacted", userId: null, details: { action: one2.action, product: "Test product", productId: P1, status: "Silent" } });
   const afterC = (await D({ q: cM, samples: "with", contact: "recent" })).rows.find((r) => r.username === cM);
   check("23p an action recorded from the table (with product context) counts as contact and shows in 'contacted in 7 days'", !!afterC && afterC.lastContactedOn === todayKL());
+  const afterD = (await D({ q: cM, samples: "with" })).rows.find((r) => r.username === cM);
+  check("23q the line whose action was recorded is marked done (that day); the other product line is not", afterD?.lines.find((l) => l.pid === P1)?.doneOn === todayKL() && !afterD?.lines.find((l) => l.pid === P2)?.doneOn);
 
   void allocate; void loadEvents; void getWorkflowStates;
 

@@ -25,6 +25,8 @@ export type DirLine = {
   lastVideoLabel: string | null;
   /** Days from the last video to the latest order we hold. */
   lastVideoDaysAgo: number | null;
+  /** Day this line's current action was last recorded from the table (and not undone), else null. */
+  doneOn: string | null;
   undatedVideos: number;
   status: CreatorStatus;
   action: CreatorAction;
@@ -102,7 +104,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
 
   type CSale = { creator: string; gmv_all: number; gmv28: number; prev28: number; ov: number; ol: number };
   type PSale = { creator: string; pid: string; ov: number; ol: number; ot: number; gv: number; gl: number; gmv: number; gmv28: number; prev28: number };
-  const [csales, psales, vids28, contact, prodRows, vidsP] = await Promise.all([
+  const [csales, psales, vids28, contact, prodRows, vidsP, doneRows] = await Promise.all([
     ref
       ? rows<CSale>(sql`
           select al.creator,
@@ -148,13 +150,17 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
         (count(distinct ci.content_id) filter (where ci.posted_at is null))::int as undated
       from content_items ci cross join lateral unnest(ci.product_ids) as pid
       where ci.kind = 'video' and ci.creator is not null group by ci.creator, pid`),
+    rows<{ username: string; action: string; pid: string | null; d: string }>(sql`
+      select username, details->>'action' as action, nullif(details->>'productId', '') as pid, to_char(max(at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') as d
+      from staff_events where kind = 'contacted' and reverted_at is null and details ? 'action' group by 1, 2, 3`),
   ]);
 
   const cBy = new Map(csales.map((x) => [x.creator, x]));
   const pBy = new Map(psales.map((x) => [`${x.creator}|${x.pid}`, x]));
   const v28By = new Map(vids28.map((x) => [x.creator, x.n]));
   const vpBy = new Map(vidsP.map((x) => [`${x.creator}|${x.pid}`, x]));
-    const infoBy = new Map(contact.map((c) => [c.username, c]));
+    const doneBy = new Map(doneRows.map((x) => [`${x.username}|${x.pid ?? ''}|${x.action}`, x.d]));
+  const infoBy = new Map(contact.map((c) => [c.username, c]));
   const prodBy = new Map<string, typeof prodRows>();
   for (const p of prodRows) (prodBy.get(p.creator) ?? prodBy.set(p.creator, []).get(p.creator)!).push(p);
 
@@ -185,7 +191,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
         pid: p.pid, name: listingName(p.short, p.full, p.sku_name ?? p.smp_name), skus: p.skus ?? [], noSample: false,
         ordersVideo: sp?.ov ?? 0, ordersLive: sp?.ol ?? 0, orders: sp?.ot ?? 0, gmvVideo: sp?.gv ?? 0, gmvLive: sp?.gl ?? 0, gmv: sp?.gmv ?? 0,
         videos: vp?.n ?? 0, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null, lastVideoDaysAgo: vp?.last && ref ? Math.max(0, Math.round((Date.parse(ref) - Date.parse(vp.last)) / 86400000)) : null, undatedVideos: vp?.undated ?? 0,
-        status: st.status, action: st.action, reason: explainStatus(input, st.status),
+        status: st.status, action: st.action, reason: explainStatus(input, st.status), doneOn: doneBy.get(`${r.username}|${p.pid ?? ''}|${st.action}`) ?? null,
       });
     }
     if (!lines.length) {
@@ -198,7 +204,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       lines.push({
         pid: null, name: "No sample sent", skus: [], noSample: true, ordersVideo: cs?.ov ?? 0, ordersLive: cs?.ol ?? 0, orders: 0,
         gmvVideo: 0, gmvLive: 0, gmv: 0, videos: 0, videos28: v28By.get(r.username) ?? 0, lastVideoOn: null, lastVideoLabel: null, lastVideoDaysAgo: null, undatedVideos: 0,
-        status: st.status, action: st.action, reason: explainStatus(input, st.status),
+        status: st.status, action: st.action, reason: explainStatus(input, st.status), doneOn: doneBy.get(`${r.username}||${st.action}`) ?? null,
       });
     }
     const ov = cs?.ov ?? 0, ol = cs?.ol ?? 0;
