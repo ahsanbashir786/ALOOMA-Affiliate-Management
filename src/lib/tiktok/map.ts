@@ -67,6 +67,11 @@ export function video(v: R, window: { start: string; end: string }): Row {
   };
 }
 
+/** The same video's figures for one window (kept per window so lifetime totals can be added up). */
+export function videoWindow(v: R, window: { start: string; end: string }): Row {
+  return { video_id: str(v.id), window_start: window.start, window_end: window.end, views: int(v.views), gmv: num(v.gmv), units_sold: int(v.units_sold), click_through_rate: num(v.click_through_rate) };
+}
+
 export function live(v: R): Row {
   const i = obj(v.interaction_performance);
   const s = obj(v.sales_performance);

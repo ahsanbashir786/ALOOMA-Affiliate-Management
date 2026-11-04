@@ -915,3 +915,20 @@ export const ttOpenCollabs = pgTable("tt_open_collabs", {
   h: text("h"),
   syncedAt: tz("synced_at").notNull().defaultNow(),
 });
+
+// Mirrors migrations/0008_video_windows.sql
+export const ttVideoWindows = pgTable(
+  "tt_video_windows",
+  {
+    videoId: text("video_id").notNull(),
+    windowStart: date("window_start").notNull(),
+    windowEnd: date("window_end").notNull(),
+    views: bigint("views", { mode: "number" }),
+    gmv: numeric("gmv", { precision: 14, scale: 2 }),
+    unitsSold: integer("units_sold"),
+    clickThroughRate: numeric("click_through_rate", { precision: 12, scale: 6 }),
+    h: text("h"),
+    syncedAt: tz("synced_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.videoId, t.windowStart] }), index("tt_video_windows_video").on(t.videoId)],
+);

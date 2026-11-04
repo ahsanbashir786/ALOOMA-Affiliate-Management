@@ -20,3 +20,12 @@ export async function resetStuckSync(): Promise<{ cleared: number }> {
   revalidatePath("/sync");
   return { cleared };
 }
+
+/** The first day to load when reading the whole history. */
+export async function setHistoryFrom(day: string): Promise<{ ok: boolean; error?: string }> {
+  await requireUser("admin");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < "2024-01-01" || day > new Date().toISOString().slice(0, 10)) return { ok: false, error: "Choose a date from 2024 up to today." };
+  await saveSyncSettings({ historyFrom: day });
+  revalidatePath("/sync");
+  return { ok: true };
+}

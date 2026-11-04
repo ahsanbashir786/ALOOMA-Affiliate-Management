@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, Gift, Handshake, Loader2, Package, Radio, Receipt, RefreshCw, Truck, Undo2, Video, XCircle } from "lucide-react";
-import { resetStuckSync, setSyncSchedule } from "@/app/actions/sync";
+import { resetStuckSync, setHistoryFrom, setSyncSchedule } from "@/app/actions/sync";
 import { cn } from "@/lib/utils";
 import type { SyncOverview, TrustCheck } from "@/lib/tiktok/sync";
 
@@ -59,11 +59,11 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
     if (starting && (ov.running || Date.now() - startedAt.current > 8000)) setStarting(false);
   }, [ov.running, starting, now]);
 
-  const run = async (dataset?: string) => {
+  const run = async (dataset?: string, history = false) => {
     setErr(null);
     setStarting(true);
     startedAt.current = Date.now();
-    const r = await fetch("/api/tiktok/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataset }) });
+    const r = await fetch("/api/tiktok/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataset, history }) });
     if (!r.ok) {
       setStarting(false);
       setErr(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? "Could not start the sync.");
@@ -142,6 +142,14 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
               <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Sync now
             </button>
           </div>
+        </div>
+        <div className="relative mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/15 pt-4 text-[13.5px] text-white/85">
+          <span>History from</span>
+          {canAdmin ? (
+            <input type="date" aria-label="History from" defaultValue={ov.settings.historyFrom} onBlur={(e) => { const v = e.target.value; if (v && v !== ov.settings.historyFrom) start(async () => { const r = await setHistoryFrom(v); if (!r.ok) setErr(r.error ?? "Could not save the date."); await refresh(); }); }} className="h-8 rounded-md border border-white/30 bg-white/10 px-2 text-[13px] text-white [color-scheme:dark]" />
+          ) : <b>{dmy(ov.settings.historyFrom)}</b>}
+          <button data-testid="load-history" disabled={busy} onClick={() => run(undefined, true)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/40 px-3 font-medium text-white hover:bg-white/10 disabled:opacity-50">Load full history</button>
+          <span className="text-white/60">Reads everything back to this date once. It can take a while.</span>
         </div>
         {err && <p role="alert" className="relative mt-4 rounded-lg bg-white/15 px-3 py-2 text-[13.5px]">{err}</p>}
       </section>

@@ -9,7 +9,7 @@ import { str } from "./map";
 
 export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "sample_orders" | "open_collabs" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily";
 
-export type SyncDeps = { cfg?: TikTokConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date };
+export type SyncDeps = { cfg?: TikTokConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date; /** Read the whole history (back to the "history from" date), not just the recent days. */ backfill?: boolean };
 export type RunResult = { dataset: DatasetKey; status: "ok" | "failed" | "skipped"; pages: number; seen: number; changed: number; error?: string };
 
 /** Display order = run order. `table` is where the rows land. */
@@ -27,10 +27,10 @@ export const DATASETS: { key: DatasetKey; label: string; table: string; icon: st
 ];
 
 const MAX_PAGES = 600;
-const REPEAT_WINDOW_MIN = 20;
+const REPEAT_WINDOW_MIN = 180;
 /** The row that stays open while a whole sync (every dataset) is in progress. */
 export const CYCLE = "_all";
-const CYCLE_WINDOW_MIN = 90;
+const CYCLE_WINDOW_MIN = 360;
 type Table = { name: string; pk: string[]; cols: Record<string, string> };
 
 const TABLES: Record<string, Table> = {
@@ -41,6 +41,7 @@ const TABLES: Record<string, Table> = {
   tt_skus: { name: "tt_skus", pk: ["sku_id"], cols: { sku_id: "text", product_id: "text", product_title: "text", seller_sku: "text", price: "numeric", currency: "text", stock: "int", product_status: "text", updated_at: "timestamptz" } },
   tt_returns: { name: "tt_returns", pk: ["return_id"], cols: { return_id: "text", order_id: "text", status: "text", return_type: "text", reason: "text", refund_amount: "numeric", currency: "text", skus: "jsonb", created_at: "timestamptz", updated_at: "timestamptz" } },
   tt_cancellations: { name: "tt_cancellations", pk: ["cancel_id"], cols: { cancel_id: "text", order_id: "text", status: "text", cancel_type: "text", reason: "text", skus: "jsonb", created_at: "timestamptz", updated_at: "timestamptz" } },
+  tt_video_windows: { name: "tt_video_windows", pk: ["video_id", "window_start"], cols: { video_id: "text", window_start: "date", window_end: "date", views: "bigint", gmv: "numeric", units_sold: "int", click_through_rate: "numeric" } },
   tt_orders: { name: "tt_orders", pk: ["order_id"], cols: { order_id: "text", status: "text", is_sample: "boolean", created_at: "timestamptz", paid_at: "timestamptz", updated_at: "timestamptz", delivered_at: "timestamptz", total_amount: "numeric", currency: "text", tracking_number: "text", shipping_provider: "text", lines: "jsonb", is_final: "boolean" } },
   tt_open_collabs: { name: "tt_open_collabs", pk: ["id"], cols: { id: "text", product_id: "text", title: "text", status: "text", commission_rate: "numeric", commission_start: "timestamptz", commission_end: "timestamptz", creators: "int", showcasing: "int", needs_approval: "boolean", stock: "int", price_min: "numeric", price_max: "numeric" } },
   tt_shop_daily: { name: "tt_shop_daily", pk: ["day"], cols: { day: "date", gmv: "numeric", orders: "int", buyers: "int", units_sold: "int", refunds: "numeric", returns_cancellations: "int", page_views: "bigint", impressions: "bigint", avg_order_value: "numeric" } },
@@ -121,8 +122,8 @@ const pick = (...names: string[]) => (d: Record<string, unknown>) => {
   return firstList(d);
 };
 
-type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number };
-type Counter = { pages: number; seen: number; changed: number; skipped?: number; skipExamples?: string[]; skipWhy?: string };
+type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number; /** Reading the whole history (first sync, or the Load full history button). */ backfill: boolean; historyFrom: string };
+type Counter = { pages: number; seen: number; changed: number; skipped?: number; skipExamples?: string[]; skipWhy?: string; /** Something worth telling the person, e.g. where TikTok's history stops. */ note?: string };
 /** Lets the screen show "1,200 so far" while a dataset runs. */
 const progress = (ctx: Ctx, c: Counter) => rows(sql`update tt_sync_runs set pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed} where id = ${ctx.runId}`);
 
@@ -134,11 +135,6 @@ async function simple(path: string, o: PageOpts, table: string, mapRow: (r: Reco
     await progress(ctx, c);
   }
 }
-
-const windowOf = (days: number, endOffset = 0) => {
-  const end = addDaysISO(todayKL(), 1 - endOffset); // end is exclusive
-  return { start: addDaysISO(end, -days), end };
-};
 
 type WSpec = { path: string; list: (d: Record<string, unknown>) => unknown[]; sizes: number[]; timeKey: string; table: string; mapRow: (r: Record<string, unknown>) => M.Row | M.Row[] };
 const DAY = 86400;
@@ -190,11 +186,36 @@ async function windowed(spec: WSpec, ctx: Ctx, c: Counter) {
   // A recent window and an ancient one: if TikTok ignored the filter, the ancient window would still return today's records.
   const filterWorks = async () => (await insideWindow(nowS - 7 * DAY, hiAll)) && (await insideWindow(nowS - 3650 * DAY, nowS - 3640 * DAY));
   if (!(await filterWorks())) return sequential(spec, ctx, c);
-  if (!ctx.full && ctx.watermark) { await scan(Math.floor(ctx.watermark.getTime() / 1000) - 2 * DAY, hiAll); return; }
+  if (!ctx.full && ctx.watermark && !ctx.backfill) { await scan(Math.floor(ctx.watermark.getTime() / 1000) - 2 * DAY, hiAll); return; }
+  // Full read: the whole history back to "history from" when backfilling, otherwise the last 90 days (the daily re-read that catches status changes).
+  const floorS = ctx.backfill ? Math.floor(Date.parse(ctx.historyFrom + "T00:00:00Z") / 1000) : nowS - 90 * DAY;
   const W = 30 * DAY;
-  for (let k = 0; k < 120; k += 3) {
-    const counts = await Promise.all([k, k + 1, k + 2].map((i) => scan(hiAll - (i + 1) * W, hiAll - i * W)));
-    if (counts.every((n) => n === 0)) break;
+  const wins: [number, number][] = [];
+  for (let hi = hiAll; hi > floorS && wins.length < 400; hi -= W) wins.push([Math.max(hi - W, floorS), hi]);
+  for (let k = 0; k < wins.length; k += 3) await Promise.all(wins.slice(k, k + 3).map(([lo, hi]) => scan(lo, hi)));
+}
+
+/** Date windows from "end" back to "floor", newest first. */
+function backWindows(end: string, floor: string, days: number): { start: string; end: string }[] {
+  const out: { start: string; end: string }[] = [];
+  for (let e = end; e > floor && out.length < 400; e = addDaysISO(e, -days)) { const st = addDaysISO(e, -days); out.push({ start: st < floor ? floor : st, end: e }); }
+  return out;
+}
+
+/**
+ * Runs a report that is asked for by date window (videos, LIVE, shop performance), newest window first. The newest windows come from the
+ * normal sync; with a backfill the older ones follow. If TikTok refuses a window because it is too old, the history stops there and the note says so.
+ */
+async function byWindows(ctx: Ctx, c: Counter, days: number, recentDays: number, each: (w: { start: string; end: string }) => Promise<void>) {
+  const end = addDaysISO(todayKL(), 1);
+  if (!ctx.backfill && ctx.watermark) { await each(backWindows(end, addDaysISO(end, -recentDays), recentDays)[0]); return; }
+  const wins = backWindows(end, ctx.backfill ? ctx.historyFrom : addDaysISO(end, -3 * days), days);
+  for (let i = 0; i < wins.length; i++) {
+    try { await each(wins[i]); } catch (e) {
+      if (i === 0) throw e; // the newest window must work
+      c.note = `history stops at ${wins[i].end}: ${(e instanceof Error ? e.message : "").replace(/^TikTok said no \(\d+\): /, "").slice(0, 90)}`;
+      return;
+    }
   }
 }
 
@@ -213,21 +234,21 @@ const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
   returns: (ctx, c) => windowed({ path: "/return_refund/202309/returns/search", sizes: [100, 50, 20, 10], list: pick("return_orders", "returns"), timeKey: "create_time", table: "tt_returns", mapRow: M.returnRow }, ctx, c),
   cancellations: (ctx, c) => windowed({ path: "/return_refund/202309/cancellations/search", sizes: [100, 50, 20, 10], list: pick("cancellations"), timeKey: "create_time", table: "tt_cancellations", mapRow: M.cancellation }, ctx, c),
   affiliate_orders: (ctx, c) => windowed({ path: "/affiliate_seller/202410/orders/search", sizes: [100, 50, 20, 10], list: pick("orders"), timeKey: "create_time", table: "tt_affiliate_order_lines", mapRow: M.affiliateOrderLines }, ctx, c),
-  lives: async (ctx, c) => {
-    const w = windowOf(28);
-    await simple("/analytics/202509/shop_lives/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [100, 50, 20, 10], list: pick("live_stream_sessions", "lives") }, "tt_lives", M.live, ctx, c);
-  },
-  videos: async (ctx, c) => {
-    // First run also fills the two 28-day windows before, oldest first so the newest numbers win.
-    const windows = ctx.watermark ? [windowOf(28)] : [windowOf(28, 56), windowOf(28, 28), windowOf(28)];
-    for (const w of windows) await simple("/analytics/202409/shop_videos/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [100, 50, 20, 10], list: pick("videos") }, "tt_videos", (v) => M.video(v, w), ctx, c);
-  },
-  shop_daily: async (ctx, c) => {
-    const w = windowOf(ctx.watermark ? 14 : 90);
+  lives: (ctx, c) => byWindows(ctx, c, 28, 28, (w) => simple("/analytics/202509/shop_lives/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [100, 50, 20, 10], list: pick("live_stream_sessions", "lives") }, "tt_lives", M.live, ctx, c)),
+  videos: (ctx, c) => byWindows(ctx, c, 28, 28, async (w) => {
+    for await (const { items } of walk("/analytics/202409/shop_videos/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [100, 50, 20, 10], list: pick("videos") }, ctx.deps)) {
+      c.pages++; c.seen += items.length;
+      const a = await upsertRows(TABLES.tt_videos, items.map((v) => M.video(v, w)));
+      const b = await upsertRows(TABLES.tt_video_windows, items.map((v) => M.videoWindow(v, w)));
+      c.changed += Math.max(a, b);
+      await progress(ctx, c);
+    }
+  }),
+  shop_daily: (ctx, c) => byWindows(ctx, c, 28, 14, async (w) => {
     // The daily figures come back inside "performance.intervals".
     const list = (d: Record<string, unknown>) => { const perf = (d.performance && typeof d.performance === "object" ? d.performance : d) as Record<string, unknown>; return Array.isArray(perf.intervals) ? perf.intervals : []; };
     await simple("/analytics/202405/shop/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end, granularity: "1D" }, sizes: [50], list }, "tt_shop_daily", M.shopDay, ctx, c);
-  },
+  }),
   sample_orders: async (ctx, c) => {
     // Only the orders behind sample requests (shipping facts, no customer data); finished orders (completed / cancelled) are not asked for again.
     const need = await rows<{ order_id: string }>(sql`
@@ -275,9 +296,9 @@ export async function runDataset(key: DatasetKey, trigger: "manual" | "schedule"
   const full = !watermark || now.getTime() - watermark.getTime() > 24 * 3600_000;
   const c: Counter = { pages: 0, seen: 0, changed: 0 };
   try {
-    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id }, c);
+    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id, backfill: !!deps.backfill || !watermark, historyFrom: (await getSyncSettings()).historyFrom }, c);
     const [cnt] = await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`);
-    const note = c.skipped ? `${c.skipped.toLocaleString("en-MY")} skipped (TikTok would not return them${c.skipWhy ? `: ${c.skipWhy}` : ""}; e.g. ${(c.skipExamples ?? []).join(", ")})` : null;
+    const note = [c.skipped ? `${c.skipped.toLocaleString("en-MY")} skipped (TikTok would not return them${c.skipWhy ? `: ${c.skipWhy}` : ""}; e.g. ${(c.skipExamples ?? []).join(", ")})` : null, c.note ?? null].filter(Boolean).join(" · ") || null;
     await rows(sql`update tt_sync_runs set status = 'ok', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed}, error = ${note} where id = ${run.id}`);
     await rows(sql`
       insert into tt_sync_state (dataset, watermark, last_success_at, records, last_error)
@@ -330,7 +351,8 @@ export async function clearInterrupted(reason = "Interrupted – the app was res
 }
 
 // ───────── settings and schedule ─────────
-export type SyncSettings = { enabled: boolean; everyMinutes: number };
+export type SyncSettings = { enabled: boolean; everyMinutes: number; /** The first day to load when reading the whole history (YYYY-MM-DD). */ historyFrom: string };
+export const DEFAULT_HISTORY_FROM = "2025-03-01";
 export const SYNC_CHOICES = [30, 60, 180, 720, 1440] as const;
 const SKEY = "tiktok_sync";
 /** Which column holds each table's date. */
@@ -339,14 +361,15 @@ const DATE_COL: Record<string, string> = { tt_affiliate_order_lines: "created_at
 export async function getSyncSettings(): Promise<SyncSettings> {
   const [r] = await rows<{ value: Partial<SyncSettings> }>(sql`select value from settings where key = ${SKEY}`);
   const v = r?.value ?? {};
-  return { enabled: v.enabled !== false, everyMinutes: (SYNC_CHOICES as readonly number[]).includes(Number(v.everyMinutes)) ? Number(v.everyMinutes) : 60 };
+  return { enabled: v.enabled !== false, everyMinutes: (SYNC_CHOICES as readonly number[]).includes(Number(v.everyMinutes)) ? Number(v.everyMinutes) : 60, historyFrom: /^\d{4}-\d{2}-\d{2}$/.test(String(v.historyFrom)) ? String(v.historyFrom) : DEFAULT_HISTORY_FROM };
 }
-export async function saveSyncSettings(s: SyncSettings): Promise<void> {
+export async function saveSyncSettings(patch: Partial<SyncSettings>): Promise<void> {
+  const s = { ...(await getSyncSettings()), ...patch };
   await rows(sql`insert into settings (key, value) values (${SKEY}, ${JSON.stringify(s)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`);
 }
 
 /** Pure: is a scheduled sync due? */
-export function isDue(nowMs: number, lastStartedMs: number | null, s: SyncSettings): boolean {
+export function isDue(nowMs: number, lastStartedMs: number | null, s: Pick<SyncSettings, "enabled" | "everyMinutes">): boolean {
   return s.enabled && (lastStartedMs == null || nowMs - lastStartedMs >= s.everyMinutes * 60_000);
 }
 

@@ -19,6 +19,7 @@ async function main() {
   await db.insert(settings).values({ key: "tiktok_connection", value: { accessToken: encryptToken("AT", secret), refreshToken: encryptToken("RT", secret), accessExpiresAt: now + 86400, refreshExpiresAt: now + 86400 * 20, openId: "o", sellerName: "ALOOMA", region: "MY", scopes: [], shop: { id: "S", name: "ALOOMA", region: "MY", cipher: "CIPH" }, connectedAt: new Date().toISOString() } }).onConflictDoUpdate({ target: settings.key, set: { value: { accessToken: encryptToken("AT", secret), refreshToken: encryptToken("RT", secret), accessExpiresAt: now + 86400, refreshExpiresAt: now + 86400 * 20, openId: "o", sellerName: "ALOOMA", region: "MY", scopes: [], shop: { id: "S", name: "ALOOMA", region: "MY", cipher: "CIPH" }, connectedAt: new Date().toISOString() } } });
 
   // ── a pretend TikTok ──
+  let videoLimit: string | null = null;
   let mode: "honor" | "ignore" | "reject" = "honor";
   const bodies: Record<string, unknown>[] = [];
   let rateLimitOnce = true;
@@ -49,6 +50,7 @@ async function main() {
     if (p === "/order/202309/orders") { const ids = (u.searchParams.get("ids") ?? "").split(","); return body({ orders: ids.map((id) => ({ id, status: id === "O9" ? "DELIVERED" : "COMPLETED", is_sample_order: true, create_time: now - 86400 * 5, update_time: now, delivery_time: now - 86400, paid_time: now - 86400 * 5, tracking_number: "TRK" + id, shipping_provider: "J&T", payment: { total_amount: "0.00", currency: "MYR" }, line_items: [{ sku_id: "SKU1", product_id: "P1", seller_sku: "S-1", display_status: "DELIVERED", package_status: "DELIVERED", tracking_number: "TRK" + id, product_name: "SECRET NAME LEAK" }], buyer_email: "secret@example.com", recipient_address: { full_address: "SECRET ROAD 1" } })) }); }
     if (p.includes("/open_collaborations/search")) return body({ open_collaborations: [{ id: "OC1", status: "ONGOING", content_creator_count: 12, showcase_creator_count: 5, require_seller_approve_creator: false, current_commission: { rate: "1500", start_time: now - 86400, end_time: now + 86400 * 30 }, product: { id: "P1", title: "Pillow", inventory: 40, original_price: { minimum_amount: "20", maximum_amount: "35", currency: "MYR" } } }] });
     if (p.includes("/sample_applications/search")) return body({ sample_applications: [{ id: "SR1", status: "PENDING", commission_rate: "1500", order_id: "O9", is_approvable: true, approve_expiration_time: now + 3600, available_quantity: 3, creator: { user_id: "U1", username: "amy", nickname: "Amy", follower_count: "12000", gmv: { amount: "5000", currency: "MYR" }, content_count: 40, ec_video_view: 90000, fulfillment_percentage: 98.5 }, product: { id: "P1", sku_id: "SKU1", sku_name: "Bed", title: "Pillow" } }] });
+    if (p.includes("/shop_videos/performance") && videoLimit && (u.searchParams.get("start_date_ge") ?? "") < videoLimit) return j({ code: 36004004, message: "The date range is out of the allowed limit" });
     if (p.includes("/shop_videos/performance")) return body({ videos: [{ id: "V1", username: "amy", title: "Hello", video_post_time: now - 5 * 86400, views: 1000, gmv: { amount: "200", currency: "MYR" }, units_sold: 4, click_through_rate: "0.05", products: [{ id: "P1", name: "Pillow" }] }, { id: "V2", username: "ben", title: "No sales", video_post_time: now - 9 * 86400, views: 500, gmv: { amount: "0" }, units_sold: 0, products: [] }] });
     if (p.includes("/shop_lives/performance")) return body({ live_stream_sessions: [{ id: "L1", username: "amy", title: "Live!", start_time: now - 7200, end_time: now - 3600, interaction_performance: { viewers: 300, views: 800, avg_viewing_duration: 45, new_followers: 12, likes: 90, comments: 8, shares: 3, product_clicks: 40, click_through_rate: "0.1" }, sales_performance: { gmv: { amount: "900", currency: "MYR" }, items_sold: 20, sku_orders: 15, customers: 14, click_to_order_rate: "0.2" } }] });
     if (p.includes("/returns/search")) return body({ return_orders: [{ return_id: "R1", order_id: "O1", return_status: "RETURN_OR_REFUND_REQUEST_PENDING", return_type: "RETURN_AND_REFUND", return_reason_text: "Wrong size", refund_amount: { refund_total: "49.90", currency: "MYR" }, create_time: now - 86400, update_time: now, return_line_items: [{ sku_id: "SKU1", seller_sku: "S-1" }], recipient_address: { full_address: "SECRET" } }] });
@@ -144,6 +146,26 @@ async function main() {
   const spanOv = (await syncOverview()).datasets;
   const ao = spanOv.find((d) => d.key === "affiliate_orders")!;
   check("34 each card can show how far back its data goes (oldest and newest date)", !!ao.oldest && !!ao.newest && ao.oldest <= ao.newest && spanOv.find((d) => d.key === "videos")!.oldest !== null, JSON.stringify([ao.oldest, ao.newest]));
+  // ── history: back to a start date, stopping politely where TikTok stops ──
+  await q(sql`delete from tt_videos`); await q(sql`delete from tt_video_windows`); await q(sql`delete from tt_sync_state where dataset = 'videos'`);
+  const { saveSyncSettings: save } = await import("../src/lib/tiktok/sync");
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const monthsAgo = new Date(Date.now() - 200 * 86400_000).toISOString().slice(0, 10);
+  await save({ historyFrom: "2025-03-01" });
+  videoLimit = monthsAgo;
+  const hv = await runDataset("videos", "manual", null, deps);
+  const winRows = Number((await q(sql`select count(*)::int n from tt_video_windows where video_id = 'V1'`))[0].n);
+  check("35 the first video sync reads windows back to the start date, keeps each window's figures separately (so lifetime totals add up), and when TikTok refuses a window that is too old it stops there with a note instead of failing", hv.status === "ok" && winRows >= 6 && winRows < 20 && /history stops at/.test(hv.error ?? ""), JSON.stringify([hv, winRows]));
+  const life = await q(sql`select sum(gmv)::float8 as g, count(*)::int as n from tt_video_windows where video_id = 'V1'`);
+  check("36 a video's lifetime sales are the sum over its windows", Number(life[0].g) === 200 * Number(life[0].n));
+  videoLimit = null;
+  await save({ historyFrom: monthsAgo });
+  bodies.length = 0;
+  const hist = await runDataset("affiliate_orders", "manual", null, { ...deps, backfill: true });
+  const winsAsked = bodies.filter((b) => b.create_time_ge !== undefined).length;
+  check("37 Load full history re-reads every window back to the chosen start date (about 7 windows for 200 days), and a normal run does not", hist.status === "ok" && winsAsked >= 7 && winsAsked <= 12, String(winsAsked));
+  check("38 the start date is saved and read back", (await (await import("../src/lib/tiktok/sync")).getSyncSettings()).historyFrom === monthsAgo && todayIso.length === 10);
+  await save({ historyFrom: "2025-03-01" });
   const { schedulerTick } = await import("../src/lib/tiktok/scheduler");
   const { saveSyncSettings } = await import("../src/lib/tiktok/sync");
   await q(sql`delete from tt_sync_runs`);
