@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { disconnectTikTok } from "@/app/actions/tiktok";
 import { Badge, Button } from "@/components/ui/primitives";
 
-type Check = { name: string; ok: boolean; message: string; count: number | null; fields: string[] };
+type Check = { name: string; path?: string; ok: boolean; message: string; count: number | null; fields: string[] };
 export type TikTokView = { configured: boolean; hasAuthLink: boolean; connected: boolean; sellerName: string | null; shopName: string | null; region: string | null; scopes: string[]; connectedLabel: string | null; expiresLabel: string | null };
 
 export function TikTokActions({ v }: { v: TikTokView }) {
