@@ -35,10 +35,15 @@ export async function POST(request: Request) {
       await run("Video performance", "/analytics/202409/shop_videos/performance", q(), firstList),
       await run("Product performance", "/analytics/202405/shop_products/performance", q(), firstList),
       await run("Shop performance", "/analytics/202405/shop/performance", q({ granularity: "ALL" }), (d) => (d.performance ? [d.performance] : firstList(d))),
-      await run("LIVE performance", "/analytics/202409/shop_lives/performance", q(), firstList),
-      await run("LIVE performance (newer)", "/analytics/202410/shop_lives/performance", q(), firstList),
-      await run("LIVE performance (overview)", "/analytics/202409/shop_lives/overview_performance", q(), (d) => (d.performance ? [d.performance] : firstList(d))),
     ];
+    // LIVE reports: the version number is unknown, so try the likely ones in turn and keep the first that works (plus a list of what was refused).
+    const tried: string[] = [];
+    for (const v of ["202406", "202407", "202408", "202412", "202501", "202502", "202503", "202506", "202509"]) {
+      const c = await run(`LIVE performance (${v})`, `/analytics/${v}/shop_lives/performance`, q(), firstList);
+      if (c.ok) { checks.push(c); break; }
+      tried.push(`${v}: ${c.message.replace(/^TikTok said no \(\d+\): /, "").slice(0, 70)}`);
+      if (v === "202509") checks.push({ name: "LIVE performance", ok: false, message: `No version worked. ${tried.join(" | ")}`, count: null, fields: [] });
+    }
     return NextResponse.json({ checks });
   }
   if (group === "affiliate") {
