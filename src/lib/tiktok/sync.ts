@@ -333,6 +333,8 @@ export async function clearInterrupted(reason = "Interrupted – the app was res
 export type SyncSettings = { enabled: boolean; everyMinutes: number };
 export const SYNC_CHOICES = [30, 60, 180, 720, 1440] as const;
 const SKEY = "tiktok_sync";
+/** Which column holds each table's date. */
+const DATE_COL: Record<string, string> = { tt_affiliate_order_lines: "created_at", tt_orders: "created_at", tt_videos: "posted_at", tt_lives: "started_at", tt_returns: "created_at", tt_cancellations: "created_at", tt_shop_daily: "day", tt_sample_requests: "first_seen_at", tt_open_collabs: "commission_start" };
 
 export async function getSyncSettings(): Promise<SyncSettings> {
   const [r] = await rows<{ value: Partial<SyncSettings> }>(sql`select value from settings where key = ${SKEY}`);
@@ -349,7 +351,7 @@ export function isDue(nowMs: number, lastStartedMs: number | null, s: SyncSettin
 }
 
 // ───────── what the screen shows ─────────
-export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; /** A warning from the latest successful run, e.g. how many records TikTok would not return. */ note: string | null; running: boolean; progress: number | null };
+export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; /** The oldest and newest record held (dates), so you can see how far back the data goes. */ oldest: string | null; newest: string | null; /** A warning from the latest successful run, e.g. how many records TikTok would not return. */ note: string | null; running: boolean; progress: number | null };
 export type RunView = { id: number; dataset: DatasetKey; label: string; startedAt: string; durationSec: number | null; status: string; trigger: string; changed: number; seen: number; error: string | null; by: string | null };
 export type SyncOverview = { /** The server's clock when this was built (lets the first browser render match the server's). */ now: number; datasets: DatasetView[]; runs: RunView[]; running: boolean; lastFullAt: string | null; nextAt: string | null; settings: SyncSettings };
 
@@ -365,6 +367,13 @@ export async function syncOverview(): Promise<SyncOverview> {
     rows<{ dataset: string; status: string; error: string | null }>(sql`select distinct on (dataset) dataset, status, error from tt_sync_runs where dataset <> ${CYCLE} order by dataset, started_at desc, id desc`),
   ]);
   const lastRun = new Map(latest.map((r) => [r.dataset, r]));
+  const spans = new Map<string, { a: string | null; b: string | null }>();
+  for (const d of DATASETS) {
+    const col = DATE_COL[d.table];
+    if (!col) continue;
+    const [r] = await rows<{ a: string | null; b: string | null }>(sql`select to_char(min(${sql.raw(col)}), 'YYYY-MM-DD') as a, to_char(max(${sql.raw(col)}), 'YYYY-MM-DD') as b from ${sql.raw(d.table)}`);
+    spans.set(d.key, r);
+  }
   const st = new Map(states.map((s) => [s.dataset, s]));
   const run = new Map(running.map((r) => [r.dataset, r.seen]));
   const label = new Map(DATASETS.map((d) => [d.key, d.label]));
@@ -372,7 +381,7 @@ export async function syncOverview(): Promise<SyncOverview> {
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   return {
     now: Date.now(),
-    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
+    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,
     lastFullAt: times.length ? new Date(Math.min(...times)).toISOString() : null,
@@ -386,8 +395,16 @@ export type TrustCheck = { from: string; to: string; api: { orders: number; gmv:
 
 /** The latest 28 days of affiliate sales, from the API tables and from the uploaded files, side by side. */
 export async function trustCheck(): Promise<TrustCheck | null> {
-  const [ref] = await rows<{ d: string | null }>(sql`select to_char(max(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') as d from tt_affiliate_order_lines`);
-  if (!ref?.d) return null;
+  const [apiEnd] = await rows<{ d: string | null }>(sql`select to_char(max(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') as d from tt_affiliate_order_lines`);
+  if (!apiEnd?.d) return null;
+  // Compare the same days: the latest 28 days up to the earlier of the two last dates (uploaded files usually stop sooner than the API).
+  let upEnd: string | null = null;
+  try {
+    const { AL } = await import("@/lib/analytics/sql");
+    const [u] = await rows<{ d: string | null }>(sql`select to_char(max(al.created_at), 'YYYY-MM-DD') as d from ${AL}`);
+    upEnd = u?.d ?? null;
+  } catch { upEnd = null; }
+  const ref = { d: upEnd && upEnd < apiEnd.d ? upEnd : apiEnd.d };
   const from = addDaysISO(ref.d, -27);
   const [a] = await rows<{ orders: number; gmv: number }>(sql`
     select count(distinct order_id)::int as orders, coalesce(sum(price * quantity) filter (where coalesce(fully_return, false) = false), 0)::float8 as gmv

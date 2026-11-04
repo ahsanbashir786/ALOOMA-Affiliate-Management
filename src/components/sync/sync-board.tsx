@@ -25,6 +25,9 @@ const inMin = (iso: string | null, now: number) => {
 };
 const fresh = (iso: string | null, now: number) => (!iso ? "none" : now - new Date(iso).getTime() < 2 * 3600_000 ? "good" : now - new Date(iso).getTime() < 26 * 3600_000 ? "warn" : "bad");
 const DOT = { good: "bg-good", warn: "bg-warn", bad: "bg-critical", none: "bg-line-strong" } as const;
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dmy = (iso: string) => { const [y, m, d] = iso.split("-").map(Number); return `${d} ${MON[m - 1]} ${y}`; };
+const span = (a: string, b: string | null) => (b && b !== a ? `${dmy(a)} – ${dmy(b)}` : dmy(a));
 const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
 
 export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { initial: SyncOverview; trust: TrustCheck | null; connected: boolean; canAdmin: boolean; serverNow: number }) {
@@ -162,6 +165,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
                 <span className={cn("size-2 rounded-full", DOT[f], d.running && "animate-pulse")} />
                 {d.running ? `Syncing${d.progress ? ` · ${d.progress.toLocaleString("en-MY")}` : "…"}` : d.lastError ? <span className="text-critical" title={d.lastError}>Failed</span> : ago(d.lastSuccessAt, now)}
               </div>
+              {d.oldest && <p className="mt-0.5 text-[12px] text-ink-3" data-testid={`span-${d.key}`}>{span(d.oldest, d.newest)}</p>}
               {d.lastError && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-critical">{d.lastError}</p>}
               {!d.lastError && d.note && <p className="mt-1 line-clamp-3 text-[12px] leading-snug text-warn" title={d.note} data-testid={`note-${d.key}`}>{d.note}</p>}
             </article>

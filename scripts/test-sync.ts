@@ -141,6 +141,9 @@ async function main() {
   const ovSk = (await syncOverview()).datasets.find((d) => d.key === "sample_orders")!;
   check("33 skipped orders are counted and shown as a warning (with an example id and TikTok's message), not hidden, and the card is not red", ovSk.lastError === null && /1 skipped/.test(ovSk.note ?? "") && /BAD1/.test(ovSk.note ?? ""), String(ovSk.note));
   check("32 one order TikTok cannot read does not fail the dataset: the group is split, the bad one is skipped and the others are saved", isolated.status === "ok" && got.join() === "GOOD1,GOOD2", JSON.stringify([isolated, got]));
+  const spanOv = (await syncOverview()).datasets;
+  const ao = spanOv.find((d) => d.key === "affiliate_orders")!;
+  check("34 each card can show how far back its data goes (oldest and newest date)", !!ao.oldest && !!ao.newest && ao.oldest <= ao.newest && spanOv.find((d) => d.key === "videos")!.oldest !== null, JSON.stringify([ao.oldest, ao.newest]));
   const { schedulerTick } = await import("../src/lib/tiktok/scheduler");
   const { saveSyncSettings } = await import("../src/lib/tiktok/sync");
   await q(sql`delete from tt_sync_runs`);
