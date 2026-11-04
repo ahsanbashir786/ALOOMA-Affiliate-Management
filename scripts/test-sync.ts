@@ -46,6 +46,11 @@ async function main() {
       const at = tok ? Number(tok) : 0;
       return body({ orders: all.slice(at, at + 2), next_page_token: at + 2 < all.length ? String(at + 2) : undefined });
     }
+    if (p === "/order/202309/orders/search") {
+      let all = [0, 2, 40, 75].map((age, i) => ({ id: "SO" + i, status: "COMPLETED", is_sample_order: false, create_time: now - age * 86400, update_time: now, delivery_time: now - age * 86400 + 86400, payment: { total_amount: "55.50", currency: "MYR" }, tracking_number: "T" + i, shipping_provider: "J&T", buyer_email: "secret@example.com", recipient_address: { full_address: "SECRET ROAD" }, line_items: [{ sku_id: "SKU1", product_id: "P1", seller_sku: "S-1", display_status: "COMPLETED", sale_price: "55.50", product_name: "SECRET NAME" }] }));
+      if (reqBody.create_time_ge !== undefined) all = all.filter((o) => o.create_time >= reqBody.create_time_ge && o.create_time < reqBody.create_time_lt);
+      return body({ orders: all });
+    }
     if (p === "/order/202309/orders" && (u.searchParams.get("ids") ?? "").includes("BAD")) return j({ code: 36009003, message: "Internal error. Please try again." });
     if (p === "/order/202309/orders") { const ids = (u.searchParams.get("ids") ?? "").split(","); return body({ orders: ids.map((id) => ({ id, status: id === "O9" ? "DELIVERED" : "COMPLETED", is_sample_order: true, create_time: now - 86400 * 5, update_time: now, delivery_time: now - 86400, paid_time: now - 86400 * 5, tracking_number: "TRK" + id, shipping_provider: "J&T", payment: { total_amount: "0.00", currency: "MYR" }, line_items: [{ sku_id: "SKU1", product_id: "P1", seller_sku: "S-1", display_status: "DELIVERED", package_status: "DELIVERED", tracking_number: "TRK" + id, product_name: "SECRET NAME LEAK" }], buyer_email: "secret@example.com", recipient_address: { full_address: "SECRET ROAD 1" } })) }); }
     if (p.includes("/open_collaborations/search")) return body({ open_collaborations: [{ id: "OC1", status: "ONGOING", content_creator_count: 12, showcase_creator_count: 5, require_seller_approve_creator: false, current_commission: { rate: "1500", start_time: now - 86400, end_time: now + 86400 * 30 }, product: { id: "P1", title: "Pillow", inventory: 40, original_price: { minimum_amount: "20", maximum_amount: "35", currency: "MYR" } } }] });
@@ -68,7 +73,7 @@ async function main() {
 
   // ── run every dataset ──
   const res = await runAll("manual", null, deps);
-  check("03 all ten datasets run and succeed (a rate-limit refusal and a page-size refusal are handled on the way)", res.length === 10 && res.every((r) => r.status === "ok"), JSON.stringify(res.map((r) => [r.dataset, r.status, r.error])));
+  check("03 all eleven datasets run and succeed (a rate-limit refusal and a page-size refusal are handled on the way)", res.length === 11 && res.every((r) => r.status === "ok"), JSON.stringify(res.map((r) => [r.dataset, r.status, r.error])));
   check("04 products and stock: the stock of every warehouse is added up", Number((await q(sql`select stock from tt_skus where sku_id = 'SKU1'`))[0].stock) === 12 && Number((await q(sql`select price from tt_skus where sku_id = 'SKU1'`))[0].price) === 25.5);
   check("05 affiliate orders: the first sync reads the whole history in date windows (7 orders found, across pages and windows), with creator, content and commission", (await count("tt_affiliate_order_lines")) === 7 && (await q(sql`select creator, content_id, est_commission, paid_commission from tt_affiliate_order_lines where order_id = 'A1'`))[0].creator === "amy");
   check("06 sample requests keep creator stats, the order link and the expiry", (await q(sql`select followers, fulfilment_pct, order_id, expires_at is not null as e from tt_sample_requests where id = 'SR1'`))[0].order_id === "O9");
@@ -99,7 +104,7 @@ async function main() {
 
   // ── overview, schedule, trust ──
   const ov = await syncOverview();
-  check("17 the overview lists all datasets with record counts, recent runs with who and how, and the next scheduled time", ov.datasets.length === 10 && ov.datasets.find((d) => d.key === "affiliate_orders")!.records === 7 && ov.runs.length > 8 && ov.runs[0].trigger === "manual" && ov.nextAt !== null, JSON.stringify({ n: ov.runs.length, rec: ov.datasets.find((d) => d.key === "affiliate_orders")!.records, t: ov.runs[0]?.trigger, next: ov.nextAt, set: ov.settings }));
+  check("17 the overview lists all datasets with record counts, recent runs with who and how, and the next scheduled time", ov.datasets.length === 11 && ov.datasets.find((d) => d.key === "affiliate_orders")!.records === 7 && ov.runs.length > 8 && ov.runs[0].trigger === "manual" && ov.nextAt !== null, JSON.stringify({ n: ov.runs.length, rec: ov.datasets.find((d) => d.key === "affiliate_orders")!.records, t: ov.runs[0]?.trigger, next: ov.nextAt, set: ov.settings }));
   const s = { enabled: true, everyMinutes: 60 };
   check("18 the schedule is due when never run or the interval has passed, and never when switched off", isDue(1e12, null, s) && isDue(1e12, 1e12 - 61 * 60000, s) && !isDue(1e12, 1e12 - 59 * 60000, s) && !isDue(1e12, null, { ...s, enabled: false }));
   const tc = await trustCheck();
@@ -121,7 +126,7 @@ async function main() {
   // ── the four additions ──
   const sd = await q(sql`select orders, gmv from tt_shop_daily`);
   check("26 shop performance is read from performance.intervals (it showed 0 before)", sd.length === 1 && Number(sd[0].orders) === 30);
-  const so = await q(sql`select order_id, status, is_sample, tracking_number, is_final, lines::text as lines from tt_orders order by order_id`);
+  const so = await q(sql`select order_id, status, is_sample, tracking_number, is_final, lines::text as lines from tt_orders where order_id = 'O9' order by order_id`);
   check("27 sample orders: only the orders behind sample requests are fetched, with shipping facts and the final flag", so.length === 1 && so[0].order_id === "O9" && so[0].status === "DELIVERED" && so[0].is_sample === true && so[0].tracking_number === "TRKO9" && so[0].is_final === false, JSON.stringify(so));
   check("28 sample orders carry no customer data and no product names", !JSON.stringify(so).includes("SECRET") && !JSON.stringify(so).includes("secret@"));
   const oc = await q(sql`select creators, showcasing, stock, price_max, needs_approval from tt_open_collabs where id = 'OC1'`);
@@ -155,7 +160,7 @@ async function main() {
   videoLimit = monthsAgo;
   const hv = await runDataset("videos", "manual", null, deps);
   const winRows = Number((await q(sql`select count(*)::int n from tt_video_windows where video_id = 'V1'`))[0].n);
-  check("35 the first video sync reads windows back to the start date, keeps each window's figures separately (so lifetime totals add up), and when TikTok refuses a window that is too old it stops there with a note instead of failing", hv.status === "ok" && winRows >= 6 && winRows < 20 && /history stops at/.test(hv.error ?? ""), JSON.stringify([hv, winRows]));
+  check("35 the first video sync reads windows back to the start date, keeps each window's figures separately (so lifetime totals add up), and when TikTok refuses a window that is too old it stops there with a note instead of failing", hv.status === "ok" && winRows >= 6 && winRows < 20 && /only allows this report back to \d{4}-\d{2}-\d{2}/.test(hv.error ?? ""), JSON.stringify([hv, winRows]));
   const life = await q(sql`select sum(gmv)::float8 as g, count(*)::int as n from tt_video_windows where video_id = 'V1'`);
   check("36 a video's lifetime sales are the sum over its windows", Number(life[0].g) === 200 * Number(life[0].n));
   videoLimit = null;
@@ -166,6 +171,18 @@ async function main() {
   check("37 Load full history re-reads every window back to the chosen start date (about 7 windows for 200 days), and a normal run does not", hist.status === "ok" && winsAsked >= 7 && winsAsked <= 12, String(winsAsked));
   check("38 the start date is saved and read back", (await (await import("../src/lib/tiktok/sync")).getSyncSettings()).historyFrom === monthsAgo && todayIso.length === 10);
   await save({ historyFrom: "2025-03-01" });
+  // history range with an end day, and shop orders
+  await q(sql`delete from tt_affiliate_order_lines`); await q(sql`delete from tt_sync_state where dataset = 'affiliate_orders'`);
+  const fiftyAgo = new Date(Date.now() - 50 * 86400_000).toISOString().slice(0, 10);
+  await save({ historyFrom: monthsAgo, historyTo: fiftyAgo });
+  await runDataset("affiliate_orders", "manual", null, { ...deps, backfill: true });
+  check("39 a history range with an end day loads only that range (orders older than 50 days: 2 of 7)", (await count("tt_affiliate_order_lines")) === 2, String(await count("tt_affiliate_order_lines")));
+  await save({ historyFrom: "2025-03-01", historyTo: "" });
+  await q(sql`delete from tt_orders where order_id like 'SO%'`); await q(sql`delete from tt_sync_state where dataset = 'orders'`);
+  const oo = await runDataset("orders", "manual", null, deps);
+  const orows = await q(sql`select order_id, total_amount, lines::text as lines, tracking_number from tt_orders where order_id like 'SO%' order by order_id`);
+  check("40 shop orders sync into the orders table (4 found across windows) with totals and line prices", oo.status === "ok" && orows.length === 4 && Number(orows[0].total_amount) === 55.5 && /55.5/.test(String(orows[0].lines)), JSON.stringify([oo, orows.length]));
+  check("41 shop orders carry no customer data (emails, addresses, product names)", !JSON.stringify(orows).includes("SECRET") && !JSON.stringify(orows).includes("secret@"));
   const { schedulerTick } = await import("../src/lib/tiktok/scheduler");
   const { saveSyncSettings } = await import("../src/lib/tiktok/sync");
   await q(sql`delete from tt_sync_runs`);
@@ -183,7 +200,7 @@ async function main() {
   check("23 datasets run side by side (2 or 3 at once, never more), and results still come back in display order", maxInFlight >= 2 && maxInFlight <= 3 && par.map((r) => r.dataset).join() === DATASETS.map((d) => d.key).join() && par.every((r) => r.status === "ok"), `max ${maxInFlight}`);
   const last = await q(sql`select rows_seen from tt_sync_runs where dataset = 'affiliate_orders' order by id desc limit 1`);
   check("24 each run records how many rows it has read, so the screen can show progress while it runs", Number(last[0].rows_seen) > 0);
-  check("22 every dataset listed on the screen has a table", DATASETS.length === 10);
+  check("22 every dataset listed on the screen has a table", DATASETS.length === 11);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

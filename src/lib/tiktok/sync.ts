@@ -7,7 +7,7 @@ import { callApi, tiktokConfig, type Fetch, type TikTokConfig } from "./client";
 import * as M from "./map";
 import { str } from "./map";
 
-export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "sample_orders" | "open_collabs" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily";
+export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "orders" | "sample_orders" | "open_collabs" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily";
 
 export type SyncDeps = { cfg?: TikTokConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date; /** Read the whole history (back to the "history from" date), not just the recent days. */ backfill?: boolean };
 export type RunResult = { dataset: DatasetKey; status: "ok" | "failed" | "skipped"; pages: number; seen: number; changed: number; error?: string };
@@ -17,6 +17,7 @@ export const DATASETS: { key: DatasetKey; label: string; table: string; icon: st
   { key: "products", label: "Products & stock", table: "tt_skus", icon: "package", what: "SKUs" },
   { key: "affiliate_orders", label: "Affiliate orders", table: "tt_affiliate_order_lines", icon: "receipt", what: "order lines" },
   { key: "sample_requests", label: "Sample requests", table: "tt_sample_requests", icon: "gift", what: "requests" },
+  { key: "orders", label: "Shop orders", table: "tt_orders", icon: "cart", what: "orders" },
   { key: "sample_orders", label: "Sample orders", table: "tt_orders", icon: "truck", what: "orders" },
   { key: "open_collabs", label: "Collaborations", table: "tt_open_collabs", icon: "handshake", what: "offers" },
   { key: "videos", label: "Videos", table: "tt_videos", icon: "video", what: "videos" },
@@ -122,7 +123,7 @@ const pick = (...names: string[]) => (d: Record<string, unknown>) => {
   return firstList(d);
 };
 
-type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number; /** Reading the whole history (first sync, or the Load full history button). */ backfill: boolean; historyFrom: string };
+type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number; /** Reading the whole history (first sync, or the Load full history button). */ backfill: boolean; historyFrom: string; historyTo: string };
 type Counter = { pages: number; seen: number; changed: number; skipped?: number; skipExamples?: string[]; skipWhy?: string; /** Something worth telling the person, e.g. where TikTok's history stops. */ note?: string };
 /** Lets the screen show "1,200 so far" while a dataset runs. */
 const progress = (ctx: Ctx, c: Counter) => rows(sql`update tt_sync_runs set pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed} where id = ${ctx.runId}`);
@@ -162,7 +163,7 @@ async function sequential(spec: WSpec, ctx: Ctx, c: Counter) {
  */
 async function windowed(spec: WSpec, ctx: Ctx, c: Counter) {
   const nowS = Math.floor((ctx.deps.now?.() ?? new Date()).getTime() / 1000);
-  const hiAll = nowS + 3600;
+  const hiAll = ctx.backfill && ctx.historyTo ? Math.floor(Date.parse(ctx.historyTo + "T00:00:00Z") / 1000) + DAY : nowS + 3600;
   const body = (lo: number, hi: number) => ({ create_time_ge: lo, create_time_lt: hi });
   const scan = async (lo: number, hi: number): Promise<number> => {
     let n = 0;
@@ -207,13 +208,21 @@ function backWindows(end: string, floor: string, days: number): { start: string;
  * normal sync; with a backfill the older ones follow. If TikTok refuses a window because it is too old, the history stops there and the note says so.
  */
 async function byWindows(ctx: Ctx, c: Counter, days: number, recentDays: number, each: (w: { start: string; end: string }) => Promise<void>) {
-  const end = addDaysISO(todayKL(), 1);
+  const end = ctx.backfill && ctx.historyTo ? addDaysISO(ctx.historyTo, 1) : addDaysISO(todayKL(), 1);
   if (!ctx.backfill && ctx.watermark) { await each(backWindows(end, addDaysISO(end, -recentDays), recentDays)[0]); return; }
   const wins = backWindows(end, ctx.backfill ? ctx.historyFrom : addDaysISO(end, -3 * days), days);
   for (let i = 0; i < wins.length; i++) {
     try { await each(wins[i]); } catch (e) {
       if (i === 0) throw e; // the newest window must work
-      c.note = `history stops at ${wins[i].end}: ${(e instanceof Error ? e.message : "").replace(/^TikTok said no \(\d+\): /, "").slice(0, 90)}`;
+      // TikTok refused this window as too old. Try again from later start days (a week at a time) to find the exact edge and keep the days it allows.
+      const w = wins[i];
+      let edge: string | null = null;
+      for (let off = 7; off < days && !edge; off += 7) {
+        const start = addDaysISO(w.start, off);
+        if (start >= w.end) break;
+        try { await each({ start, end: w.end }); edge = start; } catch { /* still too old */ }
+      }
+      c.note = `TikTok only allows this report back to ${edge ?? w.end} (${(e instanceof Error ? e.message : "").replace(/^TikTok said no \(\d+\): /, "").slice(0, 120)})`;
       return;
     }
   }
@@ -230,6 +239,7 @@ async function inGroups<T>(items: T[], size: number, parallel: number, job: (gro
 const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
   products: (ctx, c) => simple("/product/202309/products/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("products") }, "tt_skus", M.skus, ctx, c),
   sample_requests: (ctx, c) => simple("/affiliate_seller/202409/sample_applications/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("sample_applications", "applications") }, "tt_sample_requests", M.sampleRequest, ctx, c),
+  orders: (ctx, c) => windowed({ path: "/order/202309/orders/search", sizes: [100, 50, 20, 10], list: pick("orders"), timeKey: "create_time", table: "tt_orders", mapRow: M.order }, ctx, c),
   open_collabs: (ctx, c) => simple("/affiliate_seller/202409/open_collaborations/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("open_collaborations", "collaborations") }, "tt_open_collabs", M.openCollab, ctx, c),
   returns: (ctx, c) => windowed({ path: "/return_refund/202309/returns/search", sizes: [100, 50, 20, 10], list: pick("return_orders", "returns"), timeKey: "create_time", table: "tt_returns", mapRow: M.returnRow }, ctx, c),
   cancellations: (ctx, c) => windowed({ path: "/return_refund/202309/cancellations/search", sizes: [100, 50, 20, 10], list: pick("cancellations"), timeKey: "create_time", table: "tt_cancellations", mapRow: M.cancellation }, ctx, c),
@@ -296,7 +306,7 @@ export async function runDataset(key: DatasetKey, trigger: "manual" | "schedule"
   const full = !watermark || now.getTime() - watermark.getTime() > 24 * 3600_000;
   const c: Counter = { pages: 0, seen: 0, changed: 0 };
   try {
-    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id, backfill: !!deps.backfill || !watermark, historyFrom: (await getSyncSettings()).historyFrom }, c);
+    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id, backfill: !!deps.backfill || !watermark, ...(await (async () => { const h = await getSyncSettings(); return { historyFrom: h.historyFrom, historyTo: h.historyTo }; })()) }, c);
     const [cnt] = await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`);
     const note = [c.skipped ? `${c.skipped.toLocaleString("en-MY")} skipped (TikTok would not return them${c.skipWhy ? `: ${c.skipWhy}` : ""}; e.g. ${(c.skipExamples ?? []).join(", ")})` : null, c.note ?? null].filter(Boolean).join(" · ") || null;
     await rows(sql`update tt_sync_runs set status = 'ok', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed}, error = ${note} where id = ${run.id}`);
@@ -324,7 +334,7 @@ export async function runAll(trigger: "manual" | "schedule", userId: string | nu
   const out: RunResult[] = [];
   try {
     // The biggest datasets start first; up to POOL run side by side. Results are returned in the display order.
-    const order: DatasetKey[] = ["affiliate_orders", "videos", "sample_requests", "returns", "cancellations", "products", "lives", "open_collabs", "shop_daily"];
+    const order: DatasetKey[] = ["affiliate_orders", "orders", "videos", "sample_requests", "returns", "cancellations", "products", "lives", "open_collabs", "shop_daily"];
     const done = new Map<DatasetKey, RunResult>();
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(POOL, order.length) }, async () => {
@@ -351,7 +361,7 @@ export async function clearInterrupted(reason = "Interrupted – the app was res
 }
 
 // ───────── settings and schedule ─────────
-export type SyncSettings = { enabled: boolean; everyMinutes: number; /** The first day to load when reading the whole history (YYYY-MM-DD). */ historyFrom: string };
+export type SyncSettings = { enabled: boolean; everyMinutes: number; /** The first and last day to load when reading history (YYYY-MM-DD). historyTo "" means up to today. */ historyFrom: string; historyTo: string };
 export const DEFAULT_HISTORY_FROM = "2025-03-01";
 export const SYNC_CHOICES = [30, 60, 180, 720, 1440] as const;
 const SKEY = "tiktok_sync";
@@ -361,7 +371,7 @@ const DATE_COL: Record<string, string> = { tt_affiliate_order_lines: "created_at
 export async function getSyncSettings(): Promise<SyncSettings> {
   const [r] = await rows<{ value: Partial<SyncSettings> }>(sql`select value from settings where key = ${SKEY}`);
   const v = r?.value ?? {};
-  return { enabled: v.enabled !== false, everyMinutes: (SYNC_CHOICES as readonly number[]).includes(Number(v.everyMinutes)) ? Number(v.everyMinutes) : 60, historyFrom: /^\d{4}-\d{2}-\d{2}$/.test(String(v.historyFrom)) ? String(v.historyFrom) : DEFAULT_HISTORY_FROM };
+  return { enabled: v.enabled !== false, everyMinutes: (SYNC_CHOICES as readonly number[]).includes(Number(v.everyMinutes)) ? Number(v.everyMinutes) : 60, historyFrom: /^\d{4}-\d{2}-\d{2}$/.test(String(v.historyFrom)) ? String(v.historyFrom) : DEFAULT_HISTORY_FROM, historyTo: /^\d{4}-\d{2}-\d{2}$/.test(String(v.historyTo)) ? String(v.historyTo) : "" };
 }
 export async function saveSyncSettings(patch: Partial<SyncSettings>): Promise<void> {
   const s = { ...(await getSyncSettings()), ...patch };

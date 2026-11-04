@@ -204,7 +204,7 @@ export function order(o: R): Row {
     currency: str(obj(o.payment).currency),
     tracking_number: str(o.tracking_number),
     shipping_provider: str(o.shipping_provider),
-    lines: JSON.stringify(arr(o.line_items).map((l) => ({ sku_id: str(l.sku_id), product_id: str(l.product_id), seller_sku: str(l.seller_sku), status: str(l.display_status), package_status: str(l.package_status), tracking_number: str(l.tracking_number) }))),
+    lines: JSON.stringify(arr(o.line_items).map((l) => ({ sku_id: str(l.sku_id), product_id: str(l.product_id), seller_sku: str(l.seller_sku), status: str(l.display_status), package_status: str(l.package_status), tracking_number: str(l.tracking_number), sale_price: num(l.sale_price) }))),
     is_final: status ? FINAL_ORDER.has(status) : false,
   };
 }

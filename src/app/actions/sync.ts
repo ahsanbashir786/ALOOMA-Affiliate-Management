@@ -21,11 +21,13 @@ export async function resetStuckSync(): Promise<{ cleared: number }> {
   return { cleared };
 }
 
-/** The first day to load when reading the whole history. */
-export async function setHistoryFrom(day: string): Promise<{ ok: boolean; error?: string }> {
+/** The days to load when reading history: from the first day to the last (empty = up to today). */
+export async function setHistoryRange(from: string, to: string): Promise<{ ok: boolean; error?: string }> {
   await requireUser("admin");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < "2024-01-01" || day > new Date().toISOString().slice(0, 10)) return { ok: false, error: "Choose a date from 2024 up to today." };
-  await saveSyncSettings({ historyFrom: day });
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  const today = new Date().toISOString().slice(0, 10);
+  if (!day.test(from) || from < "2023-01-01" || from > today || (to && (!day.test(to) || to < from || to > today))) return { ok: false, error: "Choose days from 2023 up to today, with To after From." };
+  await saveSyncSettings({ historyFrom: from, historyTo: to });
   revalidatePath("/sync");
   return { ok: true };
 }

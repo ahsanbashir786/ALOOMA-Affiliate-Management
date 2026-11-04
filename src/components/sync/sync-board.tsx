@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, Gift, Handshake, Loader2, Package, Radio, Receipt, RefreshCw, Truck, Undo2, Video, XCircle } from "lucide-react";
-import { resetStuckSync, setHistoryFrom, setSyncSchedule } from "@/app/actions/sync";
+import { AlertTriangle, BarChart3, CheckCircle2, Gift, Handshake, Loader2, Package, Radio, Receipt, RefreshCw, ShoppingCart, Truck, Undo2, Video, XCircle } from "lucide-react";
+import { resetStuckSync, setHistoryRange, setSyncSchedule } from "@/app/actions/sync";
+import { HistoryRange } from "./history-range";
 import { cn } from "@/lib/utils";
 import type { SyncOverview, TrustCheck } from "@/lib/tiktok/sync";
 
-const ICON: Record<string, React.ComponentType<{ className?: string }>> = { package: Package, receipt: Receipt, gift: Gift, video: Video, radio: Radio, undo: Undo2, x: XCircle, chart: BarChart3, truck: Truck, handshake: Handshake };
+const ICON: Record<string, React.ComponentType<{ className?: string }>> = { package: Package, receipt: Receipt, gift: Gift, video: Video, radio: Radio, undo: Undo2, x: XCircle, chart: BarChart3, truck: Truck, cart: ShoppingCart, handshake: Handshake };
 const EVERY = [{ v: 0, l: "Off" }, { v: 30, l: "Every 30 min" }, { v: 60, l: "Every hour" }, { v: 180, l: "Every 3 hours" }, { v: 720, l: "Every 12 hours" }, { v: 1440, l: "Daily" }];
 
 function ago(iso: string | null, now: number): string {
@@ -100,8 +101,8 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
   return (
     <div className="space-y-5">
       {/* status */}
-      <section data-testid="sync-hero" data-state={state} className="relative overflow-hidden rounded-2xl bg-brand p-6 text-white sm:p-7">
-        <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-white/10 blur-2xl" />
+      <section data-testid="sync-hero" data-state={state} className="relative rounded-2xl bg-brand p-6 text-white sm:p-7">
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl"><div className="absolute -top-24 -right-16 size-72 rounded-full bg-white/10 blur-2xl" /></div>
         <div className="relative flex flex-wrap items-center justify-between gap-5">
           <div className="flex items-center gap-4">
             <span className={cn("grid size-14 shrink-0 place-items-center rounded-2xl bg-white/15", busy && "animate-pulse")}>
@@ -144,12 +145,10 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
           </div>
         </div>
         <div className="relative mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/15 pt-4 text-[13.5px] text-white/85">
-          <span>History from</span>
-          {canAdmin ? (
-            <input type="date" aria-label="History from" defaultValue={ov.settings.historyFrom} onBlur={(e) => { const v = e.target.value; if (v && v !== ov.settings.historyFrom) start(async () => { const r = await setHistoryFrom(v); if (!r.ok) setErr(r.error ?? "Could not save the date."); await refresh(); }); }} className="h-8 rounded-md border border-white/30 bg-white/10 px-2 text-[13px] text-white [color-scheme:dark]" />
-          ) : <b>{dmy(ov.settings.historyFrom)}</b>}
+          <span>History</span>
+          <HistoryRange from={ov.settings.historyFrom} to={ov.settings.historyTo} canEdit={canAdmin} onSave={(f, t) => start(async () => { const r = await setHistoryRange(f, t); if (!r.ok) setErr(r.error ?? "Could not save the range."); await refresh(); })} />
           <button data-testid="load-history" disabled={busy} onClick={() => run(undefined, true)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/40 px-3 font-medium text-white hover:bg-white/10 disabled:opacity-50">Load full history</button>
-          <span className="text-white/60">Reads everything back to this date once. It can take a while.</span>
+          <span className="text-white/60">Reads this range once. It can take a while.</span>
         </div>
         {err && <p role="alert" className="relative mt-4 rounded-lg bg-white/15 px-3 py-2 text-[13.5px]">{err}</p>}
       </section>
@@ -175,7 +174,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
               </div>
               {d.oldest && <p className="mt-0.5 text-[12px] text-ink-3" data-testid={`span-${d.key}`}>{span(d.oldest, d.newest)}</p>}
               {d.lastError && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-critical">{d.lastError}</p>}
-              {!d.lastError && d.note && <p className="mt-1 line-clamp-3 text-[12px] leading-snug text-warn" title={d.note} data-testid={`note-${d.key}`}>{d.note}</p>}
+              {!d.lastError && d.note && <p className="mt-1 line-clamp-6 text-[12px] leading-snug text-warn" title={d.note} data-testid={`note-${d.key}`}>{d.note}</p>}
             </article>
           );
         })}
