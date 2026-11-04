@@ -127,6 +127,13 @@ async function main() {
   const before = hits.filter((h) => h === "/order/202309/orders").length;
   await runDataset("sample_orders", "manual", null, deps);
   check("30 a finished sample order (completed or cancelled) is not asked for again", hits.filter((h) => h === "/order/202309/orders").length === before);
+  await q(sql`insert into tt_sync_runs (dataset, status) values ('returns', 'running'), ('_all', 'running')`);
+  const stuckBefore = (await syncOverview()).running;
+  const { clearInterrupted } = await import("../src/lib/tiktok/sync");
+  const cleared = await clearInterrupted();
+  const afterOv = await syncOverview();
+  const rerun = await runDataset("returns", "manual", null, deps);
+  check("31 after a restart, runs left running are marked interrupted at once, the screen stops waiting, and the dataset can run again", stuckBefore === true && cleared === 2 && afterOv.running === false && rerun.status === "ok");
   const { schedulerTick } = await import("../src/lib/tiktok/scheduler");
   const { saveSyncSettings } = await import("../src/lib/tiktok/sync");
   await q(sql`delete from tt_sync_runs`);

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, Gift, Handshake, Loader2, Package, Radio, Receipt, RefreshCw, Truck, Undo2, Video, XCircle } from "lucide-react";
-import { setSyncSchedule } from "@/app/actions/sync";
+import { resetStuckSync, setSyncSchedule } from "@/app/actions/sync";
 import { cn } from "@/lib/utils";
 import type { SyncOverview, TrustCheck } from "@/lib/tiktok/sync";
 
@@ -68,6 +68,17 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
   };
 
   const busy = ov.running || starting;
+  // "Stuck" = something says it is running but nothing has moved (no rows read, no run finished) for 90 seconds.
+  const moveKey = `${ov.datasets.reduce((n, d) => n + (d.progress ?? 0), 0)}|${ov.runs[0]?.id ?? 0}|${ov.runs.filter((r) => r.status === "running").length}`;
+  const lastKey = useRef(moveKey);
+  const [movedAt, setMovedAt] = useState(serverNow);
+  useEffect(() => {
+    if (lastKey.current !== moveKey) {
+      lastKey.current = moveKey;
+      setMovedAt(Date.now());
+    }
+  }, [moveKey]);
+  const stuck = ov.running && now - movedAt > 90_000;
   const failed = ov.datasets.filter((d) => d.lastError);
   const never = ov.datasets.every((d) => !d.lastSuccessAt);
   const state = !connected ? "off" : busy ? "busy" : failed.length ? "warn" : never ? "new" : "ok";
@@ -118,6 +129,11 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
               >
                 {EVERY.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
               </select>
+            )}
+            {stuck && (
+              <button data-testid="sync-reset" disabled={pending} onClick={() => start(async () => { await resetStuckSync(); await refresh(); })} className="h-10 rounded-lg border border-white/40 px-4 text-[14px] font-medium text-white hover:bg-white/10">
+                Stuck? Reset
+              </button>
             )}
             <button data-testid="sync-now" disabled={busy} onClick={() => run()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-5 text-[14.5px] font-semibold text-brand hover:bg-white/90 disabled:opacity-60">
               <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Sync now

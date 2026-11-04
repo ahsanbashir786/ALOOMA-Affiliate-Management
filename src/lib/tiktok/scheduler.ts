@@ -2,7 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/analytics/sql";
 import { connectionInfo, tiktokConfig } from "./client";
-import { CYCLE, getSyncSettings, isDue, runAll, type SyncDeps } from "./sync";
+import { CYCLE, clearInterrupted, getSyncSettings, isDue, runAll, type SyncDeps } from "./sync";
 
 let busy = false;
 
@@ -26,6 +26,8 @@ export function startScheduler() {
   if (g.__ttScheduler) return;
   g.__ttScheduler = true;
   const tick = () => { schedulerTick().catch(() => {}); };
+  // A restart kills any sync in progress; clear its "running" marks first so the screen never waits for work that no longer exists.
+  clearInterrupted().catch(() => {});
   setTimeout(tick, 20_000);
   setInterval(tick, 60_000).unref?.();
 }

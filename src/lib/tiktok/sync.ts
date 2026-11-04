@@ -305,6 +305,13 @@ export async function runAll(trigger: "manual" | "schedule", userId: string | nu
   return out;
 }
 
+/** Marks every run still shown as "running" as interrupted. Used when the app starts (a restart kills any sync in progress) and by the Reset button. */
+export async function clearInterrupted(reason = "Interrupted – the app was restarted"): Promise<number> {
+  coolUntil = 0;
+  const res = await rows<{ id: number }>(sql`update tt_sync_runs set status = 'failed', finished_at = now(), error = ${reason} where status = 'running' returning id`);
+  return res.length;
+}
+
 // ───────── settings and schedule ─────────
 export type SyncSettings = { enabled: boolean; everyMinutes: number };
 export const SYNC_CHOICES = [30, 60, 180, 720, 1440] as const;

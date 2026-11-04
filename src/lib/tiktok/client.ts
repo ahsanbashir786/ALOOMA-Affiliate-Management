@@ -50,7 +50,7 @@ async function tokenCall(cfg: TikTokConfig, kind: "get" | "refresh", param: stri
   u.searchParams.set("app_secret", cfg.appSecret);
   if (kind === "get") { u.searchParams.set("auth_code", param); u.searchParams.set("grant_type", "authorized_code"); }
   else { u.searchParams.set("refresh_token", param); u.searchParams.set("grant_type", "refresh_token"); }
-  const res = await f(u.toString(), { method: "GET", cache: "no-store" });
+  const res = await f(u.toString(), { method: "GET", cache: "no-store", signal: AbortSignal.timeout(45_000) });
   const j = (await res.json().catch(() => null)) as { code?: number; message?: string; data?: Record<string, unknown> } | null;
   if (!j || j.code !== 0 || !j.data) throw new Error(`TikTok refused the token request${j?.message ? `: ${j.message}` : ""}.`);
   return j.data;
@@ -122,7 +122,7 @@ export async function callApi<T = unknown>(
   const body = o.body === undefined ? undefined : JSON.stringify(o.body);
   query.sign = signRequest({ path, query, body, secret: cfg.appSecret });
   const url = `${API_BASE}${path}?${new URLSearchParams({ ...query, access_token: token }).toString()}`;
-  const res = await f(url, { method: o.method ?? (body ? "POST" : "GET"), headers: { "content-type": "application/json", "x-tts-access-token": token }, body, cache: "no-store" });
+  const res = await f(url, { method: o.method ?? (body ? "POST" : "GET"), headers: { "content-type": "application/json", "x-tts-access-token": token }, body, cache: "no-store", signal: AbortSignal.timeout(60_000) });
   const j = (await res.json().catch(() => null)) as { code?: number; message?: string; data?: T } | null;
   if (!j || j.code !== 0) throw new Error(`TikTok said no (${j?.code ?? res.status}): ${j?.message ?? "no answer"}`);
   return (j.data ?? ({} as T)) as T;
