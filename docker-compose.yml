@@ -28,6 +28,11 @@ services:
       NODE_ENV: production
       # Keep "true" when you use a domain with HTTPS. Use "false" only for a short plain-http test by IP address.
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # TikTok Shop connection (optional). Put the real values in the private .env file, never in git.
+      TIKTOK_APP_KEY: ${TIKTOK_APP_KEY:-}
+      TIKTOK_APP_SECRET: ${TIKTOK_APP_SECRET:-}
+      TIKTOK_SERVICE_ID: ${TIKTOK_SERVICE_ID:-}
+      TIKTOK_AUTH_URL: ${TIKTOK_AUTH_URL:-}
 
   caddy:
     image: caddy:2-alpine

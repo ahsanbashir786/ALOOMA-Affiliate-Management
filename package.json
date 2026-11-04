@@ -13,7 +13,8 @@
     "test:workflow": "tsx --conditions=react-server scripts/test-workflow.ts",
     "test:regressions": "tsx --conditions=react-server scripts/test-regressions.ts",
     "test:real": "tsx --conditions=react-server scripts/test-real-exports.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:tiktok": "tsx --conditions=react-server scripts/test-tiktok.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
