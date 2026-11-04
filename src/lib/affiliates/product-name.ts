@@ -12,7 +12,7 @@ export function listingName(shortName: string | null, fullName?: string | null, 
   if (/pillow protector/.test(all)) return `Pillow Protector${excl}`;
   if (/fitted bedsheet|bedsheet/.test(short)) {
     const w = /non[- ]?waterproof/.test(short) ? "Non-Waterproof" : /waterproof/.test(short) ? "Waterproof" : "Non-Waterproof";
-    return `Bedsheet · ${w} (${/^set\b/.test(short) ? "Set" : "Single Item"})${excl}`;
+    return `Bedsheet · ${w} (${/\bsets?\b/.test(short) ? "Set" : "Single Item"})${excl}`;
   }
   if (/selimut|blanket|duvet/.test(short)) return "Selimut (Blanket)";
   if (/coral fleece/.test(all)) return "Coral Fleece Towel";

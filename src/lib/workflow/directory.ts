@@ -5,6 +5,8 @@ import { creatorStatus, explainStatus, NEEDS_ACTION, winnerThreshold, type Creat
 import { addDaysISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { listingName } from "@/lib/affiliates/product-name";
 import { loadRelationships } from "./relationships";
+import { loadCreatorRows } from "@/lib/creators/load";
+import type { Tier } from "@/lib/creators/score";
 
 /** One sampled product of a creator: its own sales, videos, status and action. */
 export type DirLine = {
@@ -13,6 +15,10 @@ export type DirLine = {
   skus: string[];
   /** No sample was sent: this line carries the creator's overall status. */
   noSample: boolean;
+  /** Synced data only: a sample of this product was sent (false = sells it without a sample). */
+  sampled?: boolean;
+  /** Synced data only: sample requests of this product still waiting for a decision. */
+  samplesOpen?: number;
   ordersVideo: number;
   ordersLive: number;
   orders: number;
@@ -36,6 +42,34 @@ export type DirLine = {
   reason: string;
 };
 
+/** What only the synced data can tell about a creator (Creators module). */
+export type CreatorExtra = {
+  nickname: string | null;
+  followers: number | null;
+  /** TikTok's own figure for the creator's sales across all shops. */
+  creatorGmv: number | null;
+  fulfilmentPct: number | null;
+  /** Weekly sales, oldest first, 8 weeks ending at the latest order. */
+  weeks: number[];
+  gmv28: number;
+  prev28: number;
+  score: number;
+  tier: Tier;
+  scoreWhy: string;
+  scoreParts: { sales: number; reliability: number; consistency: number; reach: number };
+  ownerId: string | null;
+  ownerName: string | null;
+  videosAll: number;
+  videos28: number;
+  livesAll: number;
+  lives28: number;
+  lastVideoOn: string | null;
+  lastLiveOn: string | null;
+  lastSaleOn: string | null;
+  requestsOpen: number;
+  nextLabel: string | null;
+};
+
 export type DirRow = {
   username: string;
   type: "Video" | "LIVE" | "Video + LIVE" | null;
@@ -47,9 +81,10 @@ export type DirRow = {
   overdue: boolean;
   paused: boolean;
   lastContactedOn: string | null;
+  extra?: CreatorExtra;
 };
 
-export type DirSort = "orders" | "orders_asc" | "videos_all" | "videos_all_asc" | "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "name";
+export type DirSort = "followers" | "score" | "recent" | "orders" | "orders_asc" | "videos_all" | "videos_all_asc" | "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "name";
 export type DirOpts = {
   q?: string;
   samples?: "with" | "none" | "all";
@@ -60,6 +95,11 @@ export type DirOpts = {
   type?: "video" | "live" | "both" | "";
   wa?: "yes" | "no" | "";
   contact?: "never" | "recent" | "overdue" | "";
+  /** Synced data only: a staff member's id, or "none" for creators nobody looks after. */
+  owner?: string;
+  tier?: Tier | "";
+  /** Read the TikTok sync (Creators module) instead of the old uploaded files. */
+  source?: "synced" | "uploads";
   sort?: DirSort;
   /** Period shown in the table's orders, GMV and videos (status always uses the latest 28 days). */
   range?: { start: string; end: string };
@@ -75,6 +115,8 @@ export type Directory = {
   statusCounts: Record<CreatorStatus, number>;
   products: { pid: string; name: string; creators: number }[];
   dataEnd: string | null;
+  /** Synced data only: headline numbers over ALL creators (ignores the filters). */
+  overview?: { creators: number; sellers28: number; gmv28: number; prev28: number; todoLines: number; silentLines: number; requestsOpen: number; unowned: number; tiers: Record<Tier, number> };
 };
 
 export const STATUS_ORDER: CreatorStatus[] = ["Silent", "Slipping", "Winner", "Rising", "Quiet", "Posted", "Waiting", "New", "Steady", "Paused"];
@@ -220,14 +262,16 @@ export async function loadDirectoryRows(opts: { range?: { start: string; end: st
 
 /** The affiliate table: the shared rows, filtered, counted, sorted and paged. */
 export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
-  const { all, ref, lately: gmv28By } = await loadDirectoryRows({ range: opts.range });
+  const { all, ref, lately: gmv28By } = opts.source === "synced" ? await loadCreatorRows({ range: opts.range }) : await loadDirectoryRows({ range: opts.range });
   const q = (opts.q ?? "").trim().toLowerCase().replace(/^@/, "");
   const sm = opts.samples ?? "all";
   const today = todayKL();
   const weekAgo = addDaysISO(today, -7);
   const creatorOk = (a: DirRow) =>
     (!q || a.username.toLowerCase().includes(q)) &&
-    (sm === "all" || (sm === "with") === !a.lines[0].noSample) &&
+    (sm === "all" || (sm === "with") === (a.allLines.some((l) => (l.sampled ?? !l.noSample)))) &&
+    (!opts.owner || (opts.owner === "none" ? !a.extra?.ownerId : a.extra?.ownerId === opts.owner)) &&
+    (!opts.tier || a.extra?.tier === opts.tier) &&
     (!opts.type || (opts.type === "video" ? a.type === "Video" : opts.type === "live" ? a.type === "LIVE" : a.type === "Video + LIVE")) &&
     (!opts.wa || (opts.wa === "yes") === !!a.phone) &&
     (!opts.contact ||
@@ -285,6 +329,9 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       case "videos_all": return topVideos(b) - topVideos(a) || a.username.localeCompare(b.username);
       case "videos_all_asc": return topVideos(a) - topVideos(b) || a.username.localeCompare(b.username);
       case "name": return a.username.localeCompare(b.username);
+      case "followers": return (b.extra?.followers ?? -1) - (a.extra?.followers ?? -1) || a.username.localeCompare(b.username);
+      case "score": return (b.extra?.score ?? -1) - (a.extra?.score ?? -1) || a.username.localeCompare(b.username);
+      case "recent": return (b.extra?.lastSaleOn ?? "").localeCompare(a.extra?.lastSaleOn ?? "") || a.username.localeCompare(b.username);
       case "video": return lately(b) - lately(a) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
       case "stale": {
         // Longest since the last video first; creators with no video at all come first.
@@ -297,6 +344,25 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     }
   });
 
+  let overview: Directory["overview"];
+  if (opts.source === "synced") {
+    overview = { creators: all.length, sellers28: 0, gmv28: 0, prev28: 0, todoLines: 0, silentLines: 0, requestsOpen: 0, unowned: 0, tiers: { Gold: 0, Silver: 0, Bronze: 0, Starter: 0 } };
+    for (const a of all) {
+      const e = a.extra;
+      if (!e) continue;
+      if (e.gmv28 > 0) overview.sellers28++;
+      overview.gmv28 += e.gmv28;
+      overview.prev28 += e.prev28;
+      overview.requestsOpen += e.requestsOpen;
+      if (!e.ownerId) overview.unowned++;
+      overview.tiers[e.tier]++;
+      for (const l of a.allLines) {
+        if (NEEDS_ACTION.includes(l.action)) overview.todoLines++;
+        if (l.status === "Silent") overview.silentLines++;
+      }
+    }
+  }
+
   const size = opts.size ?? 50;
   const page = Math.max(1, opts.page ?? 1);
   return {
@@ -307,5 +373,6 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     statusCounts,
     products,
     dataEnd: ref,
+    overview,
   };
 }

@@ -52,6 +52,8 @@ Everything else (Overview, Content, Products, Orders, Opportunities, Samples, Or
 
 | 2. Table + panel Performance, Progress staff performance and results after action, Command centre links, Samples hidden from the menu | Done (Samples pages still exist at their old addresses) |
 
+| 3. Module 1 Creators (TikTok-synced table, profile, owner, score, new menu) | Done – see `docs/CREATORS.md`. Old Affiliate Data page kept under "Earlier version" until the later modules replace it |
+
 ## 4. Order of clean-up (one section at a time)
 
 | Step | Section | Result | Risk |

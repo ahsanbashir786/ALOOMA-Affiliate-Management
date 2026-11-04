@@ -1,356 +1,207 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, Lightbulb } from "lucide-react";
-import { getCurrentUser, can, mayEditContacts } from "@/lib/auth";
-import { periodQuery, resolvePeriod } from "@/lib/period";
-import { analyse, buildRecommendation } from "@/lib/analytics/recommendations";
-import { getCreatorDetail } from "@/lib/analytics/creator-detail";
-import { FLAGS, SEGMENTS } from "@/lib/segments";
-import { Badge, Card, CardHeader, PageHeader, Td, Th } from "@/components/ui/primitives";
-import { KpiCard } from "@/components/ui/kpi-card";
-import { TrendChart } from "@/components/charts/trend-chart";
-import { SegmentBadge } from "@/components/creators/segment-badge";
-import { ContactForm, NotesForm } from "@/components/creators/creator-tools";
-import { ResultBadge } from "@/components/samples/result-badge";
-import { CONTENT_TYPE_LABEL, getCreatorSamples } from "@/lib/samples/analysis";
-import { db } from "@/db";
-import { creators } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { MessageBox } from "@/components/ui/message-box";
-import { getCreatorWorkspace } from "@/lib/workflow/timeline";
-import { CreatorTimeline } from "@/components/today/creator-timeline";
-import { CreatorActions } from "@/components/today/creator-actions";
-import { todayKL } from "@/lib/time";
-import { RELATIONSHIP } from "@/lib/workflow/relationship";
-import { loadRelationships } from "@/lib/workflow/relationships";
-import { fmtDayLabel, fmtDateTimeKL } from "@/lib/time";
-import { fmtCompact, fmtDate, fmtInt, fmtPct, fmtRM, initials, pctChange } from "@/lib/utils";
+import { notFound } from "next/navigation";
+import { ArrowLeft, ExternalLink, MessageCircle } from "lucide-react";
+import { can, requireUser } from "@/lib/auth";
+import { getCreatorProfile, type ProfileSample, type SampleResult } from "@/lib/creators/profile";
+import { getStaff } from "@/lib/creators/meta";
+import { statsOf } from "@/lib/affiliates/action-messages";
+import { STATUS_HELP, type CreatorStatus } from "@/lib/affiliates/status";
+import { fmtDayLabel } from "@/lib/time";
+import { Avatar } from "@/components/creators/avatar";
+import { TierBadge } from "@/components/creators/tier-badge";
+import { OwnerPicker } from "@/components/creators/owner-picker";
+import { SalesChart } from "@/components/creators/sales-chart";
+import { LineAction } from "@/components/affiliates/line-action";
+import { OpenPanelButton } from "@/components/creator/open-panel-button";
+import { Section } from "@/components/viz/section";
+import { Badge, Card } from "@/components/ui/primitives";
+import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/creators/[username]">): Promise<Metadata> {
-  return { title: decodeURIComponent((await params).username) };
+  return { title: `@${decodeURIComponent((await params).username)}` };
 }
 
-const STATUS_TONE = { open: "brand", in_progress: "warn", sent: "good", done: "good", dismissed: "neutral" } as const;
-const SERIES = [
-  { key: "video", label: "Videos", color: "var(--s1)" },
-  { key: "live", label: "LIVE", color: "var(--s2)" },
-  { key: "showcase", label: "Showcase", color: "var(--s3)" },
-  { key: "etp", label: "External traffic", color: "var(--s4)" },
-];
+const TONE: Record<CreatorStatus, "good" | "brand" | "warn" | "critical" | "neutral"> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
+const RESULT: Record<SampleResult, { label: string; tone: "good" | "warn" | "critical" | "neutral" | "brand" }> = {
+  posted: { label: "Posted", tone: "good" }, waiting: { label: "Waiting", tone: "brand" }, not_posted: { label: "Not posted", tone: "critical" }, pending: { label: "Request", tone: "warn" }, closed: { label: "Closed", tone: "neutral" },
+};
+const day = (d: string | null) => (d ? fmtDayLabel(d) : "–");
 
-/** Contact details, samples and staff-logged videos – shown whether or not the creator sold in this period. */
-async function CreatorExtras({ username, canEdit }: { username: string; canEdit: boolean }) {  // canEdit = may edit WhatsApp numbers
-  const [[contact], samples] = await Promise.all([
-    db.select({ phone: creators.phone, approach: creators.approach }).from(creators).where(eq(creators.username, username)).limit(1),
-    getCreatorSamples(username),
-  ]);
+function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <section className="grid gap-4 lg:grid-cols-3">
-      <Card>
-        <CardHeader title="Contact" description="Used for WhatsApp links in the tracker and Action centre." />
-        <div className="px-5 pb-5">
-          <ContactForm username={username} phone={contact?.phone ?? null} approach={contact?.approach ?? null} canEdit={canEdit} />
-        </div>
-      </Card>
-      <Card className="lg:col-span-2">
-        <CardHeader
-          title="Samples"
-          description="Free samples to this creator and whether content followed."
-          action={<Link href={`/samples?q=${encodeURIComponent(username)}&view=all`} className="text-[13px] font-medium text-brand hover:underline">Open in tracker</Link>}
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse">
-            <thead>
-              <tr><Th>Product</Th><Th>Approved</Th><Th>Delivered</Th><Th>Posted</Th><Th>Result</Th><Th align="right">Sales after</Th></tr>
-            </thead>
-            <tbody>
-              {samples.map((x) => (
-                <tr key={x.id}>
-                  <Td className="max-w-[260px]">
-                    <span className="line-clamp-1">{x.name ?? x.variation ?? x.sku}</span>
-                    <span className="text-[11.5px] text-ink-3">{x.sku}</span>
-                  </Td>
-                  <Td className="whitespace-nowrap text-ink-2">{x.approved ? fmtDate(x.approved) : "–"}</Td>
-                  <Td className="whitespace-nowrap text-ink-2">{x.delivered ? fmtDate(x.delivered) : "–"}</Td>
-                  <Td className="whitespace-nowrap text-ink-2">
-                    {x.post_link ? <a href={x.post_link} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">{x.posted ? fmtDate(x.posted) : "video"}</a> : x.posted ? fmtDate(x.posted) : "–"}
-                  </Td>
-                  <Td><ResultBadge result={x.r} /></Td>
-                  <Td align="right">{x.gmv ? fmtRM(x.gmv) : "–"}</Td>
-                </tr>
-              ))}
-              {!samples.length && <tr><Td colSpan={6} className="py-8 text-center text-ink-3">No samples recorded.</Td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </section>
+    <div className="rounded-xl border border-line bg-surface px-4 py-3">
+      <p className="text-[12.5px] font-medium text-ink-3">{label}</p>
+      <p className="tnum text-[21px] leading-tight font-semibold text-ink">{value}</p>
+      {sub && <p className="truncate text-[12px] text-ink-3">{sub}</p>}
+    </div>
   );
 }
-
-type Workspace = Awaited<ReturnType<typeof getCreatorWorkspace>>;
-type RelRow = Awaited<ReturnType<typeof loadRelationships>> extends Map<string, infer V> ? V | undefined : never;
-
-/** Relationship, quick actions and the activity timeline – available for every creator, with or without sales or samples. */
-function WorkspaceCard({ username, ws, relRow, canEdit }: { username: string; ws: Workspace; relRow: RelRow; canEdit: boolean }) {
+function Bar({ label, value, max }: { label: string; value: number; max: number }) {
   return (
-  <Card>
-        <CardHeader title="Activity timeline" description="Built automatically from staff actions, samples and verified content. Sales after a contact are shown for context only – they are not proof the contact caused them." />
-        {canEdit && <CreatorActions username={username} paused={ws.summary.status === "paused"} today={todayKL()} />}
-        {relRow && <p className="px-5 pb-2 text-[13px]"><span className="text-ink-3">Relationship:</span> <Badge tone={RELATIONSHIP[relRow.status].tone}>{RELATIONSHIP[relRow.status].label}</Badge> <span className="text-ink-3">{RELATIONSHIP[relRow.status].hint}</span></p>}
-        <div className="grid gap-3 px-5 pb-4 sm:grid-cols-2 lg:grid-cols-4 text-[13px]">
-          <p><span className="text-ink-3">Last contact</span><br />{ws.summary.lastContactedAt ? fmtDateTimeKL(ws.summary.lastContactedAt) : "–"}</p>
-          <p><span className="text-ink-3">Next action</span><br />{ws.summary.nextOn ? fmtDayLabel(ws.summary.nextOn) : "–"}{ws.summary.status === "paused" ? " (paused)" : ""}</p>
-          <p><span className="text-ink-3">Promised date</span><br />{ws.summary.promiseOn ? `${fmtDayLabel(ws.summary.promiseOn)} · ${(() => { const [st, prog] = (ws.summary.promiseState ?? "").split(":"); return st === "fulfilled" ? `content seen${prog ? ` (${prog})` : ""}` : st === "partial" ? `partly done (${prog})` : st === "review" ? "possible match to review" : "not seen yet"; })()}` : "–"}</p>
-          <p><span className="text-ink-3">Samples · confirmed content</span><br />{ws.summary.samples} · {ws.summary.verifiedContent}</p>
-          <p className="sm:col-span-2"><span className="text-ink-3">Sales since last contact (context only)</span><br />{ws.summary.gmvSinceContact == null ? "–" : fmtRM(ws.summary.gmvSinceContact)}</p>
-          <p className="sm:col-span-2"><span className="text-ink-3">Sales, last 28 days of data</span><br />{fmtRM(ws.summary.gmv28)}</p>
-        </div>
-        <CreatorTimeline entries={ws.entries} canUndo={canEdit} />
-  </Card>
+    <div>
+      <div className="mb-1 flex justify-between text-[13px]"><span className="text-ink-2">{label}</span><span className="tnum font-medium text-ink">{value}/{max}</span></div>
+      <div className="h-2 rounded-full bg-surface-2"><div className="h-2 rounded-full bg-brand" style={{ width: `${Math.round((value / max) * 100)}%` }} /></div>
+    </div>
   );
 }
+const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }) => <th className={cn("px-3 py-2 text-left text-[12.5px] font-medium text-ink-3", right && "text-right")}>{children}</th>;
+const Td = ({ children, right, className }: { children?: React.ReactNode; right?: boolean; className?: string }) => <td className={cn("px-3 py-2.5 align-top text-[14px] text-ink", right && "tnum text-right", className)}>{children}</td>;
 
-export default async function CreatorPage({ params, searchParams }: PageProps<"/creators/[username]">) {
+export default async function CreatorProfilePage({ params }: PageProps<"/creators/[username]">) {
+  const user = await requireUser();
+  const canAct = can(user, "manager");
   const username = decodeURIComponent((await params).username);
-  const period = await resolvePeriod(await searchParams);
-  const user = await getCurrentUser();
-  const canEdit = !!user && can(user, "manager");
-  const canPhone = !!user && mayEditContacts(user);
-  const qs = periodQuery(period);
-
-  const analysis = await analyse(period);
-  const c = analysis.classified.find((x) => x.username === username);
-  if (!c) {
-    return (
-      <div className="space-y-5">
-        <Link href={`/affiliates?${qs}`} className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink">
-          <ArrowLeft className="size-4" /> Affiliates Overview
-        </Link>
-        <PageHeader title={username} description={`No sales for this creator in ${period.label.toLowerCase()} or the period before.`} />
-        <WorkspaceCard username={username} ws={await getCreatorWorkspace(username)} relRow={(await loadRelationships([username])).get(username)} canEdit={canEdit} />
-        <CreatorExtras username={username} canEdit={canPhone} />
-      </div>
-    );
-  }
-  const detail = await getCreatorDetail(username, period);
-  const ws = await getCreatorWorkspace(username);
-  const relRow = (await loadRelationships([username])).get(username);
-  const rec = buildRecommendation(c, period, analysis.thresholds, analysis.names);
-  const hasPrev = period.prevEnd >= period.dataMin;
-  const maxProd = Math.max(1, ...detail.products.map((p) => p.gmv));
-  const seg = c.segment ? SEGMENTS[c.segment] : null;
+  const [p, staff] = await Promise.all([getCreatorProfile(username), getStaff()]);
+  if (!p) notFound();
+  const { row, totals } = p;
+  const e = row.extra!;
+  const delta = e.prev28 > 0 ? ((e.gmv28 - e.prev28) / e.prev28) * 100 : null;
+  const sampled = row.allLines.filter((l) => l.sampled ?? !l.noSample).map(statsOf);
+  const judged = p.samples.filter((s) => s.result === "posted" || s.result === "not_posted");
+  const postedN = judged.filter((s) => s.result === "posted").length;
+  const days = p.samples.map((s) => s.daysToPost).filter((x): x is number => x != null);
+  const chart = p.weeks.map((w) => ({ label: fmtDayLabel(w.week), video: Math.round(w.video), live: Math.round(w.live) }));
+  const headline = row.lines.find((l) => l.status !== "Steady") ?? row.lines[0];
 
   return (
     <div className="space-y-6">
-      <Link href={`/affiliates?${qs}`} className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink">
-        <ArrowLeft className="size-4" /> Affiliates Overview
-      </Link>
+      <Link href="/creators" className="inline-flex items-center gap-1.5 text-[14px] text-ink-3 hover:text-ink"><ArrowLeft className="size-4" /> Creators</Link>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <span className="flex size-14 items-center justify-center rounded-full bg-brand-soft text-[18px] font-semibold text-brand-strong">
-            {initials(username)}
-          </span>
-          <div>
-            <h1 className="text-[26px] font-semibold tracking-tight text-ink">{username}</h1>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <SegmentBadge segment={c.segment} />
-              {c.flags.map((f) => (
-                <Badge key={f} tone="neutral" className="text-[11.5px]">{FLAGS[f].label}</Badge>
-              ))}
-              {detail.doNotContact && <Badge tone="critical">Do not contact</Badge>}
-              {c.contentType && <Badge tone={c.contentType === "live" ? "brand" : "neutral"}>{CONTENT_TYPE_LABEL[c.contentType]} creator</Badge>}
-              <span className="tnum text-[13px] text-ink-3">
-                Rank #{c.rank}{c.followers != null ? ` · ${fmtCompact(c.followers)} followers` : ""}
-              </span>
+      <Card className="p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="flex min-w-0 gap-4">
+            <Avatar name={row.username} size={64} />
+            <div className="min-w-0">
+              <h1 className="flex flex-wrap items-center gap-2 text-[24px] leading-tight font-semibold tracking-tight text-ink">@{row.username} <TierBadge tier={e.tier} score={e.score} why={e.scoreWhy} className="text-[13px]" /></h1>
+              <p className="mt-0.5 text-[14px] text-ink-3">{[e.nickname, row.type, e.followers != null ? `${fmtCompact(e.followers)} followers` : null].filter(Boolean).join(" · ") || "Type unknown"}</p>
+              <p className="mt-3 flex flex-wrap items-center gap-2 text-[13.5px]">
+                <a href={`https://www.tiktok.com/@${encodeURIComponent(row.username)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-ink-2 hover:bg-surface-2"><ExternalLink className="size-3.5" /> TikTok</a>
+                {row.phone ? <a href={`https://wa.me/${row.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-ink-2 hover:bg-surface-2"><MessageCircle className="size-3.5" /> {row.phone}</a> : <span className="rounded-full border border-dashed border-line-strong px-2.5 py-1 text-ink-3">No WhatsApp number</span>}
+                <OwnerPicker username={row.username} ownerId={e.ownerId} staff={staff} canAct={canAct} />
+                {p.firstSeenOn && <span className="text-ink-3">First seen {fmtDayLabel(p.firstSeenOn)}</span>}
+              </p>
             </div>
           </div>
-        </div>
-        <a
-          href={`https://www.tiktok.com/@${username}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3.5 text-[14px] font-medium text-ink shadow-card hover:bg-surface-2"
-        >
-          TikTok profile <ExternalLink className="size-4 text-ink-3" />
-        </a>
-      </div>
-
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <KpiCard label="GMV" value={fmtRM(c.gmv)} delta={hasPrev ? pctChange(c.gmv, c.prevGmv) : undefined} sub={hasPrev ? `was ${fmtRM(c.prevGmv)}` : undefined} />
-        <KpiCard label="Orders" value={fmtInt(c.orders)} delta={hasPrev ? pctChange(c.orders, c.prevOrders) : undefined} />
-        <KpiCard label="Avg. order" value={fmtRM(c.orders ? c.gmv / c.orders : 0, 2)} />
-        <KpiCard label="Commission" value={fmtRM(c.commission)} sub={c.gmv ? `${fmtPct(c.commission / c.gmv, 1)} of GMV` : undefined} />
-        <KpiCard label="New videos / wk" value={c.vpw == null ? "–" : c.vpw.toFixed(1)} sub={c.videosPosted != null ? `${c.videosPosted} posted, ${c.livesPosted ?? 0} LIVE` : "no posting data"} hint="Shoppable videos posted in the transaction snapshot window." />
-        <KpiCard label="Cancelled / returned" value={c.gross ? fmtPct(c.cancelRate, 0) : "–"} invert sub={`${fmtPct(c.codShare, 0)} COD`} />
-      </section>
-
-      {rec ? (
-        <Card className="border-brand/30">
-          <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex size-8 items-center justify-center rounded-lg bg-brand-soft text-brand"><Lightbulb className="size-4" /></span>
-              <div>
-                <h2 className="text-[16px] font-semibold text-ink">{rec.title}</h2>
-                <p className="mt-0.5 max-w-3xl text-[13.5px] text-ink-2">{rec.reason}</p>
-                {seg && <p className="mt-1 text-[13px] text-ink-3">Playbook: {seg.playbook}</p>}
-              </div>
-            </div>
-            {rec.expectedUplift > 0 && (
-              <div className="text-right">
-                <p className="tnum text-[20px] font-semibold text-good">+{fmtRM(rec.expectedUplift)}</p>
-                <p className="text-[12px] text-ink-3" title="An assumption-based scenario, not a forecast or a target.">scenario (assumption)</p>
-              </div>
-            )}
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <OpenPanelButton username={row.username} className="inline-flex h-10 items-center rounded-lg bg-brand px-4 text-[14.5px] font-medium text-white hover:bg-brand-strong" label="Message / Record Action" />
+            <p className="flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
+              {headline && <span title={STATUS_HELP[headline.status]}><Badge tone={TONE[headline.status]}>{headline.status}</Badge></span>}
+              {row.overdue && <Badge tone="critical">Promise overdue</Badge>}
+              <span>{row.lastContactedOn ? `Contacted ${fmtDayLabel(row.lastContactedOn)}` : "Not contacted yet"}</span>
+              {e.nextLabel && <span>· {e.nextLabel}</span>}
+            </p>
           </div>
-          <MessageBox className="m-5 rounded-lg border border-line bg-surface-2 p-4" en={rec.instruction} ms={rec.instructionMs} phone={c.phone} />
-          <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-3.5">
-          </div>
-        </Card>
-      ) : (
-        <Card className="px-5 py-4 text-[14px] text-ink-2">
-          {seg ? <>No action needed right now. {seg.summary}</> : "Below the seller threshold – no recommendation for this period."}
-        </Card>
-      )}
-
-      <WorkspaceCard username={username} ws={ws} relRow={relRow} canEdit={canEdit} />
-
-      <section className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader title="Sales over time" description="Valid GMV by content type." />
-          <div className="px-5 pb-5">
-            <TrendChart data={detail.trend} series={SERIES} weekly={detail.bucket === "week"} height={250} />
-          </div>
-        </Card>
-        <Card>
-          <CardHeader title="Products" description="Share of this creator's GMV." />
-          <ul className="px-5 pb-4">
-            {detail.products.slice(0, 7).map((p) => (
-              <li key={p.productId} className="border-t border-line py-2.5 first:border-t-0">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-[13.5px] leading-snug text-ink">{p.name}</span>
-                  <span className="tnum shrink-0 text-[13.5px] font-medium text-ink">{fmtRM(p.gmv)}</span>
-                </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
-                  <div className="h-full rounded-full bg-brand" style={{ width: `${(p.gmv / maxProd) * 100}%` }} />
-                </div>
-              </li>
-            ))}
-            {!detail.products.length && <li className="py-6 text-center text-[13px] text-ink-3">No sales in this period.</li>}
-          </ul>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader title="Top videos" description="Videos that sold in this period, with their age – old videos still earning are your evergreen winners." />
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse">
-            <thead>
-              <tr>
-                <Th>Video</Th>
-                <Th>Posted</Th>
-                <Th align="right">Age</Th>
-                <Th align="right">GMV</Th>
-                <Th align="right">Orders</Th>
-                <Th align="right">Views</Th>
-                <Th align="right">CTR</Th>
-                <Th align="right">GPM</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.videos.map((v) => (
-                <tr key={v.videoId} className="hover:bg-surface-2/60">
-                  <Td className="max-w-[320px]">
-                    {v.link ? (
-                      <a href={v.link} target="_blank" rel="noopener noreferrer" className="line-clamp-1 text-ink hover:text-brand hover:underline">
-                        {v.title || `Video ${v.videoId.slice(-6)}`}
-                      </a>
-                    ) : (
-                      <span className="line-clamp-1">{v.title || `Video ${v.videoId.slice(-6)}`}</span>
-                    )}
-                  </Td>
-                  <Td className="whitespace-nowrap text-ink-2">{v.postedAt ? fmtDate(v.postedAt) : "–"}</Td>
-                  <Td align="right" className="text-ink-2">{v.ageDays == null ? "–" : `${Math.round(v.ageDays)}d`}</Td>
-                  <Td align="right" className="font-medium">{fmtRM(v.gmv)}</Td>
-                  <Td align="right">{fmtInt(v.orders)}</Td>
-                  <Td align="right">{v.views == null ? "–" : fmtCompact(v.views)}</Td>
-                  <Td align="right">{v.ctr == null ? "–" : fmtPct(v.ctr, 1)}</Td>
-                  <Td align="right">{v.gpm == null ? "–" : fmtRM(v.gpm)}</Td>
-                </tr>
-              ))}
-              {!detail.videos.length && (
-                <tr><Td colSpan={8} className="py-8 text-center text-ink-3">No video sales in this period.</Td></tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </Card>
 
-      <CreatorExtras username={username} canEdit={canPhone} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-testid="profile-tiles">
+        <Tile label="Total sales" value={fmtRM(totals.gmv)} sub={`${totals.orders} orders · ${totals.units} units`} />
+        <Tile label="Last 28 days" value={fmtRM(e.gmv28)} sub={delta == null ? "no earlier period" : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(delta))}% vs before`} />
+        <Tile label="Average order" value={totals.aov ? fmtRM(totals.aov) : "–"} sub={totals.returnPct != null ? `${totals.returnPct.toFixed(1)}% returned or cancelled` : undefined} />
+        <Tile label="Commission, 90 days" value={fmtRM(totals.commission90)} />
+        <Tile label="Videos · LIVE" value={`${e.videosAll} · ${e.livesAll}`} sub={`${e.videos28} · ${e.lives28} in 28 days`} />
+        <Tile label="Posts what we send" value={judged.length ? `${postedN} of ${judged.length}` : e.fulfilmentPct != null ? `${Math.round(e.fulfilmentPct)}%` : "–"} sub={days.length ? `posts ${Math.round(days.reduce((a, b) => a + b, 0) / days.length)} days after delivery` : e.fulfilmentPct != null && !judged.length ? "TikTok fulfilment rate" : undefined} />
+      </div>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader title="TikTok sample stats" description="From the sample analysis export." />
-          <div className="px-5 pb-5">
-            {detail.sample ? (
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[14px]">
-                {[
-                  ["Requested", fmtInt(detail.sample.requested)],
-                  ["Shipped", fmtInt(detail.sample.shipped)],
-                  ["Posting rate", fmtPct(detail.sample.postingRate, 0)],
-                  ["Videos / LIVEs", `${detail.sample.videos} / ${detail.sample.lives}`],
-                  ["45-day ROI", detail.sample.roi45.toFixed(1)],
-                  ["90-day ROI", detail.sample.roi90.toFixed(1)],
-                ].map(([k, v]) => (
-                  <div key={k}>
-                    <dt className="text-[12.5px] text-ink-3">{k}</dt>
-                    <dd className="tnum font-medium text-ink">{v}</dd>
-                  </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <Section title="Sales by week" hint="Last 26 weeks, split by where the sale came from" className="lg:col-span-2"><SalesChart data={chart} /></Section>
+        <Section title="Creator score" hint={`${e.tier} · ${e.score} out of 100`}>
+          <div className="space-y-3.5">
+            <Bar label="Sales" value={e.scoreParts.sales} max={40} />
+            <Bar label="Reliability" value={e.scoreParts.reliability} max={25} />
+            <Bar label="Consistency" value={e.scoreParts.consistency} max={20} />
+            <Bar label="Reach" value={e.scoreParts.reach} max={15} />
+          </div>
+          {e.creatorGmv != null && <p className="mt-4 border-t border-line pt-3 text-[13px] text-ink-3">TikTok says this creator has sold <b className="text-ink">{fmtRM(e.creatorGmv)}</b> across all shops.</p>}
+        </Section>
+      </div>
+
+      <Section title="Products" hint="Each product has its own status and action">
+        <div className="-mx-2 overflow-x-auto">
+          <table className="w-full min-w-[820px]">
+            <thead><tr className="border-b border-line"><Th>Product</Th><Th>SKU</Th><Th right>Orders</Th><Th right>Videos</Th><Th right>GMV</Th><Th>Status</Th><Th>Action</Th></tr></thead>
+            <tbody className="divide-y divide-line">
+              {row.lines.map((l, i) => (
+                <tr key={l.pid ?? i}>
+                  <Td><p className="font-medium">{l.name}</p><p className="text-[12px] text-ink-3">{l.sampled ? "Sample sent" : l.noSample ? "" : "Sells without a sample"}</p></Td>
+                  <Td className="text-[13px] text-ink-2">{l.skus.join(", ") || "–"}</Td>
+                  <Td right>{l.orders || "–"}</Td>
+                  <Td right>{l.videos || "–"}</Td>
+                  <Td right><span className="font-semibold">{l.gmv > 0 ? fmtRM(l.gmv) : "–"}</span>{l.gmv > 0 && <span className="block text-[12px] text-ink-3">V {Math.round(l.gmvVideo).toLocaleString("en-MY")} · L {Math.round(l.gmvLive).toLocaleString("en-MY")}</span>}</Td>
+                  <Td><Badge tone={TONE[l.status]}>{l.status}</Badge><p className="mt-1 max-w-[220px] text-[12px] text-ink-3">{l.reason}</p></Td>
+                  <Td><LineAction username={row.username} line={l} all={sampled} period="All time" /></Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section title="Samples" hint={p.samples.length ? `${p.samples.length} request${p.samples.length === 1 ? "" : "s"} · posting window ${14} days after delivery` : undefined}>
+        {p.samples.length === 0 ? <p className="text-[14.5px] text-ink-3">No sample requests from this creator yet.</p> : (
+          <div className="-mx-2 overflow-x-auto">
+            <table className="w-full min-w-[760px]" data-testid="samples-table">
+              <thead><tr className="border-b border-line"><Th>Product</Th><Th>Requested</Th><Th>Shipped</Th><Th>Delivered</Th><Th>Post by</Th><Th>Stage</Th><Th>Result</Th></tr></thead>
+              <tbody className="divide-y divide-line">
+                {p.samples.map((s: ProfileSample) => (
+                  <tr key={s.id}>
+                    <Td><p className="font-medium">{s.product}</p>{s.sku && <p className="text-[12px] text-ink-3">{s.sku}</p>}</Td>
+                    <Td>{day(s.requestedOn)}</Td><Td>{day(s.shippedOn)}</Td><Td>{day(s.deliveredOn)}</Td><Td>{day(s.postByOn)}</Td>
+                    <Td className="text-ink-2">{s.stage}</Td>
+                    <Td><Badge tone={RESULT[s.result].tone}>{RESULT[s.result].label}</Badge>{s.daysToPost != null && <span className="ml-1.5 text-[12px] text-ink-3">{s.daysToPost}d</span>}</Td>
+                  </tr>
                 ))}
-              </dl>
-            ) : (
-              <p className="text-[13.5px] text-ink-3">No samples recorded for this creator in this period.</p>
-            )}
-            {detail.cancelReasons.length > 0 && (
-              <div className="mt-5 border-t border-line pt-4">
-                <p className="mb-2 text-[12.5px] font-medium text-ink-3">Why orders were cancelled</p>
-                <ul className="space-y-1.5 text-[13.5px]">
-                  {detail.cancelReasons.map((r) => (
-                    <li key={r.reason} className="flex justify-between gap-3">
-                      <span className="text-ink-2">{r.reason}</span>
-                      <span className="tnum font-medium">{r.n}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
-        </Card>
+        )}
+      </Section>
 
-        <Card>
-          <CardHeader title="Notes" />
-          <div className="px-5 pb-5">
-            <NotesForm username={username} notes={detail.notes ?? ""} doNotContact={detail.doNotContact} canEdit={canEdit} />
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Section title="Latest videos" hint="Views and sales are lifetime figures">
+          {p.videos.length === 0 ? <p className="text-[14.5px] text-ink-3">No videos found yet.</p> : (
+            <ul className="divide-y divide-line" data-testid="videos-list">
+              {p.videos.map((v) => (
+                <li key={v.id} className="flex items-start justify-between gap-3 py-2.5">
+                  <div className="min-w-0"><p className="truncate text-[14px] font-medium text-ink">{v.title ?? "Untitled video"}</p><p className="text-[12.5px] text-ink-3">{day(v.postedOn)}{v.products.length ? ` · ${v.products.slice(0, 2).join(", ")}` : ""}</p></div>
+                  <div className="tnum shrink-0 text-right"><p className="text-[14px] font-semibold text-ink">{v.gmv > 0 ? fmtRM(v.gmv) : "–"}</p><p className="text-[12.5px] text-ink-3">{fmtCompact(v.views)} views · {v.units} sold</p></div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+        <Section title="Latest LIVE sessions">
+          {p.lives.length === 0 ? <p className="text-[14.5px] text-ink-3">No LIVE sessions found yet.</p> : (
+            <ul className="divide-y divide-line" data-testid="lives-list">
+              {p.lives.map((l) => (
+                <li key={l.id} className="flex items-start justify-between gap-3 py-2.5">
+                  <div className="min-w-0"><p className="truncate text-[14px] font-medium text-ink">{l.title ?? "LIVE"}</p><p className="text-[12.5px] text-ink-3">{day(l.on)}{l.minutes ? ` · ${Math.round(l.minutes)} min` : ""} · {fmtCompact(l.viewers)} viewers{l.newFollowers ? ` · +${l.newFollowers} followers` : ""}</p></div>
+                  <div className="tnum shrink-0 text-right"><p className="text-[14px] font-semibold text-ink">{l.gmv > 0 ? fmtRM(l.gmv) : "–"}</p><p className="text-[12.5px] text-ink-3">{l.items} sold</p></div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      </div>
+
+      <Section title="Latest orders" hint="Affiliate orders credited to this creator">
+        {p.orders.length === 0 ? <p className="text-[14.5px] text-ink-3">No orders yet.</p> : (
+          <div className="-mx-2 overflow-x-auto">
+            <table className="w-full min-w-[620px]" data-testid="orders-table">
+              <thead><tr className="border-b border-line"><Th>Date</Th><Th>Order</Th><Th>Product</Th><Th>From</Th><Th right>Qty</Th><Th right>Amount</Th><Th>Counted?</Th></tr></thead>
+              <tbody className="divide-y divide-line">
+                {p.orders.map((o) => (
+                  <tr key={`${o.orderId}-${o.product}`}>
+                    <Td>{day(o.on)}</Td><Td className="text-[13px] text-ink-3">{o.orderId}</Td><Td>{o.product}</Td><Td>{o.type === "Livestream" ? "LIVE" : o.type}</Td><Td right>{o.qty}</Td><Td right>{fmtRM(o.amount, 2)}</Td>
+                    <Td><Badge tone={o.state === "Counted" ? "good" : o.state === "Returned" ? "warn" : "critical"}>{o.state}</Badge></Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </Card>
-
-        <Card>
-          <CardHeader title="Action history" />
-          <ul className="px-5 pb-4">
-            {detail.history.map((a) => (
-              <li key={a.id} className="border-t border-line py-3 first:border-t-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13.5px] font-medium text-ink">{a.title}</span>
-                  <Badge tone={STATUS_TONE[a.status]}>{a.status.replace("_", " ")}</Badge>
-                </div>
-                <p className="mt-0.5 text-[12.5px] text-ink-3">{fmtDate(a.createdAt)}</p>
-              </li>
-            ))}
-            {!detail.history.length && <li className="py-6 text-center text-[13px] text-ink-3">No actions yet.</li>}
-          </ul>
-        </Card>
-      </section>
+        )}
+      </Section>
     </div>
   );
 }

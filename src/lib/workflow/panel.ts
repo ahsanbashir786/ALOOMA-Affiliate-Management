@@ -9,6 +9,8 @@ import { getWorkflowStates } from "./events";
 import { RELATIONSHIP } from "./relationship";
 import { loadRelationships } from "./relationships";
 import { getCreatorWorkspace } from "./timeline";
+import { hasSyncedData } from "@/lib/creators/load";
+import { getCreatorProfile } from "@/lib/creators/profile";
 
 type Tone = "neutral" | "brand" | "good" | "warn" | "critical" | "serious";
 
@@ -43,6 +45,13 @@ export type PanelData = {
   canAct: boolean;
 };
 
+const STATUS_TONE: Record<string, Tone> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
+/** With synced data the badge on top is the creator's headline status, the same word the Creators table shows. */
+function synRelationship(lines: { status: string; reason: string }[]): PanelData["relationship"] {
+  const l = lines.find((x) => x.status !== "Steady") ?? lines[0];
+  return { key: l.status.toLowerCase(), label: l.status, tone: STATUS_TONE[l.status] ?? "neutral", hint: l.reason };
+}
+
 export async function getCreatorPanel(username: string, canAct: boolean): Promise<PanelData> {
   const today = todayKL();
   const [rel, comms, lines, ws, states, contact] = await Promise.all([
@@ -76,6 +85,10 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
     const first = l.videos.map((v) => v.postedAt).filter(Boolean).sort()[0];
     return first && l.deliveredAt ? daysBetweenISO(String(l.deliveredAt).slice(0, 10), String(first).slice(0, 10)) : null;
   }).filter((x): x is number => x != null && x >= 0);
+  // Once TikTok data is synced, the numbers come from it (the same as the Creators page).
+  const syn = (await hasSyncedData()) ? await getCreatorProfile(username) : null;
+  const sj = syn?.samples.filter((x) => x.result === "posted" || x.result === "not_posted") ?? [];
+  const sd = syn?.samples.map((x) => x.daysToPost).filter((x): x is number => x != null) ?? [];
   const lastA = ws.entries.find((e) => !e.undone && e.kind === "contacted");
   const judged = comms.filter((c) => c.state === "fulfilled" || c.dueOn < today);
 
@@ -94,7 +107,7 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
 
   return {
     username,
-    relationship: { key: r, ...RELATIONSHIP[r] },
+    relationship: syn ? synRelationship(syn.row.lines) : { key: r, ...RELATIONSHIP[r] },
     phone: contact[0]?.phone ?? null,
     paused: st?.status === "paused",
     next,
@@ -113,7 +126,14 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
         timing: c.timing,
         candidates: c.candidates.map((x) => ({ contentId: x.contentId, kind: x.kind, link: x.link, postedLabel: x.postedOn ? fmtDayLabel(x.postedOn) : null })),
       })),
-    samples: sampleLines.map((l) => ({
+    samples: syn
+      ? syn.samples.map((x, i) => ({
+          id: i + 1, product: x.product, qty: 1, approvedLabel: x.requestedOn ? fmtDayLabel(x.requestedOn) : null, shippedLabel: x.shippedOn ? fmtDayLabel(x.shippedOn) : null,
+          deliveredLabel: x.deliveredOn ? fmtDayLabel(x.deliveredOn) : null, postByLabel: x.postByOn ? fmtDayLabel(x.postByOn) : null, agreed: false, stateLabel: x.stage,
+          stateTone: (x.result === "posted" ? "good" : x.result === "not_posted" ? "critical" : x.result === "waiting" ? "brand" : x.result === "pending" ? "warn" : "neutral") as Tone,
+          result: x.result === "posted" ? "posted_video" : x.result,
+        }))
+      : sampleLines.map((l) => ({
       id: l.id,
       product: l.name ?? l.variation ?? l.sku ?? "Sample",
       qty: l.quantity,
@@ -131,15 +151,15 @@ export async function getCreatorPanel(username: string, canAct: boolean): Promis
     profile: {
       promisesJudged: judged.length,
       promisesOnTime: judged.filter((c) => c.state === "fulfilled" && c.timing === "on_time").length,
-      videos28: vid?.n ?? 0,
-      lastSaleLabel: rel.get(username)?.lastSaleOn ? fmtDayLabel(rel.get(username)!.lastSaleOn!) : null,
+      videos28: syn ? syn.row.extra!.videos28 : (vid?.n ?? 0),
+      lastSaleLabel: syn ? (syn.row.extra!.lastSaleOn ? fmtDayLabel(syn.row.extra!.lastSaleOn) : null) : rel.get(username)?.lastSaleOn ? fmtDayLabel(rel.get(username)!.lastSaleOn!) : null,
     },
     performance: {
-      weeks,
-      gmv28: weeks.slice(4).reduce((a, b) => a + b, 0),
-      prev28: weeks.slice(0, 4).reduce((a, b) => a + b, 0),
-      postingRate: judgedLines.length ? { posted: posted.length, judged: judgedLines.length } : null,
-      avgDaysToPost: days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : null,
+      weeks: syn ? syn.row.extra!.weeks : weeks,
+      gmv28: syn ? syn.row.extra!.gmv28 : weeks.slice(4).reduce((a, b) => a + b, 0),
+      prev28: syn ? syn.row.extra!.prev28 : weeks.slice(0, 4).reduce((a, b) => a + b, 0),
+      postingRate: syn ? (sj.length ? { posted: sj.filter((x) => x.result === "posted").length, judged: sj.length } : null) : judgedLines.length ? { posted: posted.length, judged: judgedLines.length } : null,
+      avgDaysToPost: syn ? (sd.length ? Math.round(sd.reduce((a, b) => a + b, 0) / sd.length) : null) : days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : null,
       lastAction: lastA ? { text: lastA.text, by: lastA.by ?? null, at: fmtDayLabel(lastA.day) } : null,
       nextFollowUp: st?.nextOn ? fmtDayLabel(st.nextOn) : null,
       contacts: st?.contactTimes.length ?? 0,

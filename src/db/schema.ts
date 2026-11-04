@@ -932,3 +932,15 @@ export const ttVideoWindows = pgTable(
   },
   (t) => [primaryKey({ columns: [t.videoId, t.windowStart] }), index("tt_video_windows_video").on(t.videoId)],
 );
+
+// Mirrors migrations/0009_creator_owners.sql
+export const creatorOwners = pgTable(
+  "creator_owners",
+  {
+    username: text("username").primaryKey(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    assignedAt: tz("assigned_at").notNull().defaultNow(),
+    assignedBy: uuid("assigned_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [index("creator_owners_user").on(t.userId)],
+);

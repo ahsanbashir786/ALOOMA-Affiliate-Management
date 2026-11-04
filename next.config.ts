@@ -13,10 +13,8 @@ const nextConfig: NextConfig = {
     },
   },
   serverExternalPackages: ["exceljs", "postgres"],
-  // The old Creators list is now the Affiliates Overview.
   async redirects() {
     return [
-      { source: "/creators", destination: "/affiliates", permanent: false },
       { source: "/actions", destination: "/today", permanent: false },
     ];
   },

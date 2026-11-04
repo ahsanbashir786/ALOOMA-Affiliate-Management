@@ -19,6 +19,13 @@ export async function buildDirectoryWorkbook(items: DirRow[], dataEnd: string | 
     { header: "Videos", key: "v", width: 8 }, { header: "Videos, last 28 days", key: "v28", width: 11 }, { header: "Last video", key: "lv", width: 13 },
     { header: "Status", key: "st", width: 11 }, { header: "Why", key: "why", width: 44 }, { header: "Action", key: "ac", width: 10 }, { header: "What to do", key: "hint", width: 26 },
     { header: "Total GMV (RM)", key: "t", width: 15, money: true },
+    ...(items.some((r) => r.extra)
+      ? [
+          { header: "Followers", key: "fo", width: 11 }, { header: "Tier", key: "ti", width: 9 }, { header: "Score", key: "sc", width: 8 },
+          { header: "Owner", key: "ow", width: 16 }, { header: "GMV last 28 days (RM)", key: "g28", width: 16, money: true }, { header: "Latest sale", key: "ls", width: 12 },
+          { header: "Videos (all)", key: "va", width: 10 }, { header: "LIVE sessions", key: "la", width: 11 }, { header: "Sample requests waiting", key: "rq", width: 12 },
+        ]
+      : []),
   ];
   ws.columns = cols.map((c) => ({ header: c.header, key: c.key, width: c.width, style: c.money ? { numFmt: MONEY } : {} }));
   const head = ws.getRow(1);
@@ -33,12 +40,13 @@ export async function buildDirectoryWorkbook(items: DirRow[], dataEnd: string | 
         lc: r.lastContactedOn ?? "", od: r.overdue ? "Yes" : "", p: l.noSample ? "" : l.name, sku: l.skus.join(", "),
         o: l.orders, ov: l.ordersVideo, ol: l.ordersLive, g: l.gmv, gv: l.gmvVideo, gl: l.gmvLive,
         v: l.videos, v28: l.videos28, lv: l.lastVideoOn ?? "", st: l.status, why: l.reason, ac: l.action, hint: ACTION_HINT[l.action], t: r.gmvAll,
+        ...(r.extra ? { fo: r.extra.followers ?? "", ti: r.extra.tier, sc: r.extra.score, ow: r.extra.ownerName ?? "", g28: r.extra.gmv28, ls: r.extra.lastSaleOn ?? "", va: r.extra.videosAll, la: r.extra.livesAll, rq: r.extra.requestsOpen } : {}),
       });
     }
   }
   const note = wb.addWorksheet("About");
   note.addRows([
-    ["Valid orders only (cancelled and returned are excluded)."],
+    ["Valid orders only (cancelled and fully returned are excluded). Sales = unit price × quantity from TikTok affiliate orders."],
     ["Orders, GMV and videos are per product (all its sizes together). V = from videos, L = from LIVE."],
     [`“Lately” = the latest 28 days of orders held${dataEnd ? `, ending ${dataEnd}` : ""}.`],
     ["Status and Action are worked out for each product line separately."],
