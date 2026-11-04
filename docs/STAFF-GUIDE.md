@@ -1,6 +1,6 @@
 # Staff guide – the daily routine
 
-The four Work screens follow one flow, shown as a step bar at the top of each: **1 Find** (Affiliate Data Management) → **2 Act** (Daily Actions) → **3 Track** (Progress, owner) → **4 Review** (Command centre, owner). Every number on the later screens opens the earlier screen already filtered, and every Daily Actions row has **Open in table**. Open **Daily Actions** (formerly Today's Work). Each row answers four things: **who** (name and relationship), **why now** (coloured chips and one line of evidence),
+Open **Daily Actions** (formerly Today's Work). Each row answers four things: **who** (name and relationship), **why now** (coloured chips and one line of evidence),
 **what to do** (the buttons) and **by when** (the deadline chip on the right). Open **Details** for the full reasons, sample timeline, last actions and the message.
 
 | Tab | What is in it |

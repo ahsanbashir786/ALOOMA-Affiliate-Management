@@ -609,8 +609,6 @@ async function main() {
   const pnl = await getCreatorPanel(cM, true);
   check("25c the creator panel has a Performance block: 8 weekly points, 28-day change, posting rate, last action, follow-up", pnl.performance.weeks.length === 8 && pnl.performance.gmv28 + pnl.performance.prev28 > 0 && !!pnl.performance.lastAction && /^Contacted/.test(pnl.performance.lastAction.text) && pnl.performance.contacts >= 1, JSON.stringify(pnl.performance));
 
-  const notDone = (await D({ q: cM, samples: "with", done: "no" })).rows.find((r) => r.username === cM);
-  check("27a 'Not Done Today' hides the product line whose action was recorded today and keeps the others", !notDone || !notDone.lines.some((l) => l.pid === P1));
   const cR = "zz_test_results";
   await mkCreators([cR]);
   await imp("affiliate_orders", AFF, [

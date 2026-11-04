@@ -60,8 +60,6 @@ export type DirOpts = {
   type?: "video" | "live" | "both" | "";
   wa?: "yes" | "no" | "";
   contact?: "never" | "recent" | "overdue" | "";
-  /** "no" = only lines whose action has not been recorded today. */
-  done?: "no" | "";
   sort?: DirSort;
   /** Period shown in the table's orders, GMV and videos (status always uses the latest 28 days). */
   range?: { start: string; end: string };
@@ -236,7 +234,6 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       (opts.contact === "never" ? !a.lastContactedOn : opts.contact === "recent" ? !!a.lastContactedOn && a.lastContactedOn >= weekAgo : a.overdue));
   const lineOk = (l: DirLine, skip?: "status" | "action") =>
     (!opts.product || l.pid === opts.product) &&
-    (opts.done !== "no" || l.doneOn !== today) &&
     (skip === "status" || !opts.status || l.status === opts.status) &&
     (skip === "action" || !opts.action || (opts.action === "todo" ? NEEDS_ACTION.includes(l.action) : l.action === opts.action));
 

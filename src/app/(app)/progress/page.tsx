@@ -8,8 +8,7 @@ import { getActionResults } from "@/lib/workflow/results";
 import { RELATIONSHIP, type Relationship } from "@/lib/workflow/relationship";
 import { fmtDayLabel } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
-import { Badge } from "@/components/ui/primitives";
-import { WorkHeader } from "@/components/work/work-header";
+import { Badge, PageHeader } from "@/components/ui/primitives";
 import { fmtRM, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Progress" };
@@ -83,11 +82,9 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
 
   return (
     <div className="space-y-6">
-      <WorkHeader
-        current="track"
+      <PageHeader
         title="Progress"
-        isOwner
-        purpose={`${fmtDayLabel(p.window.start)} – ${fmtDayLabel(p.window.end)} · ${days} days · Are staff working, did it help sales, and what needs you?`}
+        description={`${fmtDayLabel(p.window.start)} – ${fmtDayLabel(p.window.end)} · ${days} days · Malaysia time`}
         actions={
           <div role="group" aria-label="Period" className="inline-flex overflow-hidden rounded-lg border border-line-strong text-[14px] font-medium">
             {PROGRESS_RANGES.map((d) => (
@@ -97,28 +94,7 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
         }
       />
 
-      <div className="grid gap-3 lg:grid-cols-3" data-testid="progress-answers" aria-label="Three answers">
-        <a href="#staff" className="rounded-xl border border-line bg-surface p-4 hover:bg-surface-2">
-          <p className="text-[13px] font-medium text-ink-3">1 · Are staff working?</p>
-          <p className="tnum mt-1 text-[28px] leading-tight font-semibold text-ink">{p.staff.byPerson.reduce((a, b) => a + b.contacts, 0)} <span className="text-[15px] font-normal text-ink-3">actions</span></p>
-          <p className="text-[13px] text-ink-3">{rate == null ? "No follow-ups judged yet" : `${rate}% of follow-ups on time`} · {p.staff.byPerson.length} {p.staff.byPerson.length === 1 ? "person" : "people"}</p>
-        </a>
-        <a href="#results" className="rounded-xl border border-line bg-surface p-4 hover:bg-surface-2">
-          <p className="text-[13px] font-medium text-ink-3">2 · Did it help sales?</p>
-          {res.measured === 0 ? (
-            <><p className="mt-1 text-[20px] leading-tight font-semibold text-ink">Not measured yet</p><p className="text-[13px] text-ink-3">Needs 28 days after first contact{res.waiting > 0 ? ` · ${res.waiting} waiting` : ""}</p></>
-          ) : (
-            <><p className={cn("tnum mt-1 text-[28px] leading-tight font-semibold", resChange != null && resChange < 0 ? "text-critical" : "text-good")}>{resChange == null ? "–" : `${resChange >= 0 ? "▲" : "▼"} ${Math.abs(resChange)}%`}</p><p className="text-[13px] text-ink-3">GMV after vs before · {res.posted} of {res.measured} posted</p></>
-          )}
-        </a>
-        <a href="#decisions" className="rounded-xl border border-line bg-surface p-4 hover:bg-surface-2">
-          <p className="text-[13px] font-medium text-ink-3">3 · What needs me?</p>
-          <p className={cn("tnum mt-1 text-[28px] leading-tight font-semibold", decisions.length > 0 ? "text-warn" : "text-ink")}>{decisions.reduce((a, d) => a + d.count, 0)} <span className="text-[15px] font-normal text-ink-3">to decide</span></p>
-          <p className="text-[13px] text-ink-3">{decisions.length === 0 ? "Nothing right now" : `${decisions.length} kind${decisions.length === 1 ? "" : "s"} of decision`}</p>
-        </a>
-      </div>
-
-      <div id="decisions" className="scroll-mt-24" /><Frame title="Needs your decision" tag="Unresolved exceptions" accent="border-l-warn">
+      <Frame title="Needs your decision" tag="Unresolved exceptions" accent="border-l-warn">
         {decisions.length === 0 ? (
           <p className="text-[14.5px] text-ink-2">Nothing needs a decision right now.</p>
         ) : (
@@ -136,7 +112,7 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
         )}
       </Frame>
 
-      <div id="staff" className="scroll-mt-24" /><Frame title="Staff performance" tag="Who did what – staff-confirmed" accent="border-l-brand">
+      <Frame title="Staff performance" tag="Who did what – staff-confirmed" accent="border-l-brand">
         {p.staff.byPerson.length === 0 ? (
           <p className="text-[14.5px] text-ink-2" data-testid="staff-performance">No staff actions recorded in this period yet.</p>
         ) : (
@@ -150,7 +126,7 @@ export default async function ProgressPage({ searchParams }: PageProps<"/progres
         <p className="text-[13px] text-ink-3">Opening WhatsApp or copying a message is never counted – only the buttons staff press. “Posted after” counts creators with a video in the 28 days after their first contact.</p>
       </Frame>
 
-      <div id="results" className="scroll-mt-24" /><Frame title="Results after action" tag="Sales 28 days after first contact, against the 28 days before – context, not proof" accent="border-l-good">
+      <Frame title="Results after action" tag="Sales 28 days after first contact, against the 28 days before – context, not proof" accent="border-l-good">
         {res.measured === 0 ? (
           <p className="text-[14.5px] text-ink-2" data-testid="results-empty">Not enough history yet. A creator is measured once 28 days have passed since staff first contacted them{res.waiting > 0 ? ` (${res.waiting} contacted too recently)` : ""}. Keep recording actions and this fills in.</p>
         ) : (

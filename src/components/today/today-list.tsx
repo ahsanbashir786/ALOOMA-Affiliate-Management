@@ -187,13 +187,12 @@ function Row({
 
   return (
     <article className="rounded-xl border border-line bg-surface" data-testid={`today-${it.username}`}>
-      <div className="grid items-center gap-x-4 gap-y-3 px-4 py-3.5 md:grid-cols-[minmax(170px,1.1fr)_minmax(220px,2fr)_auto_auto]">
+      <div className="grid items-center gap-x-4 gap-y-3 px-4 py-3.5 md:grid-cols-[minmax(170px,1.1fr)_minmax(220px,2fr)_auto_auto_auto]">
         {/* creator */}
         <div className="flex min-w-0 items-center gap-3">
           {canAct && !it.held ? <input type="checkbox" aria-label={`Select ${it.username}`} checked={selected} onChange={onToggle} className="size-4 shrink-0" /> : <span className="w-4 shrink-0" />}
           <div className="min-w-0">
             <button type="button" onClick={() => panelApi.open(it.username)} className="block max-w-full truncate text-left text-[16px] font-semibold text-ink hover:underline" title="Open details">@{it.username}</button>
-            <a href={`/affiliates?samples=all&q=${encodeURIComponent(it.username)}`} className="text-[12.5px] text-brand hover:underline" data-testid="open-in-table">Open in table →</a>
             <p className="flex items-center gap-1.5 text-[13.5px] text-ink-3" title={it.relationship.hint}><span className={cn("size-2 rounded-full", DOT[it.relationship.tone])} />{it.relationship.label}</p>
             {(it.creatorType || it.gmvLabel) && <p className="text-[12.5px] text-ink-3">{[it.creatorType, it.gmvLabel && `${it.gmvLabel} total`].filter(Boolean).join(" · ")}</p>}
           </div>
@@ -219,10 +218,12 @@ function Row({
           {it.lastAction && <p className="mt-0.5 text-[13px] text-ink-3" data-testid="last-action">Last action: {it.lastAction}</p>}
           {it.suggestPause && <p className="mt-1 text-[13.5px] font-medium text-warn">Review or pause? {it.attempts} recorded contacts, no promise or new content.</p>}
         </div>
-        {/* when + progress */}
-        <div className="flex flex-col gap-1 md:w-36 md:items-end md:text-right">
-          {it.deadline && <Badge tone={it.deadline.tone === "critical" ? "critical" : it.deadline.tone === "warn" ? "serious" : "neutral"}>{it.deadline.label}</Badge>}
-          {focusO && <span className={cn("tnum text-[13px]", focusO.lateDays != null ? "font-semibold text-critical" : "text-ink-3")} title={`${focusO.label}: ${focusO.done} of ${focusO.needed} pieces`}>{focusO.done}/{focusO.needed} posted{it.obligations.length > 1 ? ` · +${it.obligations.length - 1} more` : ""}</span>}
+        {/* deadline */}
+        <div className="md:w-32 md:text-right">{it.deadline && <Badge tone={it.deadline.tone === "critical" ? "critical" : it.deadline.tone === "warn" ? "serious" : "neutral"}>{it.deadline.label}</Badge>}</div>
+        {/* completion */}
+        <div className="tnum text-[14px] md:w-14 md:text-center" title={focusO ? `${focusO.label}: ${focusO.done} of ${focusO.needed} pieces` : undefined}>
+          {focusO ? <span className={cn("font-semibold", focusO.lateDays != null ? "text-critical" : "text-ink")}>{focusO.done}/{focusO.needed}</span> : <span className="text-ink-3">–</span>}
+          {it.obligations.length > 1 && <span className="block text-[12px] font-normal text-ink-3">+{it.obligations.length - 1} more</span>}
         </div>
         {/* controls */}
         {canAct && (

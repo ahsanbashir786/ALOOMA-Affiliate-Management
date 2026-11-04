@@ -5,9 +5,8 @@ import { can, mayEditContacts, requireUser } from "@/lib/auth";
 import { getToday, type TodayRow, type TodayView } from "@/lib/workflow/today";
 import { fmtDateTimeKL, fmtDayLabel } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
-import { WorkHeader } from "@/components/work/work-header";
 import { Pagination } from "@/components/ui/pagination";
-import { Card, EmptyState } from "@/components/ui/primitives";
+import { Card, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { AddCreator } from "@/components/today/add-creator";
 import { TodayList, type TodayItem } from "@/components/today/today-list";
 import { cn } from "@/lib/utils";
@@ -101,11 +100,9 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
 
   return (
     <div className="space-y-6">
-      <WorkHeader
-        current="act"
+      <PageHeader
         title="Daily Actions"
-        isOwner={can(user, "admin")}
-        purpose={`${fmtDayLabel(data.today)} · Message each creator, then record what happened. The list comes from Affiliate Data Management.`}
+        description={`${fmtDayLabel(data.today)} · Malaysia time`}
         actions={canAct ? <div className="flex flex-wrap items-start gap-2"><AddCreator canPhone={mayEditContacts(user)} /></div> : undefined}
       />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Today at a glance">
