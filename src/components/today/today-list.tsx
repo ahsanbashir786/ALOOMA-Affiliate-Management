@@ -2,13 +2,15 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Loader2, MessageSquare, Pencil, Undo2 } from "lucide-react";
-import { useCreatorPanel } from "@/components/creator/creator-panel";
+import { Check, ChevronDown, Loader2, MessageSquare, Pencil, Undo2 } from "lucide-react";
+import { useCreatorPanel, type PanelFocus } from "@/components/creator/creator-panel";
 import { addCommitmentLink, decideCommitmentContent, markContacted, markNeedsHelp, markPromised, pauseCreator, rescheduleCommitmentAction, resumeCreator, undoEvent } from "@/app/actions/workflow";
 import { HELP_REASONS_LIST } from "@/lib/workflow/reasons";
 import { Badge, Button, Input, Select } from "@/components/ui/primitives";
 import { MessageBox } from "@/components/ui/message-box";
 import { followUpMessage } from "@/lib/workflow/messages";
+import { statsOf } from "@/lib/affiliates/action-messages";
+import { NEEDS_ACTION, type CreatorAction, type CreatorStatus } from "@/lib/affiliates/status";
 import { cn } from "@/lib/utils";
 
 export type TodayItem = {
@@ -21,7 +23,10 @@ export type TodayItem = {
   deadline: { label: string; tone: "critical" | "warn" | "neutral" } | null;
   history: { at: string; text: string }[];
   reasons: { kind: string; text: string }[];
-  recs: { type: string; title: string; instruction: string; instructionMs: string | null }[];
+  lines: { pid: string | null; name: string; noSample: boolean; status: CreatorStatus; action: CreatorAction; reason: string; orders: number; gmv: number; gmvVideo: number; gmvLive: number; videos: number; videos28: number; lastVideoLabel: string | null; lastVideoDaysAgo: number | null; doneOn: string | null }[];
+  gmvLabel: string;
+  creatorType: string | null;
+  period: string;
   status: "active" | "paused";
   nextLabel: string | null;
   lastContacted: string | null;
@@ -156,10 +161,14 @@ function Row({
   const [helpDate, setHelpDate] = useState(addDays(today, helpDays));
   const [pauseReason, setPauseReason] = useState("");
   const [resumeOn, setResumeOn] = useState("");
-  const rec = it.recs[0];
   const fallback = followUpMessage(it.username, it.followKind, it.commitment?.dueLabel);
-  const en = rec?.instruction ?? fallback.en;
-  const ms = rec?.instructionMs ?? fallback.ms;
+  const en = fallback.en;
+  const ms = fallback.ms;
+  const lines = it.lines.filter((l) => !l.noSample);
+  const focusFor = (l: TodayItem["lines"][number] | undefined): PanelFocus | undefined =>
+    l ? { action: l.action, status: l.status, product: l.noSample ? null : l.name, productId: l.pid, reason: l.reason, line: l.noSample ? null : statsOf(l), all: lines.map(statsOf), period: it.period } : undefined;
+  // Rows driven by the table (tier 3-4) message from the table line; promises and follow-ups keep their own reminder text.
+  const topLine = it.tier >= 3 ? it.lines.find((l) => NEEDS_ACTION.includes(l.action) && l.action !== "Resume") : undefined;
 
   const panelApi = useCreatorPanel();
   const router = useRouter();
@@ -191,6 +200,20 @@ function Row({
         <div className="min-w-0">
           <p className="text-[14px] font-semibold text-ink">{primaryAction(it)}</p>
           <p className="text-[14px] leading-snug text-ink-2">{lead}</p>
+          {it.lines.length > 0 && (
+            <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Products">
+              {it.lines.slice(0, 3).map((l) => (
+                <li key={l.pid ?? "none"}>
+                  <button type="button" onClick={() => panelApi.open(it.username, focusFor(l))} title={`${l.status}: ${l.reason}`} className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-surface-2 px-2.5 py-0.5 text-[12.5px] text-ink-2 hover:border-brand hover:text-ink">
+                    <span className="max-w-[170px] truncate">{l.noSample ? "No sample" : l.name}</span>
+                    <span className="text-ink-3">·</span><span>{l.status}</span><span className="text-ink-3">·</span><b className="font-semibold text-ink">{l.action}</b>
+                    {l.doneOn && <Check className="size-3 text-good" aria-label="Done" />}
+                  </button>
+                </li>
+              ))}
+              {it.lines.length > 3 && <li className="self-center text-[12.5px] text-ink-3">+{it.lines.length - 3} more</li>}
+            </ul>
+          )}
           {it.lastAction && <p className="mt-0.5 text-[13px] text-ink-3" data-testid="last-action">Last action: {it.lastAction}</p>}
           {it.suggestPause && <p className="mt-1 text-[13.5px] font-medium text-warn">Review or pause? {it.attempts} recorded contacts, no promise or new content.</p>}
         </div>
@@ -206,7 +229,7 @@ function Row({
           <div className="flex items-center gap-2" data-menu={it.username}>
             {it.status === "active" ? (
               <>
-                <Button size="sm" variant="secondary" onClick={() => setPanel(panel === "message" ? null : "message")}><MessageSquare className="size-4" /> Message</Button>
+                <Button size="sm" variant="secondary" onClick={() => (topLine ? panelApi.open(it.username, focusFor(topLine)) : setPanel(panel === "message" ? null : "message"))}><MessageSquare className="size-4" /> Message</Button>
                 <div className="relative">
                   <Button size="sm" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)}><Pencil className="size-4" /> Update <ChevronDown className="size-3.5" /></Button>
                   {menu && (

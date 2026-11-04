@@ -1,7 +1,5 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { db } from "@/db";
-import { recommendations } from "@/db/schema";
 import { AL, rows } from "@/lib/analytics/sql";
 import { dayKL, daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { getCommitments, type CommitmentRow } from "./commitments";
@@ -9,13 +7,18 @@ import { getWorkflowStates, loadEvents } from "./events";
 import { unansweredAttempts, type FollowupKind } from "./replay";
 import { loadRelationships } from "./relationships";
 import type { Relationship } from "./relationship";
+import { loadDirectoryRows, type DirLine } from "./directory";
+import { NEEDS_ACTION, type CreatorAction, type CreatorStatus } from "@/lib/affiliates/status";
 import { getWorkflowSettings, type WorkflowSettings } from "./settings";
+
+/** One product line of a creator, from the same engine as the Affiliate Data table. */
+export type TodayLine = { pid: string | null; name: string; noSample: boolean; status: CreatorStatus; action: CreatorAction; reason: string; orders: number; gmv: number; gmvVideo: number; gmvLive: number; videos: number; videos28: number; lastVideoLabel: string | null; lastVideoDaysAgo: number | null; doneOn: string | null };
+export type DoneItem = { id: number; username: string; text: string; by: string | null; at: string; kind: string };
 
 export type ReasonKind = "promise_overdue" | "promise_review" | "sample_review" | "followup_due" | "help_due" | "resume_due" | "sample" | "development" | "new_creator";
 
 /** What kind of opportunity a recommendation is (so recruitment, development and reactivation read differently). */
 export type OpportunityKind = "recruit" | "develop" | "reactivate";
-const OPPORTUNITY: Record<string, OpportunityKind> = { untapped: "recruit", sample_no_post: "develop", inactive: "reactivate", slipping: "reactivate" };
 
 export type Obligation = {
   id: number;
@@ -43,7 +46,10 @@ export type TodayRow = {
   phone: string | null;
   tier: 1 | 2 | 3 | 4;
   reasons: { kind: ReasonKind; text: string }[];
-  recs: { type: string; title: string; reason: string; instruction: string; instructionMs: string | null; priority: number }[];
+  /** Every product line with its status and action (same rules as the table). */
+  lines: TodayLine[];
+  gmvAll: number;
+  type: string | null;
   status: "active" | "paused";
   pausedReason: string | null;
   resumeOn: string | null;
@@ -70,10 +76,12 @@ export type TodayRow = {
   needsVerify: boolean;
 };
 
-export type TodayView = "focus" | "due" | "verify" | "samples" | "development" | "scheduled" | "paused";
+export type TodayView = "focus" | "due" | "verify" | "samples" | "development" | "scheduled" | "paused" | "done";
 
 export type TodayData = {
   today: string;
+  /** The dates the line figures cover, for messages. */
+  period: string;
   cfg: WorkflowSettings;
   rows: TodayRow[];
   counts: Record<TodayView, number>;
@@ -82,29 +90,32 @@ export type TodayData = {
   exceptions: number;
   /** Sample exceptions that are not about one creator: unmatched receivers, shipped-but-not-delivered. */
   sampleExceptions: { unmatched: number; stuck: number; review: number };
+  /** Everything staff recorded today (Malaysia time), newest first. */
+  doneToday: DoneItem[];
 };
 
-const SAMPLE_TYPES = new Set(["sample_chase", "stop_samples", "sample_no_post"]);
+const URGENT_ACTIONS: CreatorAction[] = ["Chase", "Coach", "Revive"];
+const toLine = (l: DirLine): TodayLine => ({ pid: l.pid, name: l.name, noSample: l.noSample, status: l.status, action: l.action, reason: l.reason, orders: l.orders, gmv: l.gmv, gmvVideo: l.gmvVideo, gmvLive: l.gmvLive, videos: l.videos, videos28: l.videos28, lastVideoLabel: l.lastVideoLabel, lastVideoDaysAgo: l.lastVideoDaysAgo, doneOn: l.doneOn });
 const HIST: Record<string, string> = { contacted: "Contacted", promised: "Promise recorded", rescheduled: "Date moved", needs_help: "Needs help", paused: "Paused", resumed: "Resumed" };
 
 export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
   const today = todayKL();
-  const [cfg, states, comms, recRows] = await Promise.all([
+  const [cfg, states, comms, dirData] = await Promise.all([
     getWorkflowSettings(),
     getWorkflowStates(),
     getCommitments(),
-    db.select().from(recommendations).where(sql`${recommendations.active}`),
+    loadDirectoryRows(),
   ]);
+  const dirBy = new Map(dirData.all.map((r) => [r.username, r]));
+  const needsOf = (u: string): DirLine[] => (dirBy.get(u)?.lines ?? []).filter((l) => !l.noSample && NEEDS_ACTION.includes(l.action) && l.action !== "Resume");
 
   // Outstanding = not fulfilled. Reminders are decided per commitment below; creators are only grouped for display.
   const outsBy = new Map<string, CommitmentRow[]>();
   for (const c of comms) if (c.state !== "fulfilled") outsBy.set(c.username, [...(outsBy.get(c.username) ?? []), c].sort((x, y) => x.dueOn.localeCompare(y.dueOn) || x.id - y.id));
-  const recBy = new Map<string, typeof recRows>();
-  for (const r of recRows) recBy.set(r.username, [...(recBy.get(r.username) ?? []), r]);
 
   // creators added by hand to start outreach (no sample or export row needed)
   const manualSet = new Set((await rows<{ username: string }>(sql`select username from creators where source = 'manual'`)).map((m) => m.username));
-  const names = new Set<string>([...recBy.keys(), ...outsBy.keys(), ...manualSet]);
+  const names = new Set<string>([...dirData.all.filter((r) => !r.paused && needsOf(r.username).length).map((r) => r.username), ...outsBy.keys(), ...manualSet]);
   for (const [u, st] of states) if (st.nextOn || st.status === "paused") names.add(u);
   const list = [...names];
   const [relBy, evAll] = await Promise.all([loadRelationships(list), loadEvents(list)]);
@@ -158,7 +169,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
     const actionable = outs.filter((c) => c.dueOn < today && (reminderFor(c)?.dueOn ?? c.dueOn) <= today);
     const reviewC = outs.find((c) => c.candidates.length > 0) ?? null;
     const comm = actionable[0] ?? reviewC ?? outs[0] ?? null;
-    const recs = (recBy.get(u) ?? []).sort((a, b) => b.priority - a.priority);
+    const need = needsOf(u).sort((a, b) => URGENT_ACTIONS.indexOf(a.action) - URGENT_ACTIONS.indexOf(b.action) || b.gmv - a.gmv);
     const reasons: TodayRow["reasons"] = [];
     let tier: TodayRow["tier"] | null = null;
     let held: string | null = null;
@@ -204,20 +215,20 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
         tier = tier ?? 2;
       }
       if (tier == null) {
-        // System recommendations only appear when nothing already covers this creator: no scheduled reminder,
+        // Table actions only appear when nothing already covers this creator: no scheduled reminder,
         // no promise still to come, no pause (so the same person is never chased twice for the same thing).
         const future = st?.open.filter((r) => r.dueOn > today).map((r) => r.dueOn).sort()[0] ?? null;
         const promiseAhead = outs.find((c) => c.dueOn >= today)?.dueOn ?? null;
         if (future || promiseAhead) {
           const overdueRearmed = outs.some((c) => c.dueOn < today);
           held = promiseAhead && !(overdueRearmed && future) ? `Promised ${fmtDayLabel(promiseAhead)} – waiting` : `Follow-up on ${fmtDayLabel(future!)}`;
-        } else if (recs.length) {
-          const sampleRec = recs.some((r) => SAMPLE_TYPES.has(r.type));
-          tier = sampleRec ? 3 : 4;
-          for (const r of recs) reasons.push({ kind: SAMPLE_TYPES.has(r.type) ? "sample" : "development", text: r.reason });
         } else if (manualSet.has(u) && !st?.lastContactedAt) {
           tier = 4;
           reasons.push({ kind: "new_creator", text: "Added by hand – not contacted yet." });
+        } else if (need.length) {
+          const urgent = need.some((l) => URGENT_ACTIONS.includes(l.action));
+          tier = urgent ? 3 : 4;
+          for (const l of need.slice(0, 2)) reasons.push({ kind: urgent ? "sample" : "development", text: `${l.action}${l.noSample ? "" : ` – ${l.name}`}: ${l.reason}` });
         }
       }
     }
@@ -254,7 +265,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
     out.push({
       username: u,
       relationship: relBy.get(u)?.status ?? "prospect",
-      opportunity: tier === 4 ? (manualSet.has(u) && !recs.length ? "recruit" : OPPORTUNITY[recs[0]?.type ?? ""] ?? "develop") : null,
+      opportunity: tier === 4 ? (manualSet.has(u) && !need.length ? "recruit" : need[0]?.action === "Approach" ? "recruit" : need[0]?.action === "Revive" ? "reactivate" : "develop") : null,
       obligations,
       deadline,
       history: hist,
@@ -262,7 +273,9 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
       phone: inf?.phone ?? null,
       tier: tier ?? 4,
       reasons,
-      recs: recs.map((r) => ({ type: r.type, title: r.title, reason: r.reason, instruction: r.instruction, instructionMs: r.instructionMs, priority: r.priority })),
+      lines: (dirBy.get(u)?.allLines ?? []).map(toLine),
+      gmvAll: dirBy.get(u)?.gmvAll ?? 0,
+      type: dirBy.get(u)?.type ?? null,
       status: paused ? "paused" : "active",
       pausedReason: st?.pausedReason ?? null,
       resumeOn: st?.resumeOn ?? null,
@@ -290,7 +303,7 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
       suggestPause: !paused && attempts >= cfg.maxUnanswered,
       samples: samplesBy.get(u) ?? [],
       held: tier == null ? held : null,
-      priority: recs[0]?.priority ?? 0,
+      priority: dirBy.get(u)?.gmvAll ?? 0,
     });
   }
 
@@ -313,16 +326,33 @@ export async function getToday(view: TodayView = "focus"): Promise<TodayData> {
       (select count(*) from samples s where s.source = 'orders' and s.shipped_at is not null and s.delivered_at is null and coalesce(s.order_status, '') <> 'Canceled'
         and s.shipped_at < now() - (${cfg.stuckTransitDays}::int * interval '1 day'))::int as stuck,
       (select count(*) from samples s where coalesce(s.result_override, s.result) = 'uncertain')::int as review`);
+  const doneRaw = await rows<{ id: number; username: string; kind: string; details: Record<string, string | null> | null; at: Date; by: string | null }>(sql`
+    select e.id, e.username, e.kind::text as kind, e.details, e.at, u.name as by
+    from staff_events e left join users u on u.id::text = e.user_id::text
+    where e.reverted_at is null and e.kind in ('contacted', 'promised', 'needs_help', 'paused', 'resumed')
+      and (e.at at time zone 'Asia/Kuala_Lumpur')::date = ${today}::date order by e.at desc, e.id desc`);
+  const doneToday: DoneItem[] = doneRaw.map((e) => {
+    const d = e.details ?? {};
+    const text =
+      e.kind === "contacted" ? `Contacted${d.action ? ` – ${d.action}` : ""}${d.product ? ` (${d.product})` : ""}`
+      : e.kind === "promised" ? `Promised to post${d.promisedOn ? ` by ${fmtDayLabel(d.promisedOn)}` : ""}`
+      : e.kind === "needs_help" ? `Needs help${d.reason ? `: ${d.reason}` : ""}`
+      : e.kind === "paused" ? "Paused" : "Resumed";
+    return { id: e.id, username: e.username, text, by: e.by, at: new Date(e.at).toISOString(), kind: e.kind };
+  });
   const exceptions = ex.unmatched + ex.stuck + ex.review;
-  const pick: Record<TodayView, TodayRow[]> = { focus, due, verify, samples, development: dev, scheduled, paused };
+  const pick: Record<TodayView, TodayRow[]> = { focus, due, verify, samples, development: dev, scheduled, paused, done: [] };
+  const [bounds] = await rows<{ a: string | null; b: string | null }>(sql`select to_char(min(created_at), 'YYYY-MM-DD') as a, to_char(max(created_at), 'YYYY-MM-DD') as b from order_lines`);
   return {
     today,
+    period: bounds?.a && bounds?.b ? `${fmtDayLabel(bounds.a)} – ${fmtDayLabel(bounds.b)}` : "all data",
     cfg,
     rows: pick[view],
-    counts: { focus: focus.length, due: due.length, verify: verify.length, samples: samples.length, development: dev.length, scheduled: scheduled.length, paused: paused.length },
+    counts: { focus: focus.length, due: due.length, verify: verify.length, samples: samples.length, development: dev.length, scheduled: scheduled.length, paused: paused.length, done: doneToday.length },
     hiddenFromFocus: active.length - focus.length,
     exceptions,
     sampleExceptions: ex,
+    doneToday,
   };
 }
 

@@ -44,6 +44,12 @@ Everything else (Overview, Content, Products, Orders, Opportunities, Samples, Or
 | D6 | **Recording an action** | Table panel, Today's Work menu, creator page buttons | Three code paths for the same event | One shared action component |
 | D7 | **Sales numbers** | Overview, Command centre, Products, Progress each query separately | Small differences between pages | One shared "valid orders" definition (already exists as `AL`); check every page uses it |
 
+## 3b. Progress log
+
+| Step | Status |
+|---|---|
+| 1. Today's Work reads the table engine (D1, D2, D6 for Today) | Done – status and action come from the same code as the table; messages open in the shared panel; Done Today view added |
+
 ## 4. Order of clean-up (one section at a time)
 
 | Step | Section | Result | Risk |

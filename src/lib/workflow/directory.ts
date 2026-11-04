@@ -86,7 +86,7 @@ const MIN_PRODUCT_SELLERS = 5;
  * product and silent on another. Sales are valid orders (cancelled and returned excluded) from all uploaded data; "lately" is the latest
  * 28 days ending at the latest order we hold. Product figures are per PRODUCT (all sizes together), never counted twice.
  */
-export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
+export async function loadDirectoryRows(opts: { range?: { start: string; end: string } } = {}): Promise<{ all: DirRow[]; ref: string | null; lately: Map<string, number> }> {
   const [refRow] = await rows<{ d: string | null }>(sql`select to_char(max(created_at), 'YYYY-MM-DD') as d from order_lines`);
   const ref = refRow?.d ?? null;
   const s28 = ref ? addDaysISO(ref, -27) : null;
@@ -212,6 +212,12 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     return { username: r.username, type, phone: info?.phone ?? null, lines, allLines: lines, gmvAll: cs?.gmv_all ?? 0, overdue: r.overdue, paused, lastContactedOn: r.lastContactedOn };
   });
 
+  return { all, ref, lately: new Map(csales.map((x) => [x.creator, x.gmv28])) };
+}
+
+/** The affiliate table: the shared rows, filtered, counted, sorted and paged. */
+export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
+  const { all, ref, lately: gmv28By } = await loadDirectoryRows({ range: opts.range });
   const q = (opts.q ?? "").trim().toLowerCase().replace(/^@/, "");
   const sm = opts.samples ?? "all";
   const today = todayKL();
@@ -276,7 +282,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
         const x = lastVid(a), y = lastVid(b);
         return x.localeCompare(y) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
       }
-      case "lately": return (cBy.get(b.username)?.gmv28 ?? 0) - (cBy.get(a.username)?.gmv28 ?? 0) || a.username.localeCompare(b.username);
+      case "lately": return (gmv28By.get(b.username) ?? 0) - (gmv28By.get(a.username) ?? 0) || a.username.localeCompare(b.username);
       case "attention": return Number(b.overdue) - Number(a.overdue) || best(a) - best(b) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
       default: return (b.gmvAll - a.gmvAll) || a.username.localeCompare(b.username);
     }

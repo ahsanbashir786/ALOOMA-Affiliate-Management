@@ -592,6 +592,14 @@ async function main() {
   const afterD = (await D({ q: cM, samples: "with" })).rows.find((r) => r.username === cM);
   check("23q the line whose action was recorded is marked done (that day); the other product line is not", afterD?.lines.find((l) => l.pid === P1)?.doneOn === todayKL() && !afterD?.lines.find((l) => l.pid === P2)?.doneOn);
 
+  const tw = await getToday("focus");
+  const dAll = await D({ size: 5000 });
+  const same = tw.rows.filter((r) => r.lines.length).every((r) => { const d = dAll.rows.find((x) => x.username === r.username); return !!d && r.lines.length === d.allLines.length && r.lines.every((l, i) => l.status === d.allLines[i].status && l.action === d.allLines[i].action); });
+  check("24a Today's Work shows each creator's product lines with exactly the same status and action as the Affiliate table", tw.rows.length > 0 && same, String(tw.rows.length));
+  check("24b Today's Work no longer uses separate recommendation text (reasons come from table actions or the workflow)", tw.rows.every((r) => !("recs" in r)));
+  const dn = (await getToday("done")).doneToday;
+  check("24c 'Done Today' lists what staff recorded today, with the action and product", dn.some((x) => x.username === cM && /^Contacted – \w+/.test(x.text)) && Number((await getToday("done")).counts.done) === dn.length, JSON.stringify(dn.slice(0, 2)));
+
   void allocate; void loadEvents; void getWorkflowStates;
 
   console.log(`\n${pass} passed, ${fail} failed`);

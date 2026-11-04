@@ -6,7 +6,6 @@ import { getToday, type TodayRow, type TodayView } from "@/lib/workflow/today";
 import { fmtDateTimeKL, fmtDayLabel } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
 import { Card, EmptyState, PageHeader } from "@/components/ui/primitives";
-import { RegenerateButton } from "@/components/actions/regenerate-button";
 import { AddCreator } from "@/components/today/add-creator";
 import { TodayList, type TodayItem } from "@/components/today/today-list";
 import { cn } from "@/lib/utils";
@@ -15,16 +14,17 @@ import { RELATIONSHIP } from "@/lib/workflow/relationship";
 export const metadata: Metadata = { title: "Today's Work" };
 
 const VIEWS: { key: TodayView; label: string; hint: string }[] = [
-  { key: "focus", label: "Today", hint: "Everything due, plus the most important sample cases and a few ideas" },
-  { key: "due", label: "Due & overdue", hint: "Promises and follow-ups that need you now" },
-  { key: "verify", label: "To verify", hint: "Possible content waiting for a yes or no" },
-  { key: "samples", label: "Samples", hint: "Samples that need a nudge" },
-  { key: "development", label: "Opportunities", hint: "Recruit new creators, develop existing ones, reactivate inactive ones" },
+  { key: "focus", label: "To Do", hint: "Everything due, plus the most important table actions" },
+  { key: "due", label: "Due & Overdue", hint: "Promises and follow-ups that need you now" },
+  { key: "verify", label: "To Verify", hint: "Possible content waiting for a yes or no" },
+  { key: "samples", label: "Chase & Coach", hint: "Creators whose product line needs a chase, coaching or a fresh video" },
+  { key: "development", label: "Growth", hint: "Ask winners for more, reward them, or approach new creators" },
   { key: "scheduled", label: "Scheduled", hint: "Already handled – waiting for their date" },
   { key: "paused", label: "Paused", hint: "On hold" },
+  { key: "done", label: "Done Today", hint: "Everything staff recorded today" },
 ];
 
-function toItem(r: TodayRow): TodayItem {
+function toItem(r: TodayRow, period: string): TodayItem {
   const c = r.commitment;
   return {
     username: r.username,
@@ -36,7 +36,10 @@ function toItem(r: TodayRow): TodayItem {
     deadline: r.deadline,
     history: r.history,
     reasons: r.reasons,
-    recs: r.recs,
+    lines: r.lines,
+    gmvLabel: r.gmvAll > 0 ? `RM ${Math.round(r.gmvAll).toLocaleString("en-MY")}` : "",
+    creatorType: r.type,
+    period,
     status: r.status,
     nextLabel: r.nextOn ? fmtDayLabel(r.nextOn) : null,
     lastAction: r.lastAction,
@@ -82,10 +85,10 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const data = await getToday(view);
   const counts = data.counts;
   const canAct = can(user, "manager");
-  const items = data.rows.map(toItem);
+  const items = data.rows.map((r) => toItem(r, data.period));
   const current = VIEWS.find((v) => v.key === view)!;
 
-  const PRIMARY: TodayView[] = ["focus", "due", "verify", "samples"];
+  const PRIMARY: TodayView[] = ["focus", "due", "verify", "done"];
   const MORE = VIEWS.filter((v) => !PRIMARY.includes(v.key));
   const inMore = MORE.some((v) => v.key === view);
   const tabCls = (on: boolean) => cn("-mb-px flex items-center gap-2 border-b-2 px-3.5 py-3 text-[15px] font-medium whitespace-nowrap", on ? "border-brand text-ink" : "border-transparent text-ink-3 hover:text-ink");
@@ -95,8 +98,22 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
       <PageHeader
         title="Today's Work"
         description={`${fmtDayLabel(data.today)} · Malaysia time`}
-        actions={canAct ? <div className="flex flex-wrap items-start gap-2"><AddCreator canPhone={mayEditContacts(user)} /><RegenerateButton /></div> : undefined}
+        actions={canAct ? <div className="flex flex-wrap items-start gap-2"><AddCreator canPhone={mayEditContacts(user)} /></div> : undefined}
       />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Today at a glance">
+        {([
+          { k: "focus", label: "To Do", n: counts.focus, hint: data.hiddenFromFocus > 0 ? `+${data.hiddenFromFocus} more in Chase & Growth` : "creators with something to do", tone: "text-ink" },
+          { k: "due", label: "Due & Overdue", n: counts.due, hint: "promises and follow-ups", tone: counts.due > 0 ? "text-critical" : "text-ink" },
+          { k: "done", label: "Done Today", n: counts.done, hint: "actions recorded", tone: "text-good" },
+          { k: "scheduled", label: "Waiting", n: counts.scheduled, hint: "follow-up already set", tone: "text-ink" },
+        ] as const).map((t) => (
+          <Link key={t.k} href={t.k === "focus" ? "/today" : `/today?view=${t.k}`} className={cn("rounded-xl border bg-surface px-4 py-3 hover:bg-surface-2", view === t.k ? "border-brand" : "border-line")}>
+            <p className="text-[13px] font-medium text-ink-3">{t.label}</p>
+            <p className={cn("tnum text-[26px] leading-tight font-semibold", t.tone)}>{t.n}</p>
+            <p className="text-[12.5px] text-ink-3">{t.hint}</p>
+          </Link>
+        ))}
+      </div>
       <Card>
         <div className="flex items-center border-b border-line px-3 pt-1">
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -133,6 +150,21 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
             {current.hint}.
             {view === "focus" && data.hiddenFromFocus > 0 && <> {data.hiddenFromFocus} more are under the other filters.</>}
           </p>
+          {view === "done" ? (
+            data.doneToday.length === 0 ? (
+              <EmptyState icon={<CalendarCheck className="size-5" />} title="Nothing recorded yet today" description="Actions staff record from Today's Work or the Affiliate Data table appear here." />
+            ) : (
+              <ul className="divide-y divide-line rounded-xl border border-line" data-testid="done-list">
+                {data.doneToday.map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+                    <span className="tnum w-14 text-[13px] text-ink-3">{new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(d.at))}</span>
+                    <span className="min-w-0 flex-1 text-[14.5px] text-ink"><b className="font-semibold">@{d.username}</b> · {d.text}</span>
+                    <span className="text-[13px] text-ink-3">{d.by ?? "System"}</span>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : (
           <TodayList
             key={view}
             items={items}
@@ -147,6 +179,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
               />
             }
           />
+          )}
         </div>
       </Card>
     </div>
