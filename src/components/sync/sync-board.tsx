@@ -95,7 +95,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin }: { initial: Sy
             <div>
               <h2 className="text-[24px] leading-tight font-semibold">{busy ? `Syncing${runningNow ? ` ${runningNow}` : ""}…` : state === "warn" ? "Needs attention" : state === "new" ? "Ready for the first sync" : "Everything is up to date"}</h2>
               <p className="mt-0.5 text-[14px] text-white/75">
-                {busy ? "You can keep working" : state === "warn" ? `${failed.length} of ${ov.datasets.length} failed` : `Last sync ${ago(ov.lastFullAt, now).toLowerCase()}`}
+                {busy ? (ov.datasets.some((d) => d.progress) ? `${ov.datasets.reduce((a, d) => a + (d.progress ?? 0), 0).toLocaleString("en-MY")} records so far · you can keep working` : "You can keep working") : state === "warn" ? `${failed.length} of ${ov.datasets.length} failed` : `Last sync ${ago(ov.lastFullAt, now).toLowerCase()}`}
                 {!busy && ov.settings.enabled && ov.nextAt ? ` · next in ${inMin(ov.nextAt, now)}` : !busy && !ov.settings.enabled ? " · auto-sync off" : ""}
               </p>
             </div>
@@ -143,7 +143,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin }: { initial: Sy
               <p className="tnum text-[30px] leading-tight font-semibold text-ink">{d.records.toLocaleString("en-MY")}</p>
               <div className="mt-2 flex items-center gap-2 text-[13px] text-ink-3">
                 <span className={cn("size-2 rounded-full", DOT[f], d.running && "animate-pulse")} />
-                {d.running ? "Syncing…" : d.lastError ? <span className="text-critical" title={d.lastError}>Failed</span> : ago(d.lastSuccessAt, now)}
+                {d.running ? `Syncing${d.progress ? ` · ${d.progress.toLocaleString("en-MY")}` : "…"}` : d.lastError ? <span className="text-critical" title={d.lastError}>Failed</span> : ago(d.lastSuccessAt, now)}
               </div>
               {d.lastError && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-critical">{d.lastError}</p>}
             </article>

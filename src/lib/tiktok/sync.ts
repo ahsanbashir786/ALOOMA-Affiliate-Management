@@ -43,6 +43,10 @@ const TABLES: Record<string, Table> = {
 };
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** When TikTok says "too many requests", every running dataset waits together instead of each hammering it. */
+let coolUntil = 0;
+/** Datasets that run side by side (TikTok's limit is shared, so a small number is fastest). */
+const POOL = 3;
 
 /** Insert new rows and update changed ones (a row whose values are identical is left alone). Returns how many rows were new or changed. */
 export async function upsertRows(t: Table, data: M.Row[]): Promise<number> {
@@ -52,8 +56,8 @@ export async function upsertRows(t: Table, data: M.Row[]): Promise<number> {
   for (const r of data) if (t.pk.every((k) => r[k] != null && r[k] !== "")) byKey.set(keyOf(r), r); // last one wins; no half-keyed rows
   const list = [...byKey.values()];
   let changed = 0;
-  for (let i = 0; i < list.length; i += 150) {
-    const chunk = list.slice(i, i + 150);
+  for (let i = 0; i < list.length; i += 300) {
+    const chunk = list.slice(i, i + 300);
     const values = sql.join(
       chunk.map((r) => {
         const h = createHash("md5").update(JSON.stringify(names.map((n) => r[n] ?? null))).digest("hex");
@@ -81,12 +85,13 @@ async function* walk(path: string, o: PageOpts, deps: SyncDeps): AsyncGenerator<
   for (let page = 1; page <= MAX_PAGES; page++) {
     let data: Record<string, unknown> | null = null;
     for (let attempt = 0; ; attempt++) {
+      if (coolUntil > Date.now()) await sleep(coolUntil - Date.now());
       try {
         data = (await callApi<Record<string, unknown>>(path, { cfg: deps.cfg, f: deps.f, method: o.method, body: o.body, query: { ...(o.query ?? {}), page_size: String(o.sizes[size]), ...(token ? { page_token: token } : {}) } })) ?? {};
         break;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "";
-        if (/36009002|rate limit|too many requests/i.test(msg) && attempt < 4) { await sleep(3000 * (attempt + 1)); continue; }
+        if (/36009002|rate limit|too many requests/i.test(msg) && attempt < 6) { coolUntil = Date.now() + 3000 * (attempt + 1); await sleep(3000 * (attempt + 1)); continue; }
         if (/page.?size/i.test(msg) && size < o.sizes.length - 1) { size++; continue; }
         throw e;
       }
@@ -94,7 +99,7 @@ async function* walk(path: string, o: PageOpts, deps: SyncDeps): AsyncGenerator<
     yield { items: o.list(data) as Record<string, unknown>[], page };
     token = str(data.next_page_token);
     if (!token) return;
-    await sleep(deps.pauseMs ?? 350);
+    await sleep(deps.pauseMs ?? 120);
   }
 }
 
@@ -104,14 +109,17 @@ const pick = (...names: string[]) => (d: Record<string, unknown>) => {
   return firstList(d);
 };
 
-type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null };
+type Ctx = { deps: SyncDeps; full: boolean; watermark: Date | null; runId: number };
 type Counter = { pages: number; seen: number; changed: number };
+/** Lets the screen show "1,200 so far" while a dataset runs. */
+const progress = (ctx: Ctx, c: Counter) => rows(sql`update tt_sync_runs set pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed} where id = ${ctx.runId}`);
 
 async function simple(path: string, o: PageOpts, table: string, mapRow: (r: Record<string, unknown>) => M.Row | M.Row[], ctx: Ctx, c: Counter) {
   for await (const { items, page } of walk(path, o, ctx.deps)) {
     const out = items.flatMap((r): M.Row[] => { const m = mapRow(r); return Array.isArray(m) ? m : [m]; });
     c.pages = page; c.seen += out.length;
     c.changed += await upsertRows(TABLES[table], out);
+    await progress(ctx, c);
   }
 }
 
@@ -121,34 +129,36 @@ const windowOf = (days: number, endOffset = 0) => {
 };
 
 const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
-  products: (ctx, c) => simple("/product/202309/products/search", { method: "POST", body: {}, sizes: [100, 50, 20], list: pick("products") }, "tt_skus", M.skus, ctx, c),
-  sample_requests: (ctx, c) => simple("/affiliate_seller/202409/sample_applications/search", { method: "POST", body: {}, sizes: [50, 20, 10], list: pick("sample_applications", "applications") }, "tt_sample_requests", M.sampleRequest, ctx, c),
-  returns: (ctx, c) => simple("/return_refund/202309/returns/search", { method: "POST", body: {}, sizes: [50, 20, 10], list: pick("return_orders", "returns") }, "tt_returns", M.returnRow, ctx, c),
-  cancellations: (ctx, c) => simple("/return_refund/202309/cancellations/search", { method: "POST", body: {}, sizes: [50, 20, 10], list: pick("cancellations") }, "tt_cancellations", M.cancellation, ctx, c),
+  products: (ctx, c) => simple("/product/202309/products/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("products") }, "tt_skus", M.skus, ctx, c),
+  sample_requests: (ctx, c) => simple("/affiliate_seller/202409/sample_applications/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("sample_applications", "applications") }, "tt_sample_requests", M.sampleRequest, ctx, c),
+  returns: (ctx, c) => simple("/return_refund/202309/returns/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("return_orders", "returns") }, "tt_returns", M.returnRow, ctx, c),
+  cancellations: (ctx, c) => simple("/return_refund/202309/cancellations/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("cancellations") }, "tt_cancellations", M.cancellation, ctx, c),
   lives: async (ctx, c) => {
     const w = windowOf(28);
-    await simple("/analytics/202509/shop_lives/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [50, 20, 10], list: pick("live_stream_sessions", "lives") }, "tt_lives", M.live, ctx, c);
+    await simple("/analytics/202509/shop_lives/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [100, 50, 20, 10], list: pick("live_stream_sessions", "lives") }, "tt_lives", M.live, ctx, c);
   },
   videos: async (ctx, c) => {
     // First run also fills the two 28-day windows before, oldest first so the newest numbers win.
     const windows = ctx.watermark ? [windowOf(28)] : [windowOf(28, 56), windowOf(28, 28), windowOf(28)];
-    for (const w of windows) await simple("/analytics/202409/shop_videos/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [50, 20, 10], list: pick("videos") }, "tt_videos", (v) => M.video(v, w), ctx, c);
+    for (const w of windows) await simple("/analytics/202409/shop_videos/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [100, 50, 20, 10], list: pick("videos") }, "tt_videos", (v) => M.video(v, w), ctx, c);
   },
   shop_daily: async (ctx, c) => {
     const w = windowOf(ctx.watermark ? 14 : 90);
     for await (const { items } of walk("/analytics/202405/shop/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end, granularity: "1D" }, sizes: [50], list: (d) => (Array.isArray(d.intervals) ? d.intervals : firstList(d)) }, ctx.deps)) {
       const out = items.map(M.shopDay);
       c.pages++; c.seen += out.length; c.changed += await upsertRows(TABLES.tt_shop_daily, out);
+      await progress(ctx, c);
     }
   },
   affiliate_orders: async (ctx, c) => {
     // Full scan the first time and once a day; in between stop as soon as a whole page is older than the last full scan (newest-first order).
     const cut = ctx.full || !ctx.watermark ? null : ctx.watermark.getTime() - 3 * 86400_000;
     let newestFirst: boolean | null = null;
-    for await (const { items, page } of walk("/affiliate_seller/202410/orders/search", { method: "POST", body: {}, sizes: [50, 20, 10], list: pick("orders") }, ctx.deps)) {
+    for await (const { items, page } of walk("/affiliate_seller/202410/orders/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("orders") }, ctx.deps)) {
       const out = items.flatMap((o) => M.affiliateOrderLines(o));
       c.pages = page; c.seen += out.length;
       c.changed += await upsertRows(TABLES.tt_affiliate_order_lines, out);
+      await progress(ctx, c);
       const times = items.map((o) => Number(o.create_time) * 1000).filter((n) => Number.isFinite(n));
       if (newestFirst === null && times.length > 1) newestFirst = times[0] >= times[times.length - 1];
       if (cut && newestFirst && times.length && Math.max(...times) < cut) return;
@@ -171,7 +181,7 @@ export async function runDataset(key: DatasetKey, trigger: "manual" | "schedule"
   const full = !watermark || now.getTime() - watermark.getTime() > 24 * 3600_000;
   const c: Counter = { pages: 0, seen: 0, changed: 0 };
   try {
-    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark }, c);
+    await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id }, c);
     const [cnt] = await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`);
     await rows(sql`update tt_sync_runs set status = 'ok', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed} where id = ${run.id}`);
     await rows(sql`
@@ -197,10 +207,17 @@ export async function runAll(trigger: "manual" | "schedule", userId: string | nu
   const [cycle] = await rows<{ id: number }>(sql`insert into tt_sync_runs (dataset, trigger, user_id) values (${CYCLE}, ${trigger}, ${userId}) returning id`);
   const out: RunResult[] = [];
   try {
-    for (const d of DATASETS) {
-      out.push(await runDataset(d.key, trigger, userId, deps));
-      await (deps.sleep ?? defaultSleep)(deps.pauseMs ?? 500);
-    }
+    // The biggest datasets start first; up to POOL run side by side. Results are returned in the display order.
+    const order: DatasetKey[] = ["affiliate_orders", "videos", "sample_requests", "products", "lives", "returns", "cancellations", "shop_daily"];
+    const done = new Map<DatasetKey, RunResult>();
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(POOL, order.length) }, async () => {
+      while (next < order.length) {
+        const key = order[next++];
+        done.set(key, await runDataset(key, trigger, userId, deps));
+      }
+    }));
+    for (const d of DATASETS) out.push(done.get(d.key)!);
   } finally {
     const failed = out.filter((r) => r.status === "failed").length;
     await rows(sql`update tt_sync_runs set status = ${failed ? "failed" : "ok"}, finished_at = now(), rows_changed = ${out.reduce((a, r) => a + r.changed, 0)}, rows_seen = ${out.reduce((a, r) => a + r.seen, 0)}, error = ${failed ? `${failed} of ${out.length} failed` : null} where id = ${cycle.id}`);
@@ -228,14 +245,14 @@ export function isDue(nowMs: number, lastStartedMs: number | null, s: SyncSettin
 }
 
 // ───────── what the screen shows ─────────
-export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; running: boolean };
+export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; running: boolean; progress: number | null };
 export type RunView = { id: number; dataset: DatasetKey; label: string; startedAt: string; durationSec: number | null; status: string; trigger: string; changed: number; seen: number; error: string | null; by: string | null };
 export type SyncOverview = { datasets: DatasetView[]; runs: RunView[]; running: boolean; lastFullAt: string | null; nextAt: string | null; settings: SyncSettings };
 
 export async function syncOverview(): Promise<SyncOverview> {
   const [states, running, runs, lastSched, settings] = await Promise.all([
     rows<{ dataset: string; records: number; last_success_at: Date | null; last_error: string | null }>(sql`select dataset, records, last_success_at, last_error from tt_sync_state`),
-    rows<{ dataset: string }>(sql`select distinct dataset from tt_sync_runs where status = 'running' and started_at > now() - (case when dataset = ${CYCLE} then ${CYCLE_WINDOW_MIN}::int else ${REPEAT_WINDOW_MIN}::int end * interval '1 minute')`),
+    rows<{ dataset: string; seen: number }>(sql`select dataset, max(rows_seen)::int as seen from tt_sync_runs where status = 'running' and started_at > now() - (case when dataset = ${CYCLE} then ${CYCLE_WINDOW_MIN}::int else ${REPEAT_WINDOW_MIN}::int end * interval '1 minute') group by dataset`),
     rows<{ id: number; dataset: string; started_at: Date; finished_at: Date | null; status: string; trigger: string; rows_changed: number; rows_seen: number; error: string | null; by: string | null }>(sql`
       select r.id, r.dataset, r.started_at, r.finished_at, r.status, r.trigger, r.rows_changed, r.rows_seen, r.error, u.name as by
       from tt_sync_runs r left join users u on u.id = r.user_id where r.dataset <> ${CYCLE} order by r.started_at desc, r.id desc limit 30`),
@@ -243,12 +260,12 @@ export async function syncOverview(): Promise<SyncOverview> {
     getSyncSettings(),
   ]);
   const st = new Map(states.map((s) => [s.dataset, s]));
-  const run = new Set(running.map((r) => r.dataset));
+  const run = new Map(running.map((r) => [r.dataset, r.seen]));
   const label = new Map(DATASETS.map((d) => [d.key, d.label]));
   const times = states.map((s) => s.last_success_at).filter((x): x is Date => !!x).map((x) => new Date(x).getTime());
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   return {
-    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: st.get(d.key)?.last_error ?? null, running: run.has(d.key) })),
+    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: st.get(d.key)?.last_error ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,
     lastFullAt: times.length ? new Date(Math.min(...times)).toISOString() : null,

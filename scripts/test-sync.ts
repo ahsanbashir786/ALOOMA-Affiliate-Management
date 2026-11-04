@@ -12,6 +12,7 @@ async function main() {
   const { encryptToken } = await import("../src/lib/tiktok/sign");
   const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
   const secret = "s3cret";
+  await q(sql`delete from settings where key = 'tiktok_sync'`);
   const cfg = { appKey: "K", appSecret: secret, serviceId: null, authUrl: null };
   for (const t of ["tt_sync_runs", "tt_sync_state", "tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_skus", "tt_returns", "tt_cancellations", "tt_shop_daily"]) await q(sql.raw(`delete from ${t}`));
   const now = Math.floor(Date.now() / 1000);
@@ -86,7 +87,7 @@ async function main() {
 
   // ── overview, schedule, trust ──
   const ov = await syncOverview();
-  check("17 the overview lists all datasets with record counts, recent runs with who and how, and the next scheduled time", ov.datasets.length === 8 && ov.datasets.find((d) => d.key === "affiliate_orders")!.records === 5 && ov.runs.length > 8 && ov.runs[0].trigger === "manual" && ov.nextAt !== null);
+  check("17 the overview lists all datasets with record counts, recent runs with who and how, and the next scheduled time", ov.datasets.length === 8 && ov.datasets.find((d) => d.key === "affiliate_orders")!.records === 5 && ov.runs.length > 8 && ov.runs[0].trigger === "manual" && ov.nextAt !== null, JSON.stringify({ n: ov.runs.length, rec: ov.datasets.find((d) => d.key === "affiliate_orders")!.records, t: ov.runs[0]?.trigger, next: ov.nextAt, set: ov.settings }));
   const s = { enabled: true, everyMinutes: 60 };
   check("18 the schedule is due when never run or the interval has passed, and never when switched off", isDue(1e12, null, s) && isDue(1e12, 1e12 - 61 * 60000, s) && !isDue(1e12, 1e12 - 59 * 60000, s) && !isDue(1e12, null, { ...s, enabled: false }));
   const tc = await trustCheck();
@@ -102,6 +103,13 @@ async function main() {
   await saveSyncSettings({ enabled: false, everyMinutes: 60 });
   const t4 = await schedulerTick(deps, Date.now() + 200 * 60_000);
   check("21 the scheduler runs everything when due, waits until the interval has passed, runs again after it, and does nothing when switched off", t1 === "ran" && t2 === "idle" && t3 === "ran" && t4 === "off", [t1, t2, t3, t4].join());
+  let inFlight = 0, maxInFlight = 0;
+  const slow = (async (url: string) => { inFlight++; maxInFlight = Math.max(maxInFlight, inFlight); await new Promise((r) => setTimeout(r, 40)); try { return await fake(url); } finally { inFlight--; } }) as never;
+  await q(sql`delete from tt_sync_runs`);
+  const par = await runAll("manual", null, { ...deps, f: slow });
+  check("23 datasets run side by side (2 or 3 at once, never more), and results still come back in display order", maxInFlight >= 2 && maxInFlight <= 3 && par.map((r) => r.dataset).join() === DATASETS.map((d) => d.key).join() && par.every((r) => r.status === "ok"), `max ${maxInFlight}`);
+  const last = await q(sql`select rows_seen from tt_sync_runs where dataset = 'affiliate_orders' order by id desc limit 1`);
+  check("24 each run records how many rows it has read, so the screen can show progress while it runs", Number(last[0].rows_seen) === 5);
   check("22 every dataset listed on the screen has a table", DATASETS.length === 8);
 
   console.log(`\n${pass} passed, ${fail} failed`);
