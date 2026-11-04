@@ -175,3 +175,52 @@ export function shopDay(v: R): Row {
     avg_order_value: num(v.avg_order_value),
   };
 }
+
+export function shopDays(d: R): Row[] {
+  // The daily figures sit inside "performance" for the real endpoint; also accept them at the top.
+  const perf = obj(d.performance);
+  const list = Array.isArray(perf.intervals) ? perf.intervals : Array.isArray(d.intervals) ? d.intervals : [];
+  return (list as R[]).map(shopDay);
+}
+
+const FINAL_ORDER = new Set(["COMPLETED", "CANCELLED"]);
+/** A shop order, reduced to shipping facts. Buyer, recipient, address and payment-method details are never read. */
+export function order(o: R): Row {
+  const status = str(o.status);
+  return {
+    order_id: str(o.id),
+    status,
+    is_sample: typeof o.is_sample_order === "boolean" ? o.is_sample_order : null,
+    created_at: ts(o.create_time),
+    paid_at: ts(o.paid_time),
+    updated_at: ts(o.update_time),
+    delivered_at: ts(o.delivery_time),
+    total_amount: num(obj(o.payment).total_amount),
+    currency: str(obj(o.payment).currency),
+    tracking_number: str(o.tracking_number),
+    shipping_provider: str(o.shipping_provider),
+    lines: JSON.stringify(arr(o.line_items).map((l) => ({ sku_id: str(l.sku_id), product_id: str(l.product_id), seller_sku: str(l.seller_sku), status: str(l.display_status), package_status: str(l.package_status), tracking_number: str(l.tracking_number) }))),
+    is_final: status ? FINAL_ORDER.has(status) : false,
+  };
+}
+
+export function openCollab(v: R): Row {
+  const p = obj(v.product);
+  const c = obj(v.current_commission);
+  const price = obj(p.original_price);
+  return {
+    id: str(v.id),
+    product_id: str(p.id),
+    title: str(p.title),
+    status: str(v.status),
+    commission_rate: num(c.rate),
+    commission_start: ts(c.start_time),
+    commission_end: ts(c.end_time),
+    creators: int(v.content_creator_count),
+    showcasing: int(v.showcase_creator_count),
+    needs_approval: typeof v.require_seller_approve_creator === "boolean" ? v.require_seller_approve_creator : null,
+    stock: int(p.inventory),
+    price_min: num(price.minimum_amount),
+    price_max: num(price.maximum_amount),
+  };
+}

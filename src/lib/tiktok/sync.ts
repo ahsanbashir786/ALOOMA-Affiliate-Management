@@ -7,7 +7,7 @@ import { callApi, tiktokConfig, type Fetch, type TikTokConfig } from "./client";
 import * as M from "./map";
 import { str } from "./map";
 
-export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily";
+export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "sample_orders" | "open_collabs" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily";
 
 export type SyncDeps = { cfg?: TikTokConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date };
 export type RunResult = { dataset: DatasetKey; status: "ok" | "failed" | "skipped"; pages: number; seen: number; changed: number; error?: string };
@@ -17,6 +17,8 @@ export const DATASETS: { key: DatasetKey; label: string; table: string; icon: st
   { key: "products", label: "Products & stock", table: "tt_skus", icon: "package", what: "SKUs" },
   { key: "affiliate_orders", label: "Affiliate orders", table: "tt_affiliate_order_lines", icon: "receipt", what: "order lines" },
   { key: "sample_requests", label: "Sample requests", table: "tt_sample_requests", icon: "gift", what: "requests" },
+  { key: "sample_orders", label: "Sample orders", table: "tt_orders", icon: "truck", what: "orders" },
+  { key: "open_collabs", label: "Collaborations", table: "tt_open_collabs", icon: "handshake", what: "offers" },
   { key: "videos", label: "Videos", table: "tt_videos", icon: "video", what: "videos" },
   { key: "lives", label: "LIVE sessions", table: "tt_lives", icon: "radio", what: "sessions" },
   { key: "returns", label: "Returns", table: "tt_returns", icon: "undo", what: "returns" },
@@ -39,6 +41,8 @@ const TABLES: Record<string, Table> = {
   tt_skus: { name: "tt_skus", pk: ["sku_id"], cols: { sku_id: "text", product_id: "text", product_title: "text", seller_sku: "text", price: "numeric", currency: "text", stock: "int", product_status: "text", updated_at: "timestamptz" } },
   tt_returns: { name: "tt_returns", pk: ["return_id"], cols: { return_id: "text", order_id: "text", status: "text", return_type: "text", reason: "text", refund_amount: "numeric", currency: "text", skus: "jsonb", created_at: "timestamptz", updated_at: "timestamptz" } },
   tt_cancellations: { name: "tt_cancellations", pk: ["cancel_id"], cols: { cancel_id: "text", order_id: "text", status: "text", cancel_type: "text", reason: "text", skus: "jsonb", created_at: "timestamptz", updated_at: "timestamptz" } },
+  tt_orders: { name: "tt_orders", pk: ["order_id"], cols: { order_id: "text", status: "text", is_sample: "boolean", created_at: "timestamptz", paid_at: "timestamptz", updated_at: "timestamptz", delivered_at: "timestamptz", total_amount: "numeric", currency: "text", tracking_number: "text", shipping_provider: "text", lines: "jsonb", is_final: "boolean" } },
+  tt_open_collabs: { name: "tt_open_collabs", pk: ["id"], cols: { id: "text", product_id: "text", title: "text", status: "text", commission_rate: "numeric", commission_start: "timestamptz", commission_end: "timestamptz", creators: "int", showcasing: "int", needs_approval: "boolean", stock: "int", price_min: "numeric", price_max: "numeric" } },
   tt_shop_daily: { name: "tt_shop_daily", pk: ["day"], cols: { day: "date", gmv: "numeric", orders: "int", buyers: "int", units_sold: "int", refunds: "numeric", returns_cancellations: "int", page_views: "bigint", impressions: "bigint", avg_order_value: "numeric" } },
 };
 
@@ -77,25 +81,32 @@ export async function upsertRows(t: Table, data: M.Row[]): Promise<number> {
 
 type PageOpts = { method: "GET" | "POST"; query?: Record<string, string>; body?: unknown; sizes: number[]; list: (d: Record<string, unknown>) => unknown[] };
 
-/** Walks every page of an endpoint: patient with TikTok's shared rate limit, and steps down the page size if TikTok refuses it. */
+type CallOpts = { method: "GET" | "POST"; query?: Record<string, string>; body?: unknown; sizes?: number[] };
+
+/** One call to TikTok that is patient with the shared rate limit and steps down the page size if TikTok refuses one. */
+async function callRetry(path: string, o: CallOpts, deps: SyncDeps, state: { size: number }): Promise<Record<string, unknown>> {
+  const sleep = deps.sleep ?? defaultSleep;
+  for (let attempt = 0; ; attempt++) {
+    if (coolUntil > Date.now()) await sleep(coolUntil - Date.now());
+    try {
+      const query = { ...(o.query ?? {}), ...(o.sizes ? { page_size: String(o.sizes[state.size]) } : {}) };
+      return (await callApi<Record<string, unknown>>(path, { cfg: deps.cfg, f: deps.f, method: o.method, body: o.body, query })) ?? {};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (/36009002|rate limit|too many requests/i.test(msg) && attempt < 6) { coolUntil = Date.now() + 3000 * (attempt + 1); await sleep(3000 * (attempt + 1)); continue; }
+      if (o.sizes && /page.?size/i.test(msg) && state.size < o.sizes.length - 1) { state.size++; continue; }
+      throw e;
+    }
+  }
+}
+
+/** Walks every page of an endpoint. */
 async function* walk(path: string, o: PageOpts, deps: SyncDeps): AsyncGenerator<{ items: Record<string, unknown>[]; page: number }> {
   const sleep = deps.sleep ?? defaultSleep;
-  let size = 0;
+  const state = { size: 0 };
   let token: string | null = null;
   for (let page = 1; page <= MAX_PAGES; page++) {
-    let data: Record<string, unknown> | null = null;
-    for (let attempt = 0; ; attempt++) {
-      if (coolUntil > Date.now()) await sleep(coolUntil - Date.now());
-      try {
-        data = (await callApi<Record<string, unknown>>(path, { cfg: deps.cfg, f: deps.f, method: o.method, body: o.body, query: { ...(o.query ?? {}), page_size: String(o.sizes[size]), ...(token ? { page_token: token } : {}) } })) ?? {};
-        break;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "";
-        if (/36009002|rate limit|too many requests/i.test(msg) && attempt < 6) { coolUntil = Date.now() + 3000 * (attempt + 1); await sleep(3000 * (attempt + 1)); continue; }
-        if (/page.?size/i.test(msg) && size < o.sizes.length - 1) { size++; continue; }
-        throw e;
-      }
-    }
+    const data = await callRetry(path, { ...o, query: { ...(o.query ?? {}), ...(token ? { page_token: token } : {}) } }, deps, state);
     yield { items: o.list(data) as Record<string, unknown>[], page };
     token = str(data.next_page_token);
     if (!token) return;
@@ -118,7 +129,7 @@ async function simple(path: string, o: PageOpts, table: string, mapRow: (r: Reco
   for await (const { items, page } of walk(path, o, ctx.deps)) {
     const out = items.flatMap((r): M.Row[] => { const m = mapRow(r); return Array.isArray(m) ? m : [m]; });
     c.pages = page; c.seen += out.length;
-    c.changed += await upsertRows(TABLES[table], out);
+    { const ch = await upsertRows(TABLES[table], out); c.changed += ch; }
     await progress(ctx, c);
   }
 }
@@ -128,11 +139,79 @@ const windowOf = (days: number, endOffset = 0) => {
   return { start: addDaysISO(end, -days), end };
 };
 
+type WSpec = { path: string; list: (d: Record<string, unknown>) => unknown[]; sizes: number[]; timeKey: string; table: string; mapRow: (r: Record<string, unknown>) => M.Row | M.Row[] };
+const DAY = 86400;
+const asRows = (m: M.Row | M.Row[]): M.Row[] => (Array.isArray(m) ? m : [m]);
+
+/** Oldest-to-newest scan of a list with no date filter. After the first full scan it stops as soon as a whole page is older than the last full scan (newest-first lists). */
+async function sequential(spec: WSpec, ctx: Ctx, c: Counter) {
+  const cut = ctx.full || !ctx.watermark ? null : ctx.watermark.getTime() - 3 * 86400_000;
+  let newestFirst: boolean | null = null;
+  for await (const { items } of walk(spec.path, { method: "POST", body: {}, sizes: spec.sizes, list: spec.list }, ctx.deps)) {
+    const out = items.flatMap((r) => asRows(spec.mapRow(r)));
+    c.pages++; c.seen += out.length;
+    { const ch = await upsertRows(TABLES[spec.table], out); c.changed += ch; }
+    await progress(ctx, c);
+    const times = items.map((o) => Number(o[spec.timeKey]) * 1000).filter((n) => Number.isFinite(n));
+    if (newestFirst === null && times.length > 1) newestFirst = times[0] >= times[times.length - 1];
+    if (cut && newestFirst && times.length && Math.max(...times) < cut) return;
+  }
+}
+
+/**
+ * Fast path for lists TikTok can filter by creation time: the first sync reads the history in 30-day windows, three at a time, and stops
+ * after three empty windows; later syncs read only the last few days. The filter is checked first (every returned record must really fall
+ * inside the asked window); if TikTok rejects it or ignores it, the slower safe scan above is used instead.
+ */
+async function windowed(spec: WSpec, ctx: Ctx, c: Counter) {
+  const nowS = Math.floor((ctx.deps.now?.() ?? new Date()).getTime() / 1000);
+  const hiAll = nowS + 3600;
+  const body = (lo: number, hi: number) => ({ create_time_ge: lo, create_time_lt: hi });
+  const scan = async (lo: number, hi: number): Promise<number> => {
+    let n = 0;
+    for await (const { items } of walk(spec.path, { method: "POST", body: body(lo, hi), sizes: spec.sizes, list: spec.list }, ctx.deps)) {
+      const out = items.flatMap((r) => asRows(spec.mapRow(r)));
+      n += out.length; c.pages++; c.seen += out.length;
+      { const ch = await upsertRows(TABLES[spec.table], out); c.changed += ch; }
+      await progress(ctx, c);
+    }
+    return n;
+  };
+  /** Asks for a tiny window and checks every record that comes back really belongs inside it. */
+  const insideWindow = async (lo: number, hi: number): Promise<boolean> => {
+    try {
+      for await (const { items } of walk(spec.path, { method: "POST", body: body(lo, hi), sizes: [10], list: spec.list }, ctx.deps)) {
+        return items.every((it) => { const t = Number(it[spec.timeKey]); return Number.isFinite(t) && t >= lo - 3600 && t < hi + 3600; });
+      }
+      return true;
+    } catch { return false; }
+  };
+  // A recent window and an ancient one: if TikTok ignored the filter, the ancient window would still return today's records.
+  const filterWorks = async () => (await insideWindow(nowS - 7 * DAY, hiAll)) && (await insideWindow(nowS - 3650 * DAY, nowS - 3640 * DAY));
+  if (!(await filterWorks())) return sequential(spec, ctx, c);
+  if (!ctx.full && ctx.watermark) { await scan(Math.floor(ctx.watermark.getTime() / 1000) - 2 * DAY, hiAll); return; }
+  const W = 30 * DAY;
+  for (let k = 0; k < 120; k += 3) {
+    const counts = await Promise.all([k, k + 1, k + 2].map((i) => scan(hiAll - (i + 1) * W, hiAll - i * W)));
+    if (counts.every((n) => n === 0)) break;
+  }
+}
+
+/** Runs the same job for a list of ids in groups, two groups at a time. */
+async function inGroups<T>(items: T[], size: number, parallel: number, job: (group: T[]) => Promise<void>) {
+  const groups: T[][] = [];
+  for (let i = 0; i < items.length; i += size) groups.push(items.slice(i, i + size));
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(parallel, groups.length) }, async () => { while (next < groups.length) await job(groups[next++]); }));
+}
+
 const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
   products: (ctx, c) => simple("/product/202309/products/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("products") }, "tt_skus", M.skus, ctx, c),
   sample_requests: (ctx, c) => simple("/affiliate_seller/202409/sample_applications/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("sample_applications", "applications") }, "tt_sample_requests", M.sampleRequest, ctx, c),
-  returns: (ctx, c) => simple("/return_refund/202309/returns/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("return_orders", "returns") }, "tt_returns", M.returnRow, ctx, c),
-  cancellations: (ctx, c) => simple("/return_refund/202309/cancellations/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("cancellations") }, "tt_cancellations", M.cancellation, ctx, c),
+  open_collabs: (ctx, c) => simple("/affiliate_seller/202409/open_collaborations/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("open_collaborations", "collaborations") }, "tt_open_collabs", M.openCollab, ctx, c),
+  returns: (ctx, c) => windowed({ path: "/return_refund/202309/returns/search", sizes: [100, 50, 20, 10], list: pick("return_orders", "returns"), timeKey: "create_time", table: "tt_returns", mapRow: M.returnRow }, ctx, c),
+  cancellations: (ctx, c) => windowed({ path: "/return_refund/202309/cancellations/search", sizes: [100, 50, 20, 10], list: pick("cancellations"), timeKey: "create_time", table: "tt_cancellations", mapRow: M.cancellation }, ctx, c),
+  affiliate_orders: (ctx, c) => windowed({ path: "/affiliate_seller/202410/orders/search", sizes: [100, 50, 20, 10], list: pick("orders"), timeKey: "create_time", table: "tt_affiliate_order_lines", mapRow: M.affiliateOrderLines }, ctx, c),
   lives: async (ctx, c) => {
     const w = windowOf(28);
     await simple("/analytics/202509/shop_lives/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end }, sizes: [100, 50, 20, 10], list: pick("live_stream_sessions", "lives") }, "tt_lives", M.live, ctx, c);
@@ -144,25 +223,24 @@ const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
   },
   shop_daily: async (ctx, c) => {
     const w = windowOf(ctx.watermark ? 14 : 90);
-    for await (const { items } of walk("/analytics/202405/shop/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end, granularity: "1D" }, sizes: [50], list: (d) => (Array.isArray(d.intervals) ? d.intervals : firstList(d)) }, ctx.deps)) {
-      const out = items.map(M.shopDay);
-      c.pages++; c.seen += out.length; c.changed += await upsertRows(TABLES.tt_shop_daily, out);
-      await progress(ctx, c);
-    }
+    // The daily figures come back inside "performance.intervals".
+    const list = (d: Record<string, unknown>) => { const perf = (d.performance && typeof d.performance === "object" ? d.performance : d) as Record<string, unknown>; return Array.isArray(perf.intervals) ? perf.intervals : []; };
+    await simple("/analytics/202405/shop/performance", { method: "GET", query: { start_date_ge: w.start, end_date_lt: w.end, granularity: "1D" }, sizes: [50], list }, "tt_shop_daily", M.shopDay, ctx, c);
   },
-  affiliate_orders: async (ctx, c) => {
-    // Full scan the first time and once a day; in between stop as soon as a whole page is older than the last full scan (newest-first order).
-    const cut = ctx.full || !ctx.watermark ? null : ctx.watermark.getTime() - 3 * 86400_000;
-    let newestFirst: boolean | null = null;
-    for await (const { items, page } of walk("/affiliate_seller/202410/orders/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("orders") }, ctx.deps)) {
-      const out = items.flatMap((o) => M.affiliateOrderLines(o));
-      c.pages = page; c.seen += out.length;
-      c.changed += await upsertRows(TABLES.tt_affiliate_order_lines, out);
+  sample_orders: async (ctx, c) => {
+    // Only the orders behind sample requests (shipping facts, no customer data); finished orders (completed / cancelled) are not asked for again.
+    const need = await rows<{ order_id: string }>(sql`
+      select distinct r.order_id from tt_sample_requests r left join tt_orders o on o.order_id = r.order_id
+      where r.order_id is not null and r.order_id <> '' and (o.order_id is null or o.is_final = false) order by 1`);
+    const state = { size: 0 };
+    await inGroups(need.map((n) => n.order_id), 50, 2, async (ids) => {
+      const data = await callRetry("/order/202309/orders", { method: "GET", query: { ids: ids.join(",") } }, ctx.deps, state);
+      const out = (pick("orders")(data) as Record<string, unknown>[]).map(M.order);
+      c.pages++; c.seen += out.length;
+      { const ch = await upsertRows(TABLES.tt_orders, out); c.changed += ch; }
       await progress(ctx, c);
-      const times = items.map((o) => Number(o.create_time) * 1000).filter((n) => Number.isFinite(n));
-      if (newestFirst === null && times.length > 1) newestFirst = times[0] >= times[times.length - 1];
-      if (cut && newestFirst && times.length && Math.max(...times) < cut) return;
-    }
+      await (ctx.deps.sleep ?? defaultSleep)(ctx.deps.pauseMs ?? 120);
+    });
   },
 };
 
@@ -208,7 +286,7 @@ export async function runAll(trigger: "manual" | "schedule", userId: string | nu
   const out: RunResult[] = [];
   try {
     // The biggest datasets start first; up to POOL run side by side. Results are returned in the display order.
-    const order: DatasetKey[] = ["affiliate_orders", "videos", "sample_requests", "products", "lives", "returns", "cancellations", "shop_daily"];
+    const order: DatasetKey[] = ["affiliate_orders", "videos", "sample_requests", "returns", "cancellations", "products", "lives", "open_collabs", "shop_daily"];
     const done = new Map<DatasetKey, RunResult>();
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(POOL, order.length) }, async () => {
@@ -217,6 +295,8 @@ export async function runAll(trigger: "manual" | "schedule", userId: string | nu
         done.set(key, await runDataset(key, trigger, userId, deps));
       }
     }));
+    // Second step: sample orders need the sample requests to be in first.
+    done.set("sample_orders", await runDataset("sample_orders", trigger, userId, deps));
     for (const d of DATASETS) out.push(done.get(d.key)!);
   } finally {
     const failed = out.filter((r) => r.status === "failed").length;

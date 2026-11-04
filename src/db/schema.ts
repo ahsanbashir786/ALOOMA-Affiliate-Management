@@ -878,3 +878,40 @@ export const ttShopDaily = pgTable("tt_shop_daily", {
   h: text("h"),
   syncedAt: tz("synced_at").notNull().defaultNow(),
 });
+
+// Data Sync additions. Mirrors migrations/0007_sync_orders_collabs.sql
+export const ttOrders = pgTable("tt_orders", {
+  orderId: text("order_id").primaryKey(),
+  status: text("status"),
+  isSample: boolean("is_sample"),
+  createdAt: tz("created_at"),
+  paidAt: tz("paid_at"),
+  updatedAt: tz("updated_at"),
+  deliveredAt: tz("delivered_at"),
+  totalAmount: numeric("total_amount", { precision: 14, scale: 2 }),
+  currency: text("currency"),
+  trackingNumber: text("tracking_number"),
+  shippingProvider: text("shipping_provider"),
+  lines: jsonb("lines"),
+  isFinal: boolean("is_final").notNull().default(false),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});
+
+export const ttOpenCollabs = pgTable("tt_open_collabs", {
+  id: text("id").primaryKey(),
+  productId: text("product_id"),
+  title: text("title"),
+  status: text("status"),
+  commissionRate: numeric("commission_rate", { precision: 12, scale: 4 }),
+  commissionStart: tz("commission_start"),
+  commissionEnd: tz("commission_end"),
+  creators: integer("creators"),
+  showcasing: integer("showcasing"),
+  needsApproval: boolean("needs_approval"),
+  stock: integer("stock"),
+  priceMin: numeric("price_min", { precision: 14, scale: 2 }),
+  priceMax: numeric("price_max", { precision: 14, scale: 2 }),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});

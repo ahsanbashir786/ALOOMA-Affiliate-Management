@@ -31,13 +31,14 @@ Lets the app read orders, products, returns and shipping straight from TikTok (r
 If **Orders** returns fields such as the creator and the content/video ID, affiliate orders can sync without uploads. If not, keep uploading the *Affiliate orders* file and use the API for orders, status, products, returns and shipping.
 
 ## Data Sync (module 0)
-**Administration → Data Sync** pulls eight datasets from TikTok into the `tt_*` tables: products and stock, affiliate orders, sample requests, videos, LIVE sessions, returns, cancellations and daily shop performance.
+**Administration → Data Sync** pulls ten datasets from TikTok into the `tt_*` tables: products and stock, affiliate orders, sample requests, **sample orders** (shipping status and delivery dates of the orders behind sample requests; no customer data), **collaborations** (commission offered, stock, creators joined), videos, LIVE sessions, returns, cancellations and daily shop performance.
 
 | Point | How it works |
 |---|---|
 | Schedule | Off, every 30 min, 1 hour, 3 hours, 12 hours or daily (owner sets it). Runs inside the app; nothing else to install. |
 | Sync now | Any manager can press it, for everything or for one dataset |
 | Safe | Rows are inserted or updated; identical rows are left alone, so running twice never duplicates. TikTok data is never written by staff, and our own data is never overwritten. |
+| Speed | The first sync reads history in 30-day date windows, three at a time, and stops after three empty windows. Later syncs read only the last few days (a full re-read happens once a day to catch status changes). Before using date windows the sync checks that TikTok really applies the filter; if TikTok ignores or rejects it, a slower safe scan is used instead. Up to three datasets run side by side. |
 | Rate limits | The sync paces itself, waits when TikTok says "too many requests", and uses a smaller page size if TikTok refuses one |
 | Failures | A failed dataset is shown in red with TikTok's message; the others still run |
 | Trust check | Compares the last 28 days of affiliate sales from the API with the uploaded files so you can see they agree before you stop uploading |

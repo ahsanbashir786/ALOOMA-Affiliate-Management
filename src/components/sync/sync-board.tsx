@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, Gift, Loader2, Package, Radio, Receipt, RefreshCw, Undo2, Video, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Gift, Handshake, Loader2, Package, Radio, Receipt, RefreshCw, Truck, Undo2, Video, XCircle } from "lucide-react";
 import { setSyncSchedule } from "@/app/actions/sync";
 import { cn } from "@/lib/utils";
 import type { SyncOverview, TrustCheck } from "@/lib/tiktok/sync";
 
-const ICON: Record<string, React.ComponentType<{ className?: string }>> = { package: Package, receipt: Receipt, gift: Gift, video: Video, radio: Radio, undo: Undo2, x: XCircle, chart: BarChart3 };
+const ICON: Record<string, React.ComponentType<{ className?: string }>> = { package: Package, receipt: Receipt, gift: Gift, video: Video, radio: Radio, undo: Undo2, x: XCircle, chart: BarChart3, truck: Truck, handshake: Handshake };
 const EVERY = [{ v: 0, l: "Off" }, { v: 30, l: "Every 30 min" }, { v: 60, l: "Every hour" }, { v: 180, l: "Every 3 hours" }, { v: 720, l: "Every 12 hours" }, { v: 1440, l: "Daily" }];
 
 function ago(iso: string | null, now: number): string {
@@ -128,7 +128,7 @@ export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { 
       </section>
 
       {/* datasets */}
-      <section aria-label="Data" className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Data" className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {ov.datasets.map((d) => {
           const Icon = ICON[d.icon] ?? Package;
           const f = fresh(d.lastSuccessAt, now);
