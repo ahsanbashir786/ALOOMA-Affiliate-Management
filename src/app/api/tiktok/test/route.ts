@@ -27,15 +27,14 @@ export async function POST(request: Request) {
   };
   if (group === "affiliate") {
     // We do not know for sure which version of each affiliate endpoint this shop can use, so we try the likely ones and report each.
-    const post = (query: Record<string, string> = { page_size: "1" }) => ({ method: "POST" as const, query, body: {} });
+    const post = (query: Record<string, string> = { page_size: "1" }, body: Record<string, unknown> = {}) => ({ method: "POST" as const, query, body });
     const checks = [
-      await run("Creator collaborations (target)", "/affiliate_seller/202405/target_collaborations/search", post(), firstList),
-      await run("Creator collaborations (target, newer)", "/affiliate_seller/202409/target_collaborations/search", post(), firstList),
       await run("Open collaborations", "/affiliate_seller/202409/open_collaborations/search", post(), firstList),
+      await run("Target collaborations", "/affiliate_seller/202409/target_collaborations/search", post({ page_size: "1" }, { collaboration_status: "ONGOING" }), firstList),
+      await run("Target collaborations (all statuses)", "/affiliate_seller/202409/target_collaborations/search", post({ page_size: "1" }, { collaboration_status: "ALL" }), firstList),
       await run("Affiliate orders", "/affiliate_seller/202410/orders/search", post(), firstList),
-      await run("Affiliate orders (older)", "/affiliate_seller/202405/orders/search", post(), firstList),
       await run("Sample applications", "/affiliate_seller/202409/sample_applications/search", post(), firstList),
-      await run("Creator marketplace", "/affiliate_seller/202406/marketplace_creators/search", post(), firstList),
+      await run("Creator marketplace", "/affiliate_seller/202406/marketplace_creators/search", post({ page_size: "12" }), firstList),
     ];
     return NextResponse.json({ checks });
   }
