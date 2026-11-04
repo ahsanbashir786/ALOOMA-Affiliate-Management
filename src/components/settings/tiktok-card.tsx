@@ -37,6 +37,7 @@ export function TikTokActions({ v }: { v: TikTokView }) {
         {v.connected && <Button variant="secondary" disabled={pending} onClick={() => test()}>{pending ? "Testing…" : "Run connection test"}</Button>}
         {v.connected && <Button variant="secondary" disabled={pending} onClick={() => test("affiliate")}>Test affiliate data</Button>}
         {v.connected && <Button variant="secondary" disabled={pending} onClick={() => test("analytics")}>Test analytics data</Button>}
+        {v.connected && <Button variant="secondary" disabled={pending} onClick={() => test("overview")}>Test everything else</Button>}
         {v.connected && <Button variant="secondary" disabled={pending} onClick={() => start(async () => { await disconnectTikTok(); setChecks(null); })}>Disconnect</Button>}
       </div>
       {!v.configured && <p className="text-[13.5px] text-ink-2">Add <code>TIKTOK_APP_KEY</code> and <code>TIKTOK_APP_SECRET</code> to the private <code>.env</code> file on the server, then restart. See docs/TIKTOK-API.md.</p>}

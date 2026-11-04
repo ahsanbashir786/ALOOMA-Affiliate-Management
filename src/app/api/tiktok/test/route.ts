@@ -26,6 +26,24 @@ export async function POST(request: Request) {
       return { name, path, ok: false, message: e instanceof Error ? e.message : "Failed", count: null, fields: [] };
     }
   };
+  if (group === "overview") {
+    // Everything else the active scopes should allow: returns, packages, logistics, categories and the extra analytics reports.
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const dq = { start_date_ge: iso(new Date(Date.now() - 28 * 86400000)), end_date_lt: iso(new Date(Date.now() + 86400000)), page_size: "10" };
+    const post = (query: Record<string, string> = { page_size: "1" }) => ({ method: "POST" as const, query, body: {} });
+    const checks = [
+      await run("Returns", "/return_refund/202309/returns/search", post(), firstList),
+      await run("Cancellations", "/return_refund/202309/cancellations/search", post(), firstList),
+      await run("Packages", "/fulfillment/202309/packages/search", post(), firstList),
+      await run("Warehouses", "/logistics/202309/warehouses", { method: "GET" }, firstList),
+      await run("Categories", "/product/202309/categories", { method: "GET", query: { locale: "en-US" } }, firstList),
+      await run("SKU performance", "/analytics/202405/shop_skus/performance", { method: "GET", query: dq }, firstList),
+      await run("Video performance overview", "/analytics/202409/shop_videos/overview_performance", { method: "GET", query: dq }, (d) => (d.performance ? [d.performance] : firstList(d))),
+      await run("LIVE performance overview", "/analytics/202509/shop_lives/overview_performance", { method: "GET", query: dq }, (d) => (d.performance ? [d.performance] : firstList(d))),
+      await run("Product performance overview", "/analytics/202405/shop_products/overview_performance", { method: "GET", query: dq }, (d) => (d.performance ? [d.performance] : firstList(d))),
+    ];
+    return NextResponse.json({ checks });
+  }
   if (group === "analytics") {
     // Shop analytics reports (videos, products, shop totals) for the last 28 days. Path versions are tried in turn because the shop may only support one.
     const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -38,7 +56,7 @@ export async function POST(request: Request) {
     ];
     // LIVE reports: the version number is unknown, so try the likely ones in turn and keep the first that works (plus a list of what was refused).
     const tried: string[] = [];
-    for (const v of ["202406", "202407", "202408", "202412", "202501", "202502", "202503", "202506", "202509"]) {
+    for (const v of ["202509"]) {
       const c = await run(`LIVE performance (${v})`, `/analytics/${v}/shop_lives/performance`, q(), firstList);
       if (c.ok) { checks.push(c); break; }
       tried.push(`${v}: ${c.message.replace(/^TikTok said no \(\d+\): /, "").slice(0, 70)}`);
