@@ -47,7 +47,7 @@ export function TikTokActions({ v }: { v: TikTokView }) {
             <li key={c.name} className="rounded-xl border border-line p-3.5">
               <p className="flex items-center gap-2 text-[14.5px] font-medium text-ink">{c.name}{c.path && <span className="font-mono text-[11.5px] font-normal text-ink-3">{c.path}</span>} <Badge tone={c.ok ? "good" : "critical"}>{c.ok ? "OK" : "Failed"}</Badge>{c.count != null && <span className="text-[13px] font-normal text-ink-3">{c.count} returned</span>}</p>
               {!c.ok && <p className="mt-1 text-[13.5px] text-critical">{c.message}</p>}
-              {c.fields.length > 0 && <details className="mt-1.5"><summary className="cursor-pointer text-[13px] text-ink-3">{c.fields.length} fields come back (names only)</summary><p className="mt-1.5 break-words text-[12px] leading-relaxed text-ink-2">{c.fields.join(" · ")}</p></details>}
+              {c.fields.length > 0 && <details open className="mt-1.5"><summary className="cursor-pointer text-[13px] text-ink-3">{c.fields.length} fields come back (names only)</summary><p className="mt-1.5 break-words text-[12px] leading-relaxed text-ink-2">{c.fields.join(" · ")}</p></details>}
             </li>
           ))}
         </ul>
