@@ -14,7 +14,8 @@
     "test:regressions": "tsx --conditions=react-server scripts/test-regressions.ts",
     "test:real": "tsx --conditions=react-server scripts/test-real-exports.ts",
     "typecheck": "tsc --noEmit",
-    "test:tiktok": "tsx --conditions=react-server scripts/test-tiktok.ts"
+    "test:tiktok": "tsx --conditions=react-server scripts/test-tiktok.ts",
+    "test:sync": "tsx --conditions=react-server scripts/test-sync.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV } from "./nav";
 
@@ -44,10 +44,8 @@ export function Sidebar({ role, openActions, open, onClose }: Props) {
       >
         <div className="flex h-16 items-center justify-between px-5">
           <Link href="/" className="flex items-center gap-2.5" onClick={onClose}>
-            <span className="flex size-8 items-center justify-center rounded-lg bg-brand text-white">
-              <Sparkles className="size-4" />
-            </span>
-            <span className="text-[16px] font-semibold tracking-tight text-ink">Affiliate HQ</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/alooma-logo.jpg" alt="ALOOMA" width={118} height={29} className="h-[29px] w-[118px] rounded-md object-cover" />
           </Link>
           <button className="rounded-md p-1 text-ink-3 lg:hidden" onClick={onClose} aria-label="Close">
             <X className="size-5" />

@@ -1,5 +1,4 @@
 import { BarChart3, Target, Users } from "lucide-react";
-import { Sparkles } from "lucide-react";
 
 const POINTS = [
   { icon: BarChart3, title: "See every source", body: "Video, LIVE, showcase and external traffic in one view." },
@@ -10,16 +9,14 @@ const POINTS = [
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
-      <div className="relative hidden overflow-hidden bg-[#0f2a4a] p-12 text-white lg:flex lg:flex-col lg:justify-between">
+      <div className="relative hidden overflow-hidden bg-[#142a55] p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div
           aria-hidden
-          className="absolute -top-32 -right-32 size-[520px] rounded-full bg-[#2a78d6]/30 blur-3xl"
+          className="absolute -top-32 -right-32 size-[520px] rounded-full bg-[#264482]/60 blur-3xl"
         />
         <div className="relative flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-white/15">
-            <Sparkles className="size-5" />
-          </span>
-          <span className="text-lg font-semibold tracking-tight">Affiliate HQ</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/alooma-logo.jpg" alt="ALOOMA" width={150} height={36} className="h-9 w-[150px] rounded-md object-cover" />
         </div>
         <div className="relative max-w-md">
           <h2 className="text-[34px] leading-tight font-semibold tracking-tight">

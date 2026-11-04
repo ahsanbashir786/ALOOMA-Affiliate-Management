@@ -1,5 +1,6 @@
 import {
   Beaker,
+  RefreshCw,
   Gauge,
   TrendingUp,
   Truck,
@@ -67,6 +68,7 @@ export const NAV: NavGroup[] = [
     label: "Administration",
     collapsible: true,
     items: [
+      { href: "/sync", label: "Data Sync", icon: RefreshCw, min: "manager" },
       { href: "/data", label: "Data hub", icon: Database, min: "manager" },
       { href: "/settings", label: "Settings", icon: Settings, min: "admin" },
     ],

@@ -30,5 +30,17 @@ Lets the app read orders, products, returns and shipping straight from TikTok (r
 ## What the test tells us
 If **Orders** returns fields such as the creator and the content/video ID, affiliate orders can sync without uploads. If not, keep uploading the *Affiliate orders* file and use the API for orders, status, products, returns and shipping.
 
-## Not done yet
-This step only connects and tests. Syncing the data into the screens (orders first) is the next step, built after the test shows which fields TikTok really returns.
+## Data Sync (module 0)
+**Administration → Data Sync** pulls eight datasets from TikTok into the `tt_*` tables: products and stock, affiliate orders, sample requests, videos, LIVE sessions, returns, cancellations and daily shop performance.
+
+| Point | How it works |
+|---|---|
+| Schedule | Off, every 30 min, 1 hour, 3 hours, 12 hours or daily (owner sets it). Runs inside the app; nothing else to install. |
+| Sync now | Any manager can press it, for everything or for one dataset |
+| Safe | Rows are inserted or updated; identical rows are left alone, so running twice never duplicates. TikTok data is never written by staff, and our own data is never overwritten. |
+| Rate limits | The sync paces itself, waits when TikTok says "too many requests", and uses a smaller page size if TikTok refuses one |
+| Failures | A failed dataset is shown in red with TikTok's message; the others still run |
+| Trust check | Compares the last 28 days of affiliate sales from the API with the uploaded files so you can see they agree before you stop uploading |
+| Privacy | Only whitelisted fields are read; customer names, phones, emails and addresses never reach the database |
+
+Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).

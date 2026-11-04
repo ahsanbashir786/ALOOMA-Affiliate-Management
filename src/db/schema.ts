@@ -1,4 +1,5 @@
 import {
+  bigint,
   bigserial,
   boolean,
   date,
@@ -6,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -678,4 +680,201 @@ export const importConflicts = pgTable(
 export const schemaMigrations = pgTable("schema_migrations", {
   name: text("name").primaryKey(),
   appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ───────── TikTok API sync (Data Sync module). TikTok data only; nothing here is typed by staff. Mirrors migrations/0006_tiktok_sync.sql ─────────
+const tz = (n: string) => timestamp(n, { withTimezone: true });
+
+export const ttSyncRuns = pgTable(
+  "tt_sync_runs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    dataset: text("dataset").notNull(),
+    startedAt: tz("started_at").notNull().defaultNow(),
+    finishedAt: tz("finished_at"),
+    status: text("status").notNull().default("running"),
+    trigger: text("trigger").notNull().default("manual"),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    pages: integer("pages").notNull().default(0),
+    rowsSeen: integer("rows_seen").notNull().default(0),
+    rowsChanged: integer("rows_changed").notNull().default(0),
+    error: text("error"),
+  },
+  (t) => [index("tt_sync_runs_dataset_started").on(t.dataset, t.startedAt)],
+);
+
+export const ttSyncState = pgTable("tt_sync_state", {
+  dataset: text("dataset").primaryKey(),
+  watermark: tz("watermark"),
+  lastSuccessAt: tz("last_success_at"),
+  lastError: text("last_error"),
+  lastErrorAt: tz("last_error_at"),
+  records: integer("records").notNull().default(0),
+  updatedAt: tz("updated_at").notNull().defaultNow(),
+});
+
+export const ttAffiliateOrderLines = pgTable(
+  "tt_affiliate_order_lines",
+  {
+    orderId: text("order_id").notNull(),
+    skuId: text("sku_id").notNull(),
+    createdAt: tz("created_at"),
+    deliveryAt: tz("delivery_at"),
+    creator: text("creator"),
+    contentId: text("content_id"),
+    contentType: text("content_type"),
+    productId: text("product_id"),
+    sellerSku: text("seller_sku"),
+    skuName: text("sku_name"),
+    quantity: integer("quantity"),
+    price: numeric("price", { precision: 14, scale: 2 }),
+    currency: text("currency"),
+    commissionRate: numeric("commission_rate", { precision: 12, scale: 4 }),
+    estCommission: numeric("est_commission", { precision: 14, scale: 2 }),
+    paidCommission: numeric("paid_commission", { precision: 14, scale: 2 }),
+    settlementStatus: text("settlement_status"),
+    fullyReturn: boolean("fully_return"),
+    openCollabId: text("open_collab_id"),
+    targetCollabId: text("target_collab_id"),
+    campaignId: text("campaign_id"),
+    h: text("h"),
+    syncedAt: tz("synced_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.orderId, t.skuId] }), index("tt_aol_creator").on(t.creator), index("tt_aol_created").on(t.createdAt)],
+);
+
+export const ttVideos = pgTable(
+  "tt_videos",
+  {
+    videoId: text("video_id").primaryKey(),
+    creator: text("creator"),
+    title: text("title"),
+    postedAt: tz("posted_at"),
+    views: bigint("views", { mode: "number" }),
+    gmv: numeric("gmv", { precision: 14, scale: 2 }),
+    unitsSold: integer("units_sold"),
+    clickThroughRate: numeric("click_through_rate", { precision: 12, scale: 6 }),
+    products: jsonb("products"),
+    windowStart: date("window_start"),
+    windowEnd: date("window_end"),
+    h: text("h"),
+    firstSeenAt: tz("first_seen_at").notNull().defaultNow(),
+    syncedAt: tz("synced_at").notNull().defaultNow(),
+  },
+  (t) => [index("tt_videos_creator").on(t.creator)],
+);
+
+export const ttLives = pgTable(
+  "tt_lives",
+  {
+    liveId: text("live_id").primaryKey(),
+    creator: text("creator"),
+    title: text("title"),
+    startedAt: tz("started_at"),
+    endedAt: tz("ended_at"),
+    gmv: numeric("gmv", { precision: 14, scale: 2 }),
+    itemsSold: integer("items_sold"),
+    skuOrders: integer("sku_orders"),
+    customers: integer("customers"),
+    viewers: bigint("viewers", { mode: "number" }),
+    views: bigint("views", { mode: "number" }),
+    avgViewingSeconds: numeric("avg_viewing_seconds", { precision: 12, scale: 2 }),
+    newFollowers: integer("new_followers"),
+    likes: integer("likes"),
+    comments: integer("comments"),
+    shares: integer("shares"),
+    productClicks: integer("product_clicks"),
+    clickThroughRate: numeric("click_through_rate", { precision: 12, scale: 6 }),
+    clickToOrderRate: numeric("click_to_order_rate", { precision: 12, scale: 6 }),
+    h: text("h"),
+    firstSeenAt: tz("first_seen_at").notNull().defaultNow(),
+    syncedAt: tz("synced_at").notNull().defaultNow(),
+  },
+  (t) => [index("tt_lives_creator").on(t.creator)],
+);
+
+export const ttSampleRequests = pgTable(
+  "tt_sample_requests",
+  {
+    id: text("id").primaryKey(),
+    status: text("status"),
+    creatorId: text("creator_id"),
+    creator: text("creator"),
+    nickname: text("nickname"),
+    followers: bigint("followers", { mode: "number" }),
+    creatorGmv: numeric("creator_gmv", { precision: 14, scale: 2 }),
+    creatorVideos: integer("creator_videos"),
+    creatorVideoViews: bigint("creator_video_views", { mode: "number" }),
+    fulfilmentPct: numeric("fulfilment_pct", { precision: 8, scale: 2 }),
+    productId: text("product_id"),
+    skuId: text("sku_id"),
+    productTitle: text("product_title"),
+    skuName: text("sku_name"),
+    commissionRate: numeric("commission_rate", { precision: 12, scale: 4 }),
+    orderId: text("order_id"),
+    isApprovable: boolean("is_approvable"),
+    expiresAt: tz("expires_at"),
+    availableQuantity: integer("available_quantity"),
+    h: text("h"),
+    firstSeenAt: tz("first_seen_at").notNull().defaultNow(),
+    syncedAt: tz("synced_at").notNull().defaultNow(),
+  },
+  (t) => [index("tt_samples_creator").on(t.creator)],
+);
+
+export const ttSkus = pgTable("tt_skus", {
+  skuId: text("sku_id").primaryKey(),
+  productId: text("product_id"),
+  productTitle: text("product_title"),
+  sellerSku: text("seller_sku"),
+  price: numeric("price", { precision: 14, scale: 2 }),
+  currency: text("currency"),
+  stock: integer("stock"),
+  productStatus: text("product_status"),
+  updatedAt: tz("updated_at"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});
+
+export const ttReturns = pgTable("tt_returns", {
+  returnId: text("return_id").primaryKey(),
+  orderId: text("order_id"),
+  status: text("status"),
+  returnType: text("return_type"),
+  reason: text("reason"),
+  refundAmount: numeric("refund_amount", { precision: 14, scale: 2 }),
+  currency: text("currency"),
+  skus: jsonb("skus"),
+  createdAt: tz("created_at"),
+  updatedAt: tz("updated_at"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});
+
+export const ttCancellations = pgTable("tt_cancellations", {
+  cancelId: text("cancel_id").primaryKey(),
+  orderId: text("order_id"),
+  status: text("status"),
+  cancelType: text("cancel_type"),
+  reason: text("reason"),
+  skus: jsonb("skus"),
+  createdAt: tz("created_at"),
+  updatedAt: tz("updated_at"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});
+
+export const ttShopDaily = pgTable("tt_shop_daily", {
+  day: date("day").primaryKey(),
+  gmv: numeric("gmv", { precision: 14, scale: 2 }),
+  orders: integer("orders"),
+  buyers: integer("buyers"),
+  unitsSold: integer("units_sold"),
+  refunds: numeric("refunds", { precision: 14, scale: 2 }),
+  returnsCancellations: integer("returns_cancellations"),
+  pageViews: bigint("page_views", { mode: "number" }),
+  impressions: bigint("impressions", { mode: "number" }),
+  avgOrderValue: numeric("avg_order_value", { precision: 14, scale: 2 }),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
 });

@@ -4,8 +4,9 @@ import { db } from "@/db";
 import { settings } from "@/db/schema";
 import { decryptToken, encryptToken, expiryEpoch, needsRefresh, signRequest } from "./sign";
 
-const API_BASE = "https://open-api.tiktokglobalshop.com";
-const AUTH_BASE = "https://auth.tiktok-shops.com";
+// The real TikTok addresses. They can be overridden (for tests against a pretend TikTok) with TIKTOK_API_BASE and TIKTOK_AUTH_BASE.
+const API_BASE = process.env.TIKTOK_API_BASE || "https://open-api.tiktokglobalshop.com";
+const AUTH_BASE = process.env.TIKTOK_AUTH_BASE || "https://auth.tiktok-shops.com";
 const KEY = "tiktok_connection";
 
 export type TikTokConfig = { appKey: string; appSecret: string; serviceId: string | null; authUrl: string | null };
