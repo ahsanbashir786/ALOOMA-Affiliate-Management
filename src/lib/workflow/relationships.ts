@@ -1,7 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { AL, rows } from "@/lib/analytics/sql";
-import { daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
+import { daysBetweenISO, dayKL, fmtDayLabel, todayKL } from "@/lib/time";
 import { getCommitments } from "./commitments";
 import { getWorkflowStates } from "./events";
 import { unansweredAttempts } from "./replay";
@@ -16,6 +16,8 @@ export type RelationshipRow = {
   outstanding: number;
   overdueDays: number | null;
   lastSaleOn: string | null;
+  /** Day of the latest recorded contact (null = never contacted). */
+  lastContactedOn: string | null;
   /** The next dated obligation or reminder, in plain words (null when nothing is scheduled). */
   nextLabel: string | null;
   nextOn: string | null;
@@ -59,6 +61,7 @@ export async function loadRelationships(usernames?: string[]): Promise<Map<strin
       : nextOpen ? `${nextOpen.kind === "resume" ? "Resume" : "Follow-up"} ${fmtDayLabel(nextOpen.dueOn)}` : null;
     out.set(u, {
       username: u,
+      lastContactedOn: st?.lastContactedAt ? dayKL(st.lastContactedAt) : null,
       nextLabel,
       nextOn,
       overdue: !!firstOut && firstOut.dueOn < today,

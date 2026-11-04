@@ -3,23 +3,29 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, X } from "lucide-react";
-import { addCommitmentLink, decideCommitmentContent } from "@/app/actions/workflow";
+import { addCommitmentLink, decideCommitmentContent, markContacted, markNeedsHelp, markPromised, resumeCreator, undoEvent } from "@/app/actions/workflow";
+import { MessageBox } from "@/components/ui/message-box";
+import { actionMessage } from "@/lib/affiliates/action-messages";
+import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/affiliates/status";
 import { Badge, Button, Input } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import type { PanelData } from "@/lib/workflow/panel";
 
-const Ctx = createContext<{ open: (username: string) => void }>({ open: () => {} });
+/** What the manager clicked: one action on one product line. The panel turns it into a message and outcome buttons. */
+export type PanelFocus = { action: CreatorAction; status: CreatorStatus; product: string | null; productId: string | null; reason: string; videos28: number; lastVideoLabel: string | null };
+
+const Ctx = createContext<{ open: (username: string, focus?: PanelFocus) => void }>({ open: () => {} });
 
 /** Open the creator side panel from anywhere (Today's Work, Affiliates…). */
 export const useCreatorPanel = () => useContext(Ctx);
 
 export function CreatorPanelProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<string | null>(null);
-  const open = useCallback((u: string) => setUser(u), []);
+  const [target, setTarget] = useState<{ user: string; focus?: PanelFocus; n: number } | null>(null);
+  const open = useCallback((u: string, focus?: PanelFocus) => setTarget((t) => ({ user: u, focus, n: (t?.n ?? 0) + 1 })), []);
   return (
     <Ctx.Provider value={{ open }}>
       {children}
-      {user && <Panel key={user} username={user} onClose={() => setUser(null)} />}
+      {target && <Panel key={`${target.user}-${target.n}`} username={target.user} focus={target.focus} onClose={() => setTarget(null)} />}
     </Ctx.Provider>
   );
 }
@@ -37,7 +43,75 @@ function Section({ title, count, defaultOpen, children }: { title: string; count
   );
 }
 
-function Panel({ username, onClose }: { username: string; onClose: () => void }) {
+const HELP_REASONS = ["Not replying", "Needs a brief", "Needs a voucher", "Product problem", "Other"];
+
+/** Do the action: message, then record what happened. Recorded in the same log Today's Work uses. */
+function ActionCard({ username, focus, phone, canAct, paused, onSaved }: { username: string; focus: PanelFocus; phone: string | null; canAct: boolean; paused: boolean; onSaved: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<null | "promise" | "help">(null);
+  const [date, setDate] = useState("");
+  const [reason, setReason] = useState(HELP_REASONS[0]);
+  const [done, setDone] = useState<{ text: string; undo?: number } | null>(null);
+  const msgs = actionMessage(focus.action, { username, product: focus.product ?? "our product", videos28: focus.videos28, lastVideoLabel: focus.lastVideoLabel });
+  const ctx = { action: focus.action, product: focus.product, productId: focus.productId, status: focus.status };
+  const save = async (fn: () => Promise<{ ok?: true; error?: string; eventId?: number }>, ok: string) => {
+    setBusy(true);
+    const r = await fn();
+    setBusy(false);
+    setDone({ text: r.error ?? ok, undo: r.error ? undefined : r.eventId });
+    if (!r.error) { setMode(null); onSaved(); }
+  };
+  return (
+    <section data-testid="action-card" className="mx-5 mb-3 rounded-xl border border-brand/30 bg-brand/5 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-line-strong bg-surface px-2.5 py-0.5 text-[13.5px] font-semibold text-ink">{focus.action}</span>
+        <span className="text-[14px] text-ink-2">{focus.product ?? "Overall"}</span>
+        <Badge tone="neutral">{focus.status}</Badge>
+      </div>
+      <p className="mt-1.5 text-[14px] font-medium text-ink">{ACTION_HINT[focus.action]}</p>
+      <p className="text-[13px] text-ink-3">{focus.reason}</p>
+      {msgs && <MessageBox className="mt-3" en={msgs.en} ms={msgs.ms} phone={phone} />}
+      {canAct ? (
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">What happened? (saved to Today&apos;s Work)</p>
+          <div className="flex flex-wrap gap-2">
+            {focus.action === "Resume" || paused ? (
+              <Button size="sm" disabled={busy} onClick={() => save(() => resumeCreator(username), "Resumed.")}>Resume</Button>
+            ) : focus.action === "Keep" || focus.action === "Wait" ? (
+              <p className="text-[13.5px] text-ink-3">Nothing to do for this line right now.</p>
+            ) : (
+              <>
+                <Button size="sm" disabled={busy} onClick={() => save(() => markContacted([username], undefined, ctx), "Saved as contacted. A follow-up is scheduled.")}>I contacted them</Button>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => setMode(mode === "promise" ? null : "promise")}>They gave a date</Button>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => setMode(mode === "help" ? null : "help")}>Needs help</Button>
+              </>
+            )}
+          </div>
+          {mode === "promise" && (
+            <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void save(() => markPromised(username, date, { ...(focus.productId && /^\d{5,30}$/.test(focus.productId) ? { productId: focus.productId } : {}), contentType: "video", details: `${focus.action}${focus.product ? ` – ${focus.product}` : ""}` }), "Promise saved."); }}>
+              <label className="text-[13px]">Promised date<Input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 block w-44" /></label>
+              <Button size="sm" type="submit" disabled={busy || !date}>Save</Button>
+            </form>
+          )}
+          {mode === "help" && (
+            <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void save(() => markNeedsHelp(username, `${reason} (${focus.action}${focus.product ? `, ${focus.product}` : ""})`, null), "Flagged for help."); }}>
+              <label className="text-[13px]">Why<select value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block h-9 rounded-lg border border-line-strong bg-surface px-2 text-[14px]">{HELP_REASONS.map((r) => <option key={r}>{r}</option>)}</select></label>
+              <Button size="sm" type="submit" disabled={busy}>Save</Button>
+            </form>
+          )}
+          {done && (
+            <p role="status" className="mt-3 text-[13.5px] text-ink-2">
+              {done.text}{" "}
+              {done.undo && <button className="underline" disabled={busy} onClick={() => save(() => undoEvent(done.undo!), "Undone.").then(() => setDone({ text: "Undone." }))}>Undo</button>}
+            </p>
+          )}
+        </div>
+      ) : <p className="mt-3 text-[13px] text-ink-3">You can view this but not record actions.</p>}
+    </section>
+  );
+}
+
+function Panel({ username, focus, onClose }: { username: string; focus?: PanelFocus; onClose: () => void }) {
   const [data, setData] = useState<PanelData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,6 +174,7 @@ function Panel({ username, onClose }: { username: string; onClose: () => void })
               <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Videos, 28 days</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.videos28}</dd></div>
               <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Last sale</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.lastSaleLabel ?? "–"}</dd></div>
             </dl>
+            {focus && <ActionCard username={username} focus={focus} phone={data.phone} canAct={data.canAct} paused={data.paused} onSaved={() => setTick((t) => t + 1)} />}
             {msg && <p role="status" className="mx-5 mb-2 rounded-lg bg-surface-2 px-3 py-2 text-[13.5px] text-ink-2">{msg}</p>}
 
             <Section title="Commitments" count={data.obligations.length} defaultOpen>

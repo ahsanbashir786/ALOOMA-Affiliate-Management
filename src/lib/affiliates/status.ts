@@ -63,3 +63,38 @@ export function winnerThreshold(gmv28s: number[], percentile = 0.9): number {
   if (!xs.length) return Infinity;
   return xs[Math.min(xs.length - 1, Math.floor(xs.length * percentile))];
 }
+
+/** What to do, in a few plain words (shown under the action). */
+export const ACTION_HINT: Record<CreatorAction, string> = {
+  Resume: "Decide when to restart",
+  Chase: "Remind them to post",
+  Push: "Ask for more videos",
+  Reward: "Offer another sample",
+  Revive: "Ask for a fresh video",
+  Coach: "Share a hook or voucher",
+  Keep: "Nothing needed now",
+  Wait: "Give them time",
+  Approach: "Make first contact",
+};
+
+/** Actions that need the manager to do something (everything except Keep and Wait). */
+export const NEEDS_ACTION: CreatorAction[] = ["Push", "Reward", "Revive", "Chase", "Coach", "Approach", "Resume"];
+
+const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
+
+/** The evidence behind a status, in one short line. Same numbers the rules used – nothing else. */
+export function explainStatus(i: StatusInput, status: CreatorStatus): string {
+  const v = i.videos28 === 1 ? "1 video lately" : `${i.videos28} videos lately`;
+  switch (status) {
+    case "Winner": return `${rm(i.gmv28)} lately · top sellers · ${v}`;
+    case "Rising": return i.prev28 > 0 ? `${rm(i.gmv28)} lately, up from ${rm(i.prev28)} · ${v}` : `${rm(i.gmv28)} lately, none before · ${v}`;
+    case "Slipping": return `${rm(i.gmv28)} lately, down from ${rm(i.prev28)} · ${v}`;
+    case "Steady": return `${rm(i.gmv28)} lately · ${v}`;
+    case "Quiet": return `${rm(i.gmvAll)} before, nothing lately`;
+    case "Silent": return "Sample past deadline, nothing posted";
+    case "Waiting": return "Sample inside the posting window";
+    case "Posted": return "Posted for the sample, no sales yet";
+    case "New": return "No sales or sample yet";
+    case "Paused": return "Set aside by staff";
+  }
+}

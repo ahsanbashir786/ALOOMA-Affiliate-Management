@@ -29,14 +29,21 @@ const Name = z.string().trim().min(1).max(80);
  * Staff confirm they contacted the creator. Opening WhatsApp, copying a message or opening TikTok never does this –
  * only this action. It records who and when, and schedules the follow-up (replayed from the log).
  */
-export async function markContacted(usernames: string[], confirmCount?: number): Promise<R> {
+export type ActionContext = { action: string; product?: string | null; productId?: string | null; status?: string | null };
+const Context = z
+  .object({ action: z.string().trim().min(1).max(20), product: z.string().trim().max(120).nullish(), productId: z.string().max(40).nullish(), status: z.string().max(20).nullish() })
+  .optional();
+
+export async function markContacted(usernames: string[], confirmCount?: number, context?: ActionContext): Promise<R> {
+  const ctx = Context.safeParse(context);
+  if (!ctx.success) return { error: "Check the action details." };
   const user = await requireUser("manager");
   const names = [...new Set(z.array(Name).min(1).max(200).parse(usernames))];
   // Bulk safety: the caller must confirm exactly how many records it is about to change.
   if (names.length > 1 && confirmCount !== names.length) return { error: `Please confirm the ${names.length} selected creators first.` };
   const batchId = names.length > 1 ? randomUUID() : null;
   let last = 0;
-  for (const u of names) last = await addEvent({ username: u, kind: "contacted", userId: user.id, batchId });
+  for (const u of names) last = await addEvent({ username: u, kind: "contacted", userId: user.id, batchId, ...(ctx.data ? { details: { action: ctx.data.action, product: ctx.data.product ?? null, productId: ctx.data.productId ?? null, status: ctx.data.status ?? null } } : {}) });
   done();
   return { ok: true, eventId: last, batchId: batchId ?? undefined, count: names.length };
 }

@@ -1,5 +1,5 @@
 // Unit tests for the one-word status/action rules. Run: npx tsx scripts/test-status.ts
-import { creatorStatus, winnerThreshold, type StatusInput } from "../src/lib/affiliates/status";
+import { creatorStatus, explainStatus, winnerThreshold, type StatusInput } from "../src/lib/affiliates/status";
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, detail = "") => { if (ok) pass++; else fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? `  → ${detail}` : ""}`); };
@@ -23,5 +23,6 @@ check("paused wins over everything → Paused / Resume", r({ paused: true, gmv28
 check("exactly the winner level counts as Winner", r({ gmv28: 1000, videos28: 3 }) === "Winner/Reward");
 check("a prior of zero is never 'Slipping' or a fake 'Rising' base", r({ gmv28: 100, prev28: 0, videos28: 0 }) === "Rising/Push");
 check("winner threshold is a high percentile of sellers only", winnerThreshold([0, 0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000], 0.9) === 1000 && winnerThreshold([0, 0]) === Infinity);
+check("explanations quote the numbers used; a rise from nothing never says 'up from RM 0'", explainStatus({ paused: false, gmv28: 100, prev28: 0, gmvAll: 100, videos28: 0, winnerGmv: 9999, samples: { sent: 0, waiting: 0, notPosted: 0, posted: 0 } }, "Rising") === "RM 100 lately, none before · 0 videos lately" && explainStatus({ paused: false, gmv28: 50, prev28: 100, gmvAll: 300, videos28: 1, winnerGmv: 9999, samples: { sent: 0, waiting: 0, notPosted: 0, posted: 0 } }, "Slipping") === "RM 50 lately, down from RM 100 · 1 video lately");
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

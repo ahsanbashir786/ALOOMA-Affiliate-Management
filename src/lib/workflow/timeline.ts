@@ -82,6 +82,7 @@ export async function getCreatorWorkspace(username: string): Promise<CreatorWork
     const d = (e.details ?? {}) as Record<string, string | null>;
     if (e.kind === "note") continue;
     let text = LABEL[e.kind] ?? e.kind;
+    if (e.kind === "contacted" && d.action) text += ` – ${d.action}${d.product ? ` (${d.product})` : ""}`;
     if (e.kind === "promised") {
       text += d.promisedOn ? ` by ${fmtDayLabel(d.promisedOn)}` : "";
       const bits = [d.quantity ? `${d.quantity}` : null, d.contentType === "live" ? "LIVE" : d.contentType === "video" ? "video" : null].filter(Boolean).join(" ");
