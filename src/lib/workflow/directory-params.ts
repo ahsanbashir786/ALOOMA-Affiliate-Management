@@ -31,6 +31,7 @@ export function parseDirectoryParams(sp: Record<string, string | undefined>): Di
     type: pick(sp.type, ["video", "live", "both"] as const),
     wa: pick(sp.wa, ["yes", "no"] as const),
     contact: pick(sp.contact, ["never", "recent", "overdue"] as const),
+    done: sp.done === "no" ? "no" : "",
     sort: (SORTS.find((s) => s.key === sp.sort)?.key ?? "gmv") as DirSort,
     page: Math.max(1, Number(sp.page) || 1),
   };

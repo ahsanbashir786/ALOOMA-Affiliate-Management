@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { href } from "@/lib/url";
 import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/affiliates/status";
 
-export type DirFilterValues = { q: string; samples: string; product: string; status: string; action: string; type: string; wa: string; contact: string; sort: string };
+export type DirFilterValues = { q: string; samples: string; product: string; status: string; action: string; type: string; wa: string; contact: string; done: string; sort: string };
 type Props = {
   values: DirFilterValues;
   products: { pid: string; name: string; creators: number }[];
@@ -99,6 +99,7 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, sh
         <button type="button" className={chip(values.action === "todo")} aria-pressed={values.action === "todo"} onClick={() => go({ action: "todo" })} title="Product lines that need you to do something (Daily Actions counts creators, so its number is smaller)">
           To Do <span className="tnum opacity-80">{todo}</span>
         </button>
+        <button type="button" className={chip(values.done === "no")} aria-pressed={values.done === "no"} onClick={() => go({ done: values.done === "no" ? "" : "no" })} title="Hide product lines whose action was already recorded today">Not Done Today</button>
         {actions.filter((a) => a.count > 0 || values.action === a.key).map((a) => (
           <button key={a.key} type="button" className={chip(values.action === a.key)} aria-pressed={values.action === a.key} onClick={() => go({ action: values.action === a.key ? "" : a.key })} title={ACTION_HINT[a.key]}>
             {a.key} <span className="tnum opacity-80">{a.count}</span>

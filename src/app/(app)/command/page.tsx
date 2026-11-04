@@ -8,34 +8,44 @@ import { Gauge } from "@/components/viz/gauge";
 import { Funnel } from "@/components/viz/funnel";
 import { Histogram } from "@/components/viz/histogram";
 import { Section } from "@/components/viz/section";
-import { StatTile } from "@/components/viz/stat-tile";
-import { Sparkline } from "@/components/viz/sparkline";
-import { ComboChart } from "@/components/viz/combo-chart";
-import { ForecastChart, type ForecastPoint } from "@/components/viz/forecast-chart";
 import { getAffiliateDirectory, STATUS_ORDER, ACTION_ORDER } from "@/lib/workflow/directory";
-import { Badge, PageHeader } from "@/components/ui/primitives";
+import { Badge } from "@/components/ui/primitives";
+import { WorkHeader } from "@/components/work/work-header";
+import { rows } from "@/lib/analytics/sql";
+import { sql } from "drizzle-orm";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Command centre" };
 
 export default async function CommandPage() {
   await requireUser("admin");
-  const [d, dir] = await Promise.all([getCommand(), getAffiliateDirectory({ samples: "with", page: 1, size: 1 })]);
+  const [d, dir, [doneRow]] = await Promise.all([
+    getCommand(),
+    getAffiliateDirectory({ samples: "with", page: 1, size: 1 }),
+    rows<{ n: number }>(sql`select count(*)::int as n from staff_events where reverted_at is null and kind in ('contacted', 'promised', 'needs_help') and (at at time zone 'Asia/Kuala_Lumpur')::date = (now() at time zone 'Asia/Kuala_Lumpur')::date`),
+  ]);
+  const atRisk = dir.statusCounts.Slipping + dir.statusCounts.Silent;
   const rel = d.progress.relationships;
-  const o = d.orders;
   const gaugeTone = (v: number | null, good: number, ok: number) => (v == null ? "brand" : v >= good ? "good" : v >= ok ? "warn" : "critical") as "good" | "warn" | "critical" | "brand";
-  const cancelDelta = o.totals.cancelPct != null && o.previous.cancelPct ? ((o.totals.cancelPct - o.previous.cancelPct) / o.previous.cancelPct) * 100 : null;
-  const fc = d.demand.total.forecast;
-  const forecastData: ForecastPoint[] = [
-    ...d.demand.weeks.map((w, i) => ({ label: fmtDayLabel(w), actual: d.demand.total.weekly[i] })),
-    ...(fc ? fc.points.map((p, i) => ({ label: `+${i + 1}w`, forecast: Math.round(p.value), band: [Math.round(p.low), Math.round(p.high)] as [number, number] })) : []),
-  ];
-  if (fc && forecastData.length > fc.points.length) { const last = d.demand.weeks.length - 1; forecastData[last] = { ...forecastData[last], forecast: forecastData[last].actual }; }
-  const unusual = o.flags.slice(-3);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Command centre" description={`${fmtDayLabel(d.today)} · everything that needs your attention, from the records`} />
+      <WorkHeader current="review" title="Command centre" isOwner purpose={`${fmtDayLabel(d.today)} · The one-glance summary. Every number opens the screen behind it.`} />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Summary">
+        {[
+          { label: "Lines to act on", n: dir.actionCounts.todo, hint: "open in the table", href: "/affiliates?action=todo", tone: "text-ink" },
+          { label: "Due & overdue", n: d.work.due, hint: "open Daily Actions", href: "/today?view=due", tone: d.work.due > 0 ? "text-critical" : "text-ink" },
+          { label: "Done today", n: doneRow?.n ?? 0, hint: "actions staff recorded", href: "/today?view=done", tone: "text-good" },
+          { label: "Silent or slipping", n: atRisk, hint: "creators losing momentum", href: "/affiliates?status=Slipping", tone: atRisk > 0 ? "text-warn" : "text-ink" },
+        ].map((t) => (
+          <Link key={t.label} href={t.href} className="rounded-xl border border-line bg-surface px-4 py-3 hover:bg-surface-2">
+            <p className="text-[13px] font-medium text-ink-3">{t.label}</p>
+            <p className={cn("tnum text-[28px] leading-tight font-semibold", t.tone)}>{t.n}</p>
+            <p className="text-[12.5px] text-ink-3">{t.hint}</p>
+          </Link>
+        ))}
+      </div>
 
       {/* data health */}
       <div className="flex flex-wrap gap-2.5" aria-label="Data freshness">
@@ -124,36 +134,11 @@ export default async function CommandPage() {
         </Section>
       </div>
 
-      {/* orders */}
-      <Section title="Order health" hint={o.start ? `${fmtDayLabel(o.start)} – ${fmtDayLabel(o.end!)} · orders per day with the cancellation rate` : "No shop orders loaded"} href="/order-health" linkLabel="Order health">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
-          <ComboChart data={o.days.map((x) => ({ label: fmtDayLabel(x.day), bars: x.orders, line: x.ratePct == null ? null : Math.round(x.ratePct * 10) / 10, flag: o.flags.some((f) => f.day === x.day) }))} barLabel="Orders" lineLabel="Cancelled %" height={240} />
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
-            <StatTile label="Cancelled" value={o.totals.cancelPct == null ? "–" : `${o.totals.cancelPct.toFixed(1)}%`} delta={cancelDelta} goodWhenUp={false} sub={cancelDelta == null ? "of orders in this period" : "vs the 90 days before"} href="/order-health" />
-            <StatTile label="Returned / refunded" value={o.totals.returnPct == null ? "–" : `${o.totals.returnPct.toFixed(1)}%`} sub={`${o.totals.returned} orders`} href="/order-health" />
-          </div>
-        </div>
-        {unusual.length > 0 && (
-          <p className="mt-4 flex flex-wrap items-center gap-2 text-[14px] text-ink-2"><span className="font-medium text-ink">Unusual days:</span>{unusual.map((f) => <Badge key={f.day} tone="critical">{fmtDayLabel(f.day)} · {f.value.toFixed(0)}% cancelled (usually {f.expected.toFixed(0)}%)</Badge>)}</p>
-        )}
-      </Section>
-
-      {/* demand */}
-      <Section title="Demand outlook" hint="Units sold per week, with the next 4 weeks forecast" href="/demand" linkLabel="Demand planning">
-        {d.demand.weeks.length < 2 ? <p className="text-[14.5px] text-ink-3">{d.demand.note}</p> : (
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-            <ForecastChart data={forecastData} height={240} />
-            <div className="space-y-3">
-              <StatTile label="Needed next 4 weeks" value={d.demand.total.next4 == null ? "–" : `${d.demand.total.next4} units`} delta={d.demand.total.trendPct} sub={d.demand.total.next4 == null ? (d.demand.note ?? "Not enough history") : "all items, bundles broken into parts"} />
-              <ul className="space-y-2">
-                {d.demand.items.slice(0, 4).map((i) => (
-                  <li key={i.sku} className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-[14px] text-ink" title={i.name}>{i.name}</span><span className="w-20"><Sparkline values={i.weekly} tone={i.trendPct != null && i.trendPct < -10 ? "critical" : "good"} /></span><span className="tnum w-12 text-right text-[13.5px] font-semibold">{i.sold4}</span></li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-      </Section>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-ink-3">
+        <span className="font-medium text-ink-2">Shop operations</span>
+        <Link href="/order-health" className="text-brand hover:underline">Order health</Link>
+        <Link href="/demand" className="text-brand hover:underline">Demand planning</Link>
+      </p>
     </div>
   );
 }

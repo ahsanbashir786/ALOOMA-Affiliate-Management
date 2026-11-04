@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { Fragment } from "react";
 import Link from "next/link";
 import { ExternalLink, MessageCircle } from "lucide-react";
-import { requireUser } from "@/lib/auth";
+import { can, requireUser } from "@/lib/auth";
+import { WorkHeader } from "@/components/work/work-header";
 import { ACTION_ORDER, getAffiliateDirectory, STATUS_ORDER, type DirLine, type DirRow } from "@/lib/workflow/directory";
 import { parseDirectoryParams } from "@/lib/workflow/directory-params";
 import { ACTION_HELP, STATUS_HELP, type CreatorStatus } from "@/lib/affiliates/status";
 import { fmtDayLabel } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
-import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
+import { Badge, buttonClasses, Card, EmptyState } from "@/components/ui/primitives";
 import { sampleRange } from "@/lib/samples/range";
 import { statsOf } from "@/lib/affiliates/action-messages";
 import { Pagination } from "@/components/ui/pagination";
@@ -80,7 +81,7 @@ function CreatorBlock({ r }: { r: DirRow }) {
 }
 
 export default async function AffiliatesPage({ searchParams }: PageProps<"/affiliates">) {
-  await requireUser();
+  const user = await requireUser();
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));
   const opts = parseDirectoryParams(raw);
@@ -96,12 +97,12 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
   const statsAll = (r: DirRow) => r.allLines.filter((l) => !l.noSample).map(statsOf);
   const page = opts.page ?? 1;
   const pages = Math.max(1, Math.ceil(dir.total / SIZE));
-  const values = { q: opts.q ?? "", samples: opts.samples ?? "with", product: opts.product ?? "", status: opts.status ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", sort: opts.sort ?? "gmv" };
+  const values = { q: opts.q ?? "", samples: opts.samples ?? "with", product: opts.product ?? "", status: opts.status ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", done: opts.done ?? "", sort: opts.sort ?? "gmv" };
   const pageFilters = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, (k === "samples" && v === "with") || (k === "sort" && v === "gmv") ? undefined : v || undefined]));
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Affiliate Data Management" actions={<Link href="/affiliates/analysis" className={buttonClasses({ variant: "secondary" })}>Detailed Analysis</Link>} />
+      <WorkHeader current="find" title="Affiliate Data Management" isOwner={can(user, "admin")} actions={<Link href="/affiliates/analysis" className={buttonClasses({ variant: "secondary" })}>Detailed Analysis</Link>} />
       <Card>
         <DirectoryFilters
           values={values}
