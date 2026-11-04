@@ -27,10 +27,11 @@ const fresh = (iso: string | null, now: number) => (!iso ? "none" : now - new Da
 const DOT = { good: "bg-good", warn: "bg-warn", bad: "bg-critical", none: "bg-line-strong" } as const;
 const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
 
-export function SyncBoard({ initial, trust, connected, canAdmin }: { initial: SyncOverview; trust: TrustCheck | null; connected: boolean; canAdmin: boolean }) {
+export function SyncBoard({ initial, trust, connected, canAdmin, serverNow }: { initial: SyncOverview; trust: TrustCheck | null; connected: boolean; canAdmin: boolean; serverNow: number }) {
   const [ov, setOv] = useState(initial);
   const [trustNow, setTrustNow] = useState(trust);
-  const [now, setNow] = useState(() => Date.now());
+  // Starts from the server's clock so the first browser render matches the server's HTML exactly; it ticks with the live clock afterwards.
+  const [now, setNow] = useState(serverNow);
   const [starting, setStarting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();

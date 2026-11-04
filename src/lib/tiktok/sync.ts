@@ -247,7 +247,7 @@ export function isDue(nowMs: number, lastStartedMs: number | null, s: SyncSettin
 // ───────── what the screen shows ─────────
 export type DatasetView = { key: DatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; running: boolean; progress: number | null };
 export type RunView = { id: number; dataset: DatasetKey; label: string; startedAt: string; durationSec: number | null; status: string; trigger: string; changed: number; seen: number; error: string | null; by: string | null };
-export type SyncOverview = { datasets: DatasetView[]; runs: RunView[]; running: boolean; lastFullAt: string | null; nextAt: string | null; settings: SyncSettings };
+export type SyncOverview = { /** The server's clock when this was built (lets the first browser render match the server's). */ now: number; datasets: DatasetView[]; runs: RunView[]; running: boolean; lastFullAt: string | null; nextAt: string | null; settings: SyncSettings };
 
 export async function syncOverview(): Promise<SyncOverview> {
   const [states, running, runs, lastSched, settings] = await Promise.all([
@@ -265,6 +265,7 @@ export async function syncOverview(): Promise<SyncOverview> {
   const times = states.map((s) => s.last_success_at).filter((x): x is Date => !!x).map((x) => new Date(x).getTime());
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   return {
+    now: Date.now(),
     datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: st.get(d.key)?.last_error ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,

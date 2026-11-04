@@ -18,7 +18,7 @@ export default async function SyncPage() {
           {conn.connected && <p className="mt-0.5 text-[14px] text-ink-3">{[conn.shopName ?? conn.sellerName, conn.region].filter(Boolean).join(" · ")}</p>}
         </div>
       </div>
-      <SyncBoard initial={ov} trust={trust} connected={conn.connected} canAdmin={can(user, "admin")} />
+      <SyncBoard initial={ov} trust={trust} connected={conn.connected} canAdmin={can(user, "admin")} serverNow={ov.now} />
     </div>
   );
 }
