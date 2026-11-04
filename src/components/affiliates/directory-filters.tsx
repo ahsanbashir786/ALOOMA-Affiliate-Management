@@ -104,7 +104,7 @@ export function DirectoryFilters({ values, products, actions, todo, statuses, sh
         <span>{shown}{pending ? " · Updating…" : ""}</span>
         <span className="flex items-center gap-3">
           {dirty && (
-            <button type="button" onClick={() => { setQ(""); start(() => router.replace(href(path, values.sort === "gmv" ? {} : { sort: values.sort }), { scroll: false })); }} className="inline-flex items-center gap-1 text-ink-2 hover:text-brand">
+            <button type="button" onClick={() => { setQ(""); start(() => router.replace(href(path, { sort: values.sort === "gmv" ? "" : values.sort }), { scroll: false })); }} className="inline-flex items-center gap-1 text-ink-2 hover:text-brand">
               <X className="size-3.5" /> Clear Filters
             </button>
           )}

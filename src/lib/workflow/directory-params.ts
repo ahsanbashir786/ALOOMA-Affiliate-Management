@@ -6,6 +6,9 @@ export const STATUSES: CreatorStatus[] = ["Silent", "Slipping", "Winner", "Risin
 export const ACTIONS: CreatorAction[] = ["Chase", "Push", "Reward", "Revive", "Coach", "Approach", "Resume", "Wait", "Keep"];
 export const SORTS: { key: DirSort; label: string }[] = [
   { key: "gmv", label: "Highest total GMV" },
+  { key: "gmv_asc", label: "Lowest total GMV" },
+  { key: "linegmv", label: "Highest product GMV" },
+  { key: "linegmv_asc", label: "Lowest product GMV" },
   { key: "lately", label: "Best lately (28 days)" },
   { key: "attention", label: "Needs attention first" },
   { key: "video", label: "Most videos lately" },

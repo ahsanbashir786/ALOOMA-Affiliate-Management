@@ -23,6 +23,8 @@ export type DirLine = {
   videos28: number;
   lastVideoOn: string | null;
   lastVideoLabel: string | null;
+  /** Days from the last video to the latest order we hold. */
+  lastVideoDaysAgo: number | null;
   undatedVideos: number;
   status: CreatorStatus;
   action: CreatorAction;
@@ -42,7 +44,7 @@ export type DirRow = {
   lastContactedOn: string | null;
 };
 
-export type DirSort = "gmv" | "lately" | "attention" | "video" | "stale" | "name";
+export type DirSort = "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "name";
 export type DirOpts = {
   q?: string;
   samples?: "with" | "none" | "all";
@@ -182,7 +184,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       lines.push({
         pid: p.pid, name: listingName(p.short, p.full, p.sku_name ?? p.smp_name), skus: p.skus ?? [], noSample: false,
         ordersVideo: sp?.ov ?? 0, ordersLive: sp?.ol ?? 0, orders: sp?.ot ?? 0, gmvVideo: sp?.gv ?? 0, gmvLive: sp?.gl ?? 0, gmv: sp?.gmv ?? 0,
-        videos: vp?.n ?? 0, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null, undatedVideos: vp?.undated ?? 0,
+        videos: vp?.n ?? 0, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null, lastVideoDaysAgo: vp?.last && ref ? Math.max(0, Math.round((Date.parse(ref) - Date.parse(vp.last)) / 86400000)) : null, undatedVideos: vp?.undated ?? 0,
         status: st.status, action: st.action, reason: explainStatus(input, st.status),
       });
     }
@@ -195,7 +197,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       const st = creatorStatus(input);
       lines.push({
         pid: null, name: "No sample sent", skus: [], noSample: true, ordersVideo: cs?.ov ?? 0, ordersLive: cs?.ol ?? 0, orders: 0,
-        gmvVideo: 0, gmvLive: 0, gmv: 0, videos: 0, videos28: v28By.get(r.username) ?? 0, lastVideoOn: null, lastVideoLabel: null, undatedVideos: 0,
+        gmvVideo: 0, gmvLive: 0, gmv: 0, videos: 0, videos28: v28By.get(r.username) ?? 0, lastVideoOn: null, lastVideoLabel: null, lastVideoDaysAgo: null, undatedVideos: 0,
         status: st.status, action: st.action, reason: explainStatus(input, st.status),
       });
     }
@@ -254,9 +256,13 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
   }
   const lately = (a: DirRow) => a.lines.reduce((m, l) => Math.max(m, l.videos28), 0);
   const lastVid = (a: DirRow) => a.lines.reduce((m, l) => (l.lastVideoOn && l.lastVideoOn > m ? l.lastVideoOn : m), "");
+  const topLine = (a: DirRow) => a.lines.reduce((m, l) => Math.max(m, l.gmv), 0);
   const best = (a: DirRow) => Math.min(...a.lines.map((l) => ATTN[l.action]));
   filtered.sort((a, b) => {
     switch (opts.sort) {
+      case "gmv_asc": return a.gmvAll - b.gmvAll || a.username.localeCompare(b.username);
+      case "linegmv": return topLine(b) - topLine(a) || a.username.localeCompare(b.username);
+      case "linegmv_asc": return topLine(a) - topLine(b) || a.username.localeCompare(b.username);
       case "name": return a.username.localeCompare(b.username);
       case "video": return lately(b) - lately(a) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
       case "stale": {
@@ -266,11 +272,11 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       }
       case "lately": return (cBy.get(b.username)?.gmv28 ?? 0) - (cBy.get(a.username)?.gmv28 ?? 0) || a.username.localeCompare(b.username);
       case "attention": return Number(b.overdue) - Number(a.overdue) || best(a) - best(b) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
-      default: return b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
+      default: return (b.gmvAll - a.gmvAll) || a.username.localeCompare(b.username);
     }
   });
 
-  const size = opts.size ?? 15;
+  const size = opts.size ?? 50;
   const page = Math.max(1, opts.page ?? 1);
   return {
     rows: filtered.slice((page - 1) * size, page * size),

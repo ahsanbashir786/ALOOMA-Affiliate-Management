@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import Link from "next/link";
 import { ExternalLink, MessageCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
@@ -17,8 +18,8 @@ import { LineAction } from "@/components/affiliates/line-action";
 import { cn, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Affiliate Data Management" };
-const SIZE = 15;
-const COLS = "lg:grid-cols-[170px_minmax(120px,1.2fr)_minmax(85px,0.8fr)_62px_76px_96px_minmax(120px,1.1fr)_minmax(105px,0.9fr)_92px]";
+const SIZE = 50;
+const COLS = "lg:grid-cols-[170px_minmax(120px,1.2fr)_minmax(85px,0.8fr)_62px_76px_96px_92px_minmax(120px,1.1fr)_minmax(105px,0.9fr)]";
 const TONE: Record<CreatorStatus, "good" | "brand" | "warn" | "critical" | "neutral"> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
 
 const rmShort = (n: number) => (n <= 0 ? "–" : fmtRM(n));
@@ -79,6 +80,12 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
   const { period, range } = await sampleRange(sp);
   const periodLabel = `${fmtDayLabel(period.start)} – ${fmtDayLabel(period.end)}`;
   const dir = await getAffiliateDirectory({ ...opts, range, size: SIZE });
+  const sortHref = (sort: string) => href("/affiliates", { ...pageFilters, sort: sort === "gmv" ? undefined : sort, range: sp.range ? one(sp.range) : undefined, from: one(sp.from), to: one(sp.to) });
+  /** A column heading that sorts: first click high to low, click again for low to high. */
+  const head = (label: string, asc: string, desc: string) => {
+    const cur = values.sort === desc ? "desc" : values.sort === asc ? "asc" : null;
+    return <Link href={sortHref(cur === "desc" ? asc : desc)} scroll={false} aria-label={`Sort by ${label}`} className={cn("inline-flex items-center gap-1 hover:text-ink", cur && "text-ink")}>{label}<span aria-hidden className="text-[11px]">{cur === "desc" ? "▼" : cur === "asc" ? "▲" : "↕"}</span></Link>;
+  };
   const statsAll = (r: DirRow) => r.allLines.filter((l) => !l.noSample).map(statsOf);
   const page = opts.page ?? 1;
   const pages = Math.max(1, Math.ceil(dir.total / SIZE));
@@ -103,7 +110,7 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
         ) : (
           <>
             <div className={cn("hidden gap-x-3 border-b border-line px-5 py-2.5 text-[13px] font-medium text-ink-3 lg:grid", COLS)}>
-              <span>Creator</span><span>Sample Product</span><span>SKU</span><span>Orders</span><span>Videos</span><span>GMV</span><span>Status</span><span>Action</span><span>Total GMV</span>
+              <span>Creator</span><span>Sample Product</span><span>SKU</span><span>Orders</span><span>Videos</span>{head("GMV", "linegmv_asc", "linegmv")}{head("Total GMV", "gmv_asc", "gmv")}<span>Status</span><span>Action</span>
             </div>
             <ul className="divide-y divide-line">
               {dir.rows.map((r) => (
@@ -112,13 +119,18 @@ export default async function AffiliatesPage({ searchParams }: PageProps<"/affil
                   <div className={cn("hidden gap-x-3 gap-y-3 lg:grid", COLS)}>
                     <div style={{ gridColumn: 1, gridRow: `1 / span ${r.lines.length}` }}><CreatorBlock r={r} /></div>
                     {r.lines.map((l, i) => (
-                      <div key={l.pid ?? `n${i}`} data-testid="dir-line" className={cn("col-start-2 col-end-9 grid grid-cols-subgrid items-start gap-x-3", i > 0 && "border-t border-dashed border-line pt-3")} style={{ gridRow: i + 1 }}>
-                        <p className={cn("min-w-0 text-[14.5px] leading-snug", l.noSample ? "text-ink-3" : "font-medium text-ink")} title={l.name}>{l.name}</p>
-                        <div className="min-w-0 text-[13px] leading-snug text-ink-2">{l.skus.length ? l.skus.map((s) => <p key={s} className="break-words" title={s}>{s}</p>) : <span className="text-ink-3">–</span>}</div>
-                        <Orders l={l} /><Videos l={l} /><Gmv l={l} /><StatusCell l={l} /><LineAction username={r.username} line={l} all={statsAll(r)} period={periodLabel} />
-                      </div>
+                      <Fragment key={l.pid ?? `n${i}`}>
+                        <div data-testid="dir-line" className={cn("col-start-2 col-end-7 grid grid-cols-subgrid items-start gap-x-3", i > 0 && "border-t border-dashed border-line pt-3")} style={{ gridRow: i + 1 }}>
+                          <p className={cn("min-w-0 text-[14.5px] leading-snug", l.noSample ? "text-ink-3" : "font-medium text-ink")} title={l.name}>{l.name}</p>
+                          <div className="min-w-0 text-[13px] leading-snug text-ink-2">{l.skus.length ? l.skus.map((s) => <p key={s} className="break-words" title={s}>{s}</p>) : <span className="text-ink-3">–</span>}</div>
+                          <Orders l={l} /><Videos l={l} /><Gmv l={l} />
+                        </div>
+                        <div className={cn("col-start-8 col-end-10 grid grid-cols-subgrid items-start gap-x-3", i > 0 && "border-t border-dashed border-line pt-3")} style={{ gridRow: i + 1 }}>
+                          <StatusCell l={l} /><LineAction username={r.username} line={l} all={statsAll(r)} period={periodLabel} />
+                        </div>
+                      </Fragment>
                     ))}
-                    <div className="tnum whitespace-nowrap" style={{ gridColumn: 9, gridRow: `1 / span ${r.lines.length}` }}><p className="text-[16px] font-semibold text-ink">{rmShort(r.gmvAll)}</p></div>
+                    <div className="tnum whitespace-nowrap" style={{ gridColumn: 7, gridRow: `1 / span ${r.lines.length}` }}><p className="text-[16px] font-semibold text-ink">{rmShort(r.gmvAll)}</p></div>
                   </div>
                   {/* mobile / tablet: stacked */}
                   <div className="space-y-3 lg:hidden">

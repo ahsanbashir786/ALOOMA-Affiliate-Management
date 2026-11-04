@@ -11,10 +11,11 @@ export type LineStats = {
   videos: number;
   videos28: number;
   lastVideoLabel: string | null;
+  lastVideoDaysAgo?: number | null;
   action: CreatorAction;
   status: string;
 };
-export const statsOf = (l: LineStats): LineStats => ({ name: l.name, orders: l.orders, gmv: l.gmv, gmvVideo: l.gmvVideo, gmvLive: l.gmvLive, videos: l.videos, videos28: l.videos28, lastVideoLabel: l.lastVideoLabel, action: l.action, status: l.status });
+export const statsOf = (l: LineStats): LineStats => ({ name: l.name, orders: l.orders, gmv: l.gmv, gmvVideo: l.gmvVideo, gmvLive: l.gmvLive, videos: l.videos, videos28: l.videos28, lastVideoLabel: l.lastVideoLabel, lastVideoDaysAgo: l.lastVideoDaysAgo, action: l.action, status: l.status });
 export type Msg = { en: string; ms: string };
 
 const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
@@ -30,16 +31,33 @@ function numbers(l: LineStats, ms: boolean): string[] {
   return out;
 }
 
-const REQ: Record<CreatorAction, Msg | null> = {
-  Push: { en: "Could you post 2 more videos for it this week?", ms: "Boleh awak upload 2 video lagi untuk produk ini minggu ini?" },
-  Reward: { en: "Thank you! We'd like to send you another sample – which product next?", ms: "Terima kasih! Kami nak hantar satu lagi sampel – produk apa seterusnya?" },
-  Revive: { en: "Could you post a fresh video for it?", ms: "Boleh awak upload video baharu untuk produk ini?" },
-  Chase: { en: "Could you let us know when you plan to post?", ms: "Boleh beritahu bila awak merancang untuk upload?" },
-  Coach: { en: "Want a hook idea or voucher code to lift sales?", ms: "Nak idea hook atau kod baucar untuk tingkatkan jualan?" },
+/** How long since the last video, in plain words ("last video 90 days ago (12 Aug)"). */
+const lastVid = (l: LineStats, ms: boolean) => {
+  if (l.videos <= 0) return ms ? "Belum ada video" : "No video posted yet";
+  const ago = l.lastVideoDaysAgo != null && l.lastVideoDaysAgo >= 14 ? (ms ? ` (${l.lastVideoDaysAgo} hari lalu)` : ` (${l.lastVideoDaysAgo} days ago)`) : "";
+  return ms ? `${l.videos} video, terakhir ${l.lastVideoLabel ?? "?"}${ago}` : `${l.videos} video${l.videos === 1 ? "" : "s"}, last on ${l.lastVideoLabel ?? "?"}${ago}`;
+};
+
+// Opening (thanks / encouragement) by status, closing request by action. Short, polite, motivating.
+const OPEN: Record<string, (p: string) => Msg> = {
+  Winner: (p) => ({ en: `Amazing work on ${p}! 🎉`, ms: `Syabas untuk ${p}! 🎉` }),
+  Rising: (p) => ({ en: `Great momentum on ${p}! 🚀`, ms: `Prestasi ${p} makin naik! 🚀` }),
+  Steady: (p) => ({ en: `Thank you for selling ${p} steadily 🙏`, ms: `Terima kasih sebab terus menjual ${p} 🙏` }),
+  Slipping: (p) => ({ en: `${p} did really well for you earlier – let's bring it back up 💪`, ms: `${p} dulu laku untuk awak – jom naikkan semula 💪` }),
+  Quiet: (p) => ({ en: `We miss your ${p} videos 😊`, ms: `Kami rindu video ${p} awak 😊` }),
+  Silent: (p) => ({ en: `Hope you're well! 😊 Your ${p} sample has arrived.`, ms: `Harap awak sihat! 😊 Sampel ${p} awak sudah sampai.` }),
+  Posted: (p) => ({ en: `Thank you for posting ${p}! 🙌`, ms: `Terima kasih upload ${p}! 🙌` }),
+};
+const CLOSE: Record<CreatorAction, Msg | null> = {
+  Push: { en: "You're one of our best – could you post 2 more videos this week? We'll support you with a brief.", ms: "Awak antara yang terbaik – boleh upload 2 video lagi minggu ini? Kami bantu dengan brief." },
+  Reward: { en: "You've earned it – we'd love to send you another sample. Which one next?", ms: "Awak layak – kami nak hantar sampel lagi. Yang mana seterusnya?" },
+  Revive: { en: "One fresh video could bring those orders back – could you post one soon?", ms: "Satu video baharu boleh bawa balik pesanan itu – boleh upload tak lama lagi?" },
+  Chase: { en: "We'd love to see your video – when do you plan to post? Need a brief? Just reply.", ms: "Kami teringin tengok video awak – bila awak nak upload? Perlukan brief? Balas sahaja." },
+  Coach: { en: "Want a hook idea or voucher code to turn views into orders? Happy to share!", ms: "Nak idea hook atau kod baucar untuk tukar tontonan jadi pesanan? Kami kongsi!" },
   Approach: null, Resume: null, Keep: null, Wait: null,
 };
 
-/** Short message about ONE product: its orders, GMV (video / LIVE only if any), videos and last video, then the request. */
+/** Short message about ONE product: thanks by status, the numbers (LIVE only if any), last video age, then one clear request. */
 export function lineMessage(action: CreatorAction, username: string, product: string | null, l: LineStats | null, period: string): Msg | null {
   if (action === "Approach") {
     const p = product ?? "our products";
@@ -48,13 +66,16 @@ export function lineMessage(action: CreatorAction, username: string, product: st
       ms: `Hai ${username}, kami suka kandungan awak dan rasa ${p} kami sesuai untuk penonton awak. Nak sampel percuma? Balas di sini dan kami uruskan.`,
     };
   }
-  const req = REQ[action];
-  if (!req || !l) return null;
-  const en = numbers(l, false).map((x) => `• ${x}`).join("\n");
-  const ms = numbers(l, true).map((x) => `• ${x}`).join("\n");
+  const close = CLOSE[action];
+  if (!close || !l) return null;
+  const open = (OPEN[l.status] ?? OPEN.Steady)(product ?? l.name);
+  const nums = (ms: boolean) => {
+    const o = numbers(l, ms)[0];
+    return `• ${o} · ${period}\n• ${lastVid(l, ms)}`;
+  };
   return {
-    en: `Hi ${username}, your ${product ?? l.name} (${period}):\n${en}\n${req.en}`,
-    ms: `Hai ${username}, ${product ?? l.name} awak (${period}):\n${ms}\n${req.ms}`,
+    en: `Hi ${username}, ${open.en}\n${nums(false)}\n${close.en}`,
+    ms: `Hai ${username}, ${open.ms}\n${nums(true)}\n${close.ms}`,
   };
 }
 
@@ -76,7 +97,7 @@ export function overviewMessage(username: string, all: LineStats[], period: stri
   if (top && (top.status === "Winner" || top.status === "Rising")) { asksEn.push(`We'd love to send you a new sample to take you to the next level – which one would you like?`); asksMs.push(`Kami nak hantar sampel baharu untuk bawa awak ke tahap seterusnya – awak nak yang mana?`); }
   if (!asksEn.length) { asksEn.push("Could you post a fresh video for one of them this week?"); asksMs.push("Boleh upload video baharu untuk salah satunya minggu ini?"); }
   return {
-    en: `Hi ${username}, your summary with us (${period}):\n${rows(false)}\nTotal: ${orders} orders, ${rm(gmv)}.\n${asksEn.join("\n")}`,
-    ms: `Hai ${username}, ringkasan awak bersama kami (${period}):\n${rows(true)}\nJumlah: ${orders} pesanan, ${rm(gmv)}.\n${asksMs.join("\n")}`,
+    en: `Hi ${username}, ${gmv > 0 ? "thank you for being a great partner! 🙌" : "thank you for working with us! 🙏"} Your summary (${period}):\n${rows(false)}\nTotal: ${orders} orders, ${rm(gmv)}.\n${asksEn.join("\n")} ${gmv > 0 ? "You're doing great – let's grow it together! 🚀" : "Let's get your first sales going! 💪"}`,
+    ms: `Hai ${username}, ${gmv > 0 ? "terima kasih kerana jadi rakan kongsi yang hebat! 🙌" : "terima kasih kerana bekerjasama dengan kami! 🙏"} Ringkasan awak (${period}):\n${rows(true)}\nJumlah: ${orders} pesanan, ${rm(gmv)}.\n${asksMs.join("\n")} ${gmv > 0 ? "Awak buat dengan baik – jom berkembang bersama! 🚀" : "Jom mulakan jualan pertama awak! 💪"}`,
   };
 }
