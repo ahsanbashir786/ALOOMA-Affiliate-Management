@@ -60,5 +60,7 @@ Migrations: `0014_execution_plan.sql`, `0015_execution_creators.sql` (run `npm r
 - Managers: tick several actions and assign, set status or due date at once; click the assigned people in a row to change them.
 - Marking Done or Not Needed shows an Undo for a few seconds.
 
-## By Creator view
+## By Creator view (built, hidden for now)
+The tab is switched off on the screen; the code (`creators-view.tsx`, `getCreatorAsks`) stays for later.
+
 One card per creator with every open ask about them across all products (the same kind of ask in several products is one line with the product names). Tick all, or tick each ask; "One Message" and WhatsApp send one message that covers every ask (Malay or English). Filters: all creators or my actions, to contact or everyone, several asks, priority. "Open Action" opens the action in the side panel.

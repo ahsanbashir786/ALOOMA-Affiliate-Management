@@ -150,28 +150,6 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   await row.getByRole("button", { name: /Status:/ }).click(); await row.getByRole("button", { name: /Status:/ }).click(); await p.waitForTimeout(300);
   ok(await p.getByRole("button", { name: "Undo" }).isVisible(), "undo: marking done offers Undo");
   await p.getByRole("button", { name: "Undo" }).click(); await p.waitForTimeout(500);
-  // By Creator: one row per creator with every ask
-  await p.getByTestId("view-creators").click(); await p.waitForSelector("[data-testid=bc-card]");
-  ok((await p.getByTestId("bc-card").count()) >= 5, "by creator: a card for each creator");
-  const names = await p.getByTestId("bc-card").locator("a[href^='/creators/']").allInnerTexts();
-  ok(new Set(names).size === names.length, "by creator: each creator appears once");
-  await p.getByTestId("bc-multi").click(); await p.waitForTimeout(800);
-  const multiCards = await p.getByTestId("bc-card").count();
-  ok(multiCards === 0 || (await p.getByTestId("bc-card").first().innerText()).match(/\b([2-9]) asks/) !== null, "by creator: Several Asks shows creators with 2+ asks");
-  await p.getByTestId("bc-multi").click(); await p.waitForTimeout(500);
-  const card = p.getByTestId("bc-card").first();
-  const cname = (await card.locator("a[href^='/creators/']").first().innerText()).replace("@", "");
-  ok(!(await p.getByTestId("bc-card").first().innerText()).includes("fix_conversion"), "by creator: example-only actions are not listed as asks");
-  await card.getByTestId("bc-tick-all").click(); await p.waitForTimeout(900);
-  await p.getByTestId("bc-search").fill(cname); await p.waitForTimeout(700);
-  ok((await p.getByTestId("bc-card").count()) === 0, "by creator: a creator ticked everywhere leaves the To Contact list");
-  await p.getByRole("button", { name: "Everyone" }).click(); await p.waitForTimeout(700);
-  ok(await p.getByTestId("bc-card").first().getByText("All Done").isVisible(), "by creator: Everyone shows them as All Done");
-  await p.getByTestId("bc-search").fill(""); await p.getByRole("button", { name: "To Contact" }).click(); await p.waitForTimeout(600);
-  await p.getByTestId("bc-card").first().getByRole("button", { name: "Open Action" }).first().click(); await p.waitForSelector("[data-testid=task-panel]");
-  ok(await p.getByTestId("task-panel").isVisible(), "by creator: Open Action opens the action");
-  await p.keyboard.press("Escape");
-  await p.getByTestId("view-list").click(); await p.waitForTimeout(300);
   // refresh
   await p.getByTestId("refresh-plan").click(); await p.waitForTimeout(2500);
   ok(await p.getByText(/Plan updated/).isVisible(), "plan: Update Plan works");

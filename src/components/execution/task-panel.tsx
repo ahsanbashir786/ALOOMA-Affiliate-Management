@@ -164,7 +164,7 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
           {task.creatorCount > 0 && (
             <Block icon={Users} title={`${task.kind === "fix_conversion" ? "Best Videos To Learn From" : task.kind === "recruit" ? "Top Sellers Today" : "Creators To Contact"} · ${task.creatorCount}`} right={msg && (
               <div className="inline-flex overflow-hidden rounded-md border border-line-strong text-[12px] font-medium">
-                {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1", lang === l ? "bg-brand text-white" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
+                {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1", lang === l ? "bg-brand-soft text-brand-strong" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
               </div>
             )}>
               <CreatorList key={task.id} taskId={task.id} kind={task.kind} product={task.productName} canEdit={canEdit && !REFERENCE_KINDS.includes(task.kind)} closed={closed || REFERENCE_KINDS.includes(task.kind)} reference={REFERENCE_KINDS.includes(task.kind)} total={task.creatorCount} contacted={task.contactedCount} lang={lang} onContacted={(n) => mutate.contacted(task.id, n)} />

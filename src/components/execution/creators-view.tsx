@@ -63,7 +63,7 @@ export function CreatorsView({ canManage, onOpenTask }: { canManage: boolean; on
   };
 
   const chip = (on: boolean, label: string, click: () => void, testId?: string) => (
-    <button key={label} data-testid={testId} aria-pressed={on} onClick={click} className={cn("inline-flex h-8 items-center rounded-full border px-3 text-[13.5px] font-medium transition-colors", on ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>{label}</button>
+    <button key={label} data-testid={testId} aria-pressed={on} onClick={click} className={cn("inline-flex h-8 items-center rounded-full border px-3 text-[13.5px] font-medium transition-colors", on ? "border-brand/30 bg-brand-soft text-brand-strong" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>{label}</button>
   );
 
   return (
@@ -86,7 +86,7 @@ export function CreatorsView({ canManage, onOpenTask }: { canManage: boolean; on
         <span className="hidden h-5 w-px bg-line-strong sm:block" />
         <div className="flex flex-wrap gap-1.5">{([["all", "Any Priority"], ["1", "High"], ["2", "Medium"], ["3", "Normal"]] as const).map(([k, l]) => chip(prio === k, l, () => setPrio(k)))}</div>
         <div className="ml-auto inline-flex overflow-hidden rounded-md border border-line-strong text-[12px] font-medium">
-          {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1.5", lang === l ? "bg-brand text-white" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
+          {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1.5", lang === l ? "bg-brand-soft text-brand-strong" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
         </div>
       </div>
       <p className="text-[13.5px] text-ink-3" data-testid="bc-total"><b className="tnum font-semibold text-ink-2">{total}</b> creator{total === 1 ? "" : "s"} · each person once, with every ask across all products. Biggest priority first.</p>

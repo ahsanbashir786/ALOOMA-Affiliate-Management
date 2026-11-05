@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight, Columns3, Contact, Flag, LayoutList, Loader2, RefreshCw, Search, SlidersHorizontal, UserX, Users, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight, Columns3, Flag, LayoutList, Loader2, RefreshCw, Search, SlidersHorizontal, UserX, Users, X } from "lucide-react";
 import { addTaskComment, bulkUpdateTasks, refreshPlan, restoreTasks, setTaskAssignees, setTaskDue, setTaskStatus, toggleTaskStep } from "@/app/actions/execution";
 import { Select } from "@/components/ui/primitives";
 import { TagBadge } from "@/components/products/ui";
@@ -14,10 +14,9 @@ import { daysBetweenISO } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
 import { TaskPanel, type Mutate } from "./task-panel";
 import { TeamView } from "./team";
-import { CreatorsView } from "./creators-view";
 import { CategoryChip, dueInfo, NEXT_STATUS, PeoplePicker, PersonStack, Popover, PriorityFlag, ProductChip, StatusIcon, STATUS_META } from "./ui";
 
-type View = "list" | "board" | "creators" | "team";
+type View = "list" | "board" | "team";
 type GroupBy = "product" | "category" | "status" | "person" | "due" | "priority";
 type StatusFilter = "all" | "open" | Status | "closed";
 type Filters = { q: string; status: StatusFilter; category: string; priority: string; person: string; product: string; due: string };
@@ -201,7 +200,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
 
   const chip = (s: StatusFilter, label: string) => (
     <button key={s} data-testid={`chip-${s}`} onClick={() => set({ status: s })} aria-pressed={f.status === s}
-      className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13.5px] font-medium transition-colors", f.status === s ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>{label}</button>
+      className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13.5px] font-medium transition-colors", f.status === s ? "border-brand/30 bg-brand-soft text-brand-strong" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>{label}</button>
   );
   const COLS_CLASS = canManage
     ? (group === "product" ? "lg:grid-cols-[28px_28px_minmax(0,1fr)_104px_72px_130px_104px_96px]" : "lg:grid-cols-[28px_28px_minmax(0,1fr)_170px_104px_72px_130px_104px_96px]")
@@ -259,8 +258,8 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-line-strong bg-surface p-0.5" role="tablist" aria-label="View">
-            {([["list", "List", LayoutList], ["board", "Board", Columns3], ["creators", "By Creator", Contact], ["team", "Team", Users]] as const).map(([k, l, Icon]) => (
-              <button key={k} role="tab" aria-selected={view === k} data-testid={`view-${k}`} onClick={() => setView(k)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13.5px] font-medium", view === k ? "bg-brand text-white" : "text-ink-2 hover:bg-surface-2")}><Icon className="size-4" />{l}</button>
+            {([["list", "List", LayoutList], ["board", "Board", Columns3], ["team", "Team", Users]] as const).map(([k, l, Icon]) => (
+              <button key={k} role="tab" aria-selected={view === k} data-testid={`view-${k}`} onClick={() => setView(k)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13.5px] font-medium", view === k ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2")}><Icon className="size-4" />{l}</button>
             ))}
           </div>
           {view === "list" && (
@@ -285,8 +284,8 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                 const on = same(f, s.f);
                 return (
                   <button key={s.key} data-testid={`scope-${s.key}`} aria-pressed={on} onClick={() => setF({ ...NO_FILTER, ...s.f })}
-                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[14px] font-medium transition-colors", on ? "bg-brand text-white" : "bg-surface-2 text-ink-2 hover:bg-line")}>
-                    {s.label}<span className={cn("tnum rounded-full px-1.5 text-[12.5px]", on ? "bg-white/20 text-white" : cn("bg-surface", s.tone ?? "text-ink-3"))}>{s.n}</span>
+                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[14px] font-medium transition-colors", on ? "bg-brand-soft text-brand-strong" : "bg-surface-2 text-ink-2 hover:bg-line")}>
+                    {s.label}<span className={cn("tnum rounded-full px-1.5 text-[12.5px]", on ? "bg-surface text-brand-strong" : cn("bg-surface", s.tone ?? "text-ink-3"))}>{s.n}</span>
                   </button>
                 );
               })}
@@ -298,9 +297,9 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                 const on = f.priority === k;
                 return (
                   <button key={k} data-testid={`prio-${k}`} aria-pressed={on} onClick={() => set({ priority: k })}
-                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-[14px] font-medium transition-colors", on ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>
-                    {k !== "all" && <Flag className={cn("size-4", on ? "text-white" : tone)} fill="currentColor" />}{label}
-                    <span className={cn("tnum rounded-full px-2 text-[13px] font-semibold", on ? "bg-white/25 text-white" : cn("bg-surface-2", tone || "text-ink-3"))}>{n}</span>
+                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-[14px] font-medium transition-colors", on ? "border-brand/30 bg-brand-soft text-brand-strong" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>
+                    {k !== "all" && <Flag className={cn("size-4", tone)} fill="currentColor" />}{label}
+                    <span className={cn("tnum rounded-full px-2 text-[13px] font-semibold", on ? "bg-surface text-brand-strong" : cn("bg-surface-2", tone || "text-ink-3"))}>{n}</span>
                   </button>
                 );
               })}
@@ -319,9 +318,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
       </div>
 
       {/* Views */}
-      {view === "creators" ? (
-        <CreatorsView canManage={canManage} onOpenTask={(id) => setOpenId(id)} />
-      ) : view === "team" ? (
+      {view === "team" ? (
         <TeamView tasks={tasks} data={data} today={data.today} onPick={(id) => { setF({ ...NO_FILTER, person: id }); setView("list"); setGroup("product"); }} />
       ) : view === "board" ? (
         <div className="grid gap-4 lg:grid-cols-3" data-testid="board">
