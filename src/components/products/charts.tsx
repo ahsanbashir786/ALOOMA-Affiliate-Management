@@ -28,7 +28,8 @@ export function WeeklyMixChart({ data, height = 260 }: { data: WeekPoint[]; heig
   );
 }
 
-const AGE_COLORS = ["var(--brand)", "var(--brand)", "var(--s1)", "var(--s4)", "var(--s4)", "var(--s4)"];
+// Same colours as the weekly chart: new, recent, old (31-60 days), very old (over 60 days).
+const AGE_COLORS = ["var(--brand)", "var(--brand)", "var(--s1)", "var(--s4)", "var(--s2)", "var(--s2)"];
 /** Sales by how old the video was when the sale happened: shows how fast videos fade. */
 export function AgeChart({ data, height = 260 }: { data: { band: string; sales: number; contents: number }[]; height?: number }) {
   return (
