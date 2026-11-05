@@ -7,7 +7,6 @@ import {
   integer,
   jsonb,
   numeric,
-  pgEnum,
   pgTable,
   primaryKey,
   serial,
@@ -18,17 +17,30 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-export const roleEnum = pgEnum("role", ["admin", "manager", "viewer"]);
 
 
 
-// ───────── Users & sessions ─────────
+// ───────── Roles, users & sessions ─────────
+export const roles = pgTable("roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  /** The owner role: always has every permission and cannot be edited or deleted. */
+  isAdmin: boolean("is_admin").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const rolePermissions = pgTable("role_permissions", {
+  roleId: uuid("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+  permission: text("permission").notNull(),
+}, (t) => [primaryKey({ columns: [t.roleId, t.permission] })]);
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
-  role: roleEnum("role").notNull().default("viewer"),
+  roleId: uuid("role_id").notNull().references(() => roles.id),
   active: boolean("active").notNull().default(true),
   /** May edit and upload WhatsApp numbers. Admins always may. */
   canEditContacts: boolean("can_edit_contacts").notNull().default(false),

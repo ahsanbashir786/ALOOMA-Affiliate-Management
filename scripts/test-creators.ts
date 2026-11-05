@@ -141,7 +141,7 @@ async function main() {
 
   // cache follows the records: a new staff action shows at once
   check("contact: not contacted yet", by("zz_c_star")!.lastContactedOn === null);
-  const [u] = await q(sql`insert into users (name, email, password_hash, role, active) values ('Zed Zee', 'zzc-1@test.local', 'x', 'manager', true) returning id`);
+  const [u] = await q(sql`insert into users (name, email, password_hash, role_id, active) values ('Zed Zee', 'zzc-1@test.local', 'x', (select id from roles where key = 'manager'), true) returning id`);
   await q(sql`insert into staff_events (username, kind, details) values ('zz_c_star', 'contacted', ${JSON.stringify({ action: "Push", productId: "mp_wp" })}::jsonb)`);
   await q(sql`insert into creator_owners (username, user_id) values ('zz_c_star', ${u.id as string})`);
   const again = (await loadCreatorRows()).all.find((r) => r.username === "zz_c_star")!;

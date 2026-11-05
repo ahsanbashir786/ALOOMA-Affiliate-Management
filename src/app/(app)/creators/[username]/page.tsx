@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink, MessageCircle } from "lucide-react";
-import { can, requireUser } from "@/lib/auth";
+import { can } from "@/lib/auth";
+import { gate } from "@/lib/gate";
 import { getCreatorProfile, type ProfileSample, type SampleResult } from "@/lib/creators/profile";
 import { getStaff } from "@/lib/creators/meta";
 import { statsOf } from "@/lib/creators/action-messages";
@@ -50,8 +51,9 @@ const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }
 const Td = ({ children, right, className }: { children?: React.ReactNode; right?: boolean; className?: string }) => <td className={cn("px-3 py-2.5 align-top text-[14px] text-ink", right && "tnum text-right", className)}>{children}</td>;
 
 export default async function CreatorProfilePage({ params }: PageProps<"/creators/[username]">) {
-  const user = await requireUser();
-  const canAct = can(user, "manager");
+  const { user, denied } = await gate("affiliates.view", "Affiliate Data");
+  if (denied) return denied;
+  const canAct = can(user, "affiliates.work");
   const username = decodeURIComponent((await params).username);
   const [p, staff] = await Promise.all([getCreatorProfile(username), getStaff()]);
   if (!p) notFound();

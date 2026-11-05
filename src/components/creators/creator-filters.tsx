@@ -21,11 +21,12 @@ type Props = {
   staff: { id: string; name: string }[];
   shown: string;
   today: string;
+  canExport: boolean;
 };
 const DEFAULTS: Partial<CreatorFilterValues> = { samples: "all", sort: "gmv" };
 
 /** Every choice takes effect straight away (no Apply). Search waits a moment after typing. */
-export function CreatorFilters({ values, products, actions, todo, statuses, staff, shown, today }: Props) {
+export function CreatorFilters({ values, products, actions, todo, statuses, staff, shown, today, canExport }: Props) {
   const router = useRouter();
   const path = usePathname();
   const [pending, start] = useTransition();
@@ -133,7 +134,7 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
               <X className="size-3.5" /> Clear Filters
             </button>
           )}
-          <a href={exportHref} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 font-medium text-ink hover:bg-surface-2"><Download className="size-4" /> Export To Excel</a>
+          {canExport && <a href={exportHref} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 font-medium text-ink hover:bg-surface-2"><Download className="size-4" /> Export To Excel</a>}
         </span>
       </div>
     </div>

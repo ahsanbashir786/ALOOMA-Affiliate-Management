@@ -18,7 +18,8 @@
     "diag:products": "tsx --env-file=.env --conditions=react-server scripts/diag-products.ts",
     "test:status": "tsx --conditions=react-server scripts/test-status.ts",
     "test:execution": "tsx --conditions=react-server scripts/test-execution.ts",
-    "seed:demo": "tsx --conditions=react-server scripts/seed-creators-demo.ts"
+    "seed:demo": "tsx --conditions=react-server scripts/seed-creators-demo.ts",
+    "test:permissions": "tsx --conditions=react-server scripts/test-permissions.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

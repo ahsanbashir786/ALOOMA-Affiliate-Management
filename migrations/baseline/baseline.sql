@@ -17,17 +17,6 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
---
--- Name: role; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.role AS ENUM (
-    'admin',
-    'manager',
-    'viewer'
-);
-
-
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -394,6 +383,30 @@ CREATE TABLE public.ep_tasks (
 
 
 --
+-- Name: role_permissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.role_permissions (
+    role_id uuid NOT NULL,
+    permission text NOT NULL
+);
+
+
+--
+-- Name: roles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.roles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    key text NOT NULL,
+    name text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    is_admin boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -727,10 +740,10 @@ CREATE TABLE public.users (
     email text NOT NULL,
     name text NOT NULL,
     password_hash text NOT NULL,
-    role public.role DEFAULT 'viewer'::public.role NOT NULL,
     active boolean DEFAULT true NOT NULL,
     can_edit_contacts boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    role_id uuid NOT NULL
 );
 
 
@@ -870,6 +883,30 @@ ALTER TABLE ONLY public.ep_tasks
 
 ALTER TABLE ONLY public.product_map
     ADD CONSTRAINT product_map_pkey PRIMARY KEY (product_id);
+
+
+--
+-- Name: role_permissions role_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.role_permissions
+    ADD CONSTRAINT role_permissions_pkey PRIMARY KEY (role_id, permission);
+
+
+--
+-- Name: roles roles_key_uq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.roles
+    ADD CONSTRAINT roles_key_uq UNIQUE (key);
+
+
+--
+-- Name: roles roles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.roles
+    ADD CONSTRAINT roles_pkey PRIMARY KEY (id);
 
 
 --
@@ -1344,6 +1381,14 @@ ALTER TABLE ONLY public.ep_task_creators
 
 
 --
+-- Name: role_permissions role_permissions_role_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.role_permissions
+    ADD CONSTRAINT role_permissions_role_id_fk FOREIGN KEY (role_id) REFERENCES public.roles(id) ON DELETE CASCADE;
+
+
+--
 -- Name: sessions sessions_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1376,9 +1421,32 @@ ALTER TABLE ONLY public.tt_sync_runs
 
 
 --
+-- Name: users users_role_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_role_id_fk FOREIGN KEY (role_id) REFERENCES public.roles(id);
+
+
+--
 -- PostgreSQL database dump complete
 --
 
 
 
+-- Starting roles and their permissions (data, not structure).
 SET search_path TO public;
+
+insert into roles (key, name, description, is_admin) values
+  ('admin', 'Admin', 'The owner. Can do everything, always.', true),
+  ('manager', 'Affiliate Manager', 'Runs the programme day to day: assigns work, syncs data.', false),
+  ('viewer', 'Viewer', 'Looks, and works on the actions assigned to them.', false)
+on conflict (key) do nothing;
+
+insert into role_permissions (role_id, permission)
+select r.id, p.permission from roles r join (values
+  ('admin','execution.view'),('admin','execution.work'),('admin','execution.assign'),('admin','affiliates.view'),('admin','affiliates.work'),('admin','affiliates.export'),('admin','contacts.edit'),('admin','products.view'),('admin','sync.view'),('admin','sync.run'),('admin','tiktok.manage'),('admin','users.manage'),
+  ('manager','execution.view'),('manager','execution.work'),('manager','execution.assign'),('manager','affiliates.view'),('manager','affiliates.work'),('manager','affiliates.export'),('manager','contacts.edit'),('manager','products.view'),('manager','sync.view'),('manager','sync.run'),
+  ('viewer','execution.view'),('viewer','execution.work'),('viewer','affiliates.view'),('viewer','products.view')
+) as p(role_key, permission) on p.role_key = r.key
+on conflict do nothing;

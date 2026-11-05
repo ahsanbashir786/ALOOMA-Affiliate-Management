@@ -122,7 +122,7 @@ export async function loadPlan(): Promise<PlanData> {
     rows<{ task_id: string; user_id: string }>(sql`select task_id::text, user_id::text from ep_task_assignees`),
     rows<{ id: number; task_id: string; user: string | null; kind: string; text: string | null; at: string }>(sql`
       select e.id::int, e.task_id::text, u.name as user, e.kind, e.text, e.created_at::text as at from ep_events e left join users u on u.id = e.user_id order by e.created_at, e.id`),
-    rows<Staff>(sql`select id::text, name, role::text from users where active order by name`),
+    rows<Staff>(sql`select u.id::text, u.name, r.name as role from users u join roles r on r.id = u.role_id where u.active order by u.name`),
     rows<{ task_id: string; n: number; c: number }>(sql`select task_id::text, count(*)::int as n, count(contacted_at)::int as c from ep_task_creators group by 1`),
     analyseProducts(),
     rows<{ value: unknown }>(sql`select updated_at::text as value from ep_tasks order by updated_at desc limit 1`),

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Info, TrendingDown, TrendingUp } from "lucide-react";
-import { requireUser } from "@/lib/auth";
+import { gate } from "@/lib/gate";
 import { productName } from "@/lib/products/catalog";
 import { analyseProducts, type Funnel, type NewContent, type ProductAnalysis } from "@/lib/products/analysis";
 import { parseRange } from "@/lib/creators/params";
@@ -108,7 +108,8 @@ function FunnelView({ f, o }: { f: Funnel; o: Funnel }) {
 }
 
 export default async function ProductPage({ params, searchParams }: PageProps<"/products/[key]">) {
-  await requireUser();
+  const { denied } = await gate("products.view", "Product Analysis");
+  if (denied) return denied;
   const { key } = await params;
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));

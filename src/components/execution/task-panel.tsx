@@ -34,14 +34,14 @@ function Block({ icon: Icon, title, right, children }: { icon: typeof Users; tit
   );
 }
 
-export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }: {
-  task: TaskView; data: PlanData; me: string; canManage: boolean; mutate: Mutate; onClose: () => void; onNav: (dir: 1 | -1) => void;
+export function TaskPanel({ task, data, me, canManage, canWork, mutate, onClose, onNav }: {
+  task: TaskView; data: PlanData; me: string; canManage: boolean; canWork: boolean; mutate: Mutate; onClose: () => void; onNav: (dir: 1 | -1) => void;
 }) {
   const [note, setNote] = useState("");
   const [skipping, setSkipping] = useState(false);
   const [reason, setReason] = useState("");
   const [lang, setLang] = useState<"ms" | "en">("ms");
-  const canEdit = canManage || task.assignees.includes(me);
+  const canEdit = canManage || (canWork && task.assignees.includes(me));
   const open = task.status === "not_started" || task.status === "pending";
   const closed = task.status === "skipped" || task.status === "auto_closed";
   const due = dueInfo(task.dueOn, data.today, open);

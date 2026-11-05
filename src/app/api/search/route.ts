@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
-import { can, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { rows } from "@/lib/sql";
 import { NAV } from "@/components/shell/nav";
 
@@ -12,7 +12,6 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const q = (new URL(req.url).searchParams.get("q") ?? "").trim().toLowerCase().replace(/^@/, "").slice(0, 40);
   const pages = NAV.flatMap((g) => g.items)
-    .filter((i) => !i.min || can(user, i.min))
     .filter((i) => !q || i.label.toLowerCase().includes(q))
     .map((i) => ({ label: i.label, href: i.href }));
   const creators = q.length >= 2 && /^[a-z0-9._]+$/.test(q)

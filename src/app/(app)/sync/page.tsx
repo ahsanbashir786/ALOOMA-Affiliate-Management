@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { can, requireUser } from "@/lib/auth";
+import { can } from "@/lib/auth";
+import { gate } from "@/lib/gate";
 import { connectionInfo } from "@/lib/tiktok/client";
 import { syncOverview } from "@/lib/tiktok/sync";
 import { SyncBoard } from "@/components/sync/sync-board";
@@ -8,7 +9,8 @@ export const metadata: Metadata = { title: "Data Sync" };
 export const dynamic = "force-dynamic";
 
 export default async function SyncPage() {
-  const user = await requireUser("manager");
+  const { user, denied } = await gate("sync.view", "Data Sync");
+  if (denied) return denied;
   const [ov, conn] = await Promise.all([syncOverview(), connectionInfo()]);
   return (
     <div className="space-y-6">
@@ -18,7 +20,7 @@ export default async function SyncPage() {
           {conn.connected && <p className="mt-0.5 text-[14px] text-ink-3">{[conn.shopName ?? conn.sellerName, conn.region].filter(Boolean).join(" · ")}</p>}
         </div>
       </div>
-      <SyncBoard initial={ov} connected={conn.connected} canAdmin={can(user, "admin")} serverNow={ov.now} />
+      <SyncBoard initial={ov} connected={conn.connected} canAdmin={can(user, "tiktok.manage")} canRun={can(user, "sync.run")} serverNow={ov.now} />
     </div>
   );
 }

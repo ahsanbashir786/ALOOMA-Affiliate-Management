@@ -46,7 +46,7 @@ export function TeamView({ tasks, data, today, onPick }: {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} data-testid="team-row" onClick={() => onPick(r.id)} className="cursor-pointer border-b border-line last:border-b-0 hover:bg-brand-soft/40">
-                  <td className="px-5 py-3"><span className="flex items-center gap-2.5">{r.id === "none" ? <span className="inline-flex size-7 items-center justify-center rounded-full border border-dashed border-line-strong text-ink-3">?</span> : <Person name={r.name} size={28} />}<span><b className="font-semibold whitespace-nowrap text-ink">{r.name}</b>{r.role && <span className="ml-2 text-[12px] text-ink-3">{r.role === "admin" ? "Owner" : r.role === "manager" ? "Manager" : "Team"}</span>}</span></span></td>
+                  <td className="px-5 py-3"><span className="flex items-center gap-2.5">{r.id === "none" ? <span className="inline-flex size-7 items-center justify-center rounded-full border border-dashed border-line-strong text-ink-3">?</span> : <Person name={r.name} size={28} />}<span><b className="font-semibold whitespace-nowrap text-ink">{r.name}</b>{r.role && <span className="ml-2 text-[12px] text-ink-3">{r.role}</span>}</span></span></td>
                   <td className="tnum px-3 py-3 text-right">{r.notStarted}</td>
                   <td className="tnum px-3 py-3 text-right text-warn">{r.pending}</td>
                   <td className="tnum px-3 py-3 text-right text-good">{r.done}</td>

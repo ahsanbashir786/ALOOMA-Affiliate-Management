@@ -10,7 +10,8 @@ A web app for running a TikTok Shop affiliate programme. Everything comes from t
 | **Affiliate Data** | Every creator with a line per product, status and action, owner, and contacted tracking. Creator profile and side panel. Excel export. |
 | **Product Analysis** | Is each of the 13 products growing or slipping, and why (new, recent or old content, LIVE, creators, samples, returns). |
 | **Data Sync** | Pulls orders, products, videos, LIVEs, sample requests and returns from TikTok on a schedule. Shows what is fresh and what failed. |
-| **Settings** | Team and roles, the TikTok connection, follow-up days. |
+| **Users & Roles** | Add people, give each a role, and choose what every role can open or do. Admin always has everything. Screens without permission stay in the menu with a lock and show a Permission Denied page. |
+| **Settings** | The TikTok connection and connection test. |
 
 Roles: **admin** (everything), **affiliate manager** (assign work, sync data), **viewer** (works on the actions assigned to them). WhatsApp numbers are personal data: only admins and people ticked "Can edit WhatsApp" can edit them.
 

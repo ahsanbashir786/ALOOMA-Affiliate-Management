@@ -65,7 +65,7 @@ function groupRuns(runs: RunView[], total: number): RunGroup[] {
   });
 }
 
-export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial: SyncOverview; connected: boolean; canAdmin: boolean; serverNow: number }) {
+export function SyncBoard({ initial, connected, canAdmin, canRun, serverNow }: { initial: SyncOverview; connected: boolean; canAdmin: boolean; canRun: boolean; serverNow: number }) {
   const [ov, setOv] = useState(initial);
   // Starts from the server's clock so the first browser render matches the server's HTML exactly; it ticks with the live clock afterwards.
   const [now, setNow] = useState(serverNow);
@@ -193,7 +193,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
                 Stuck? Reset
               </button>
             )}
-            <button data-testid="sync-now" disabled={busy} onClick={() => run()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-5 text-[14.5px] font-semibold text-brand hover:bg-white/90 disabled:opacity-60">
+            <button data-testid="sync-now" disabled={busy || !canRun} title={canRun ? undefined : "Your role cannot run a sync"} onClick={() => run()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-5 text-[14.5px] font-semibold text-brand hover:bg-white/90 disabled:opacity-60">
               <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Sync Now
             </button>
           </div>
@@ -210,7 +210,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
             <article key={d.key} data-testid={`ds-${d.key}`} className={cn("group relative rounded-2xl border bg-surface p-4 transition-shadow hover:shadow-card", d.lastError ? "border-critical/40" : "border-line")}>
               <div className="flex items-start justify-between">
                 <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand"><Icon className="size-5" /></span>
-                <button aria-label={`Sync ${d.label}`} disabled={busy} onClick={() => run(d.key)} className="rounded-lg p-1.5 text-ink-3 opacity-0 transition-opacity hover:bg-surface-2 hover:text-brand focus:opacity-100 group-hover:opacity-100 disabled:opacity-40">
+                <button aria-label={`Sync ${d.label}`} disabled={busy || !canRun} onClick={() => run(d.key)} className="rounded-lg p-1.5 text-ink-3 opacity-0 transition-opacity hover:bg-surface-2 hover:text-brand focus:opacity-100 group-hover:opacity-100 disabled:opacity-40">
                   <RefreshCw className={cn("size-4", d.running && "animate-spin")} />
                 </button>
               </div>

@@ -8,7 +8,8 @@ Five screens, all built on the TikTok Data Sync. No uploaded files.
 | Affiliate Data | `/creators`, `/creators/<name>` | Every creator, a line per product, status and action, owner, contacted; creator profile and side panel | [CREATORS.md](CREATORS.md) |
 | Product Analysis | `/products`, `/products/<key>` | Is each of the 13 products growing or slipping, and why | [PRODUCTS.md](PRODUCTS.md) |
 | Data Sync | `/sync` | Pulls orders, products, videos, LIVEs, samples, returns from TikTok; schedule and health | [TIKTOK-API.md](TIKTOK-API.md) |
-| Settings | `/settings` | Team and roles, TikTok connection, follow-up days | |
+| Users & Roles | `/users` | People, roles and the permission matrix (dynamic, stored in `roles` / `role_permissions`) | `users.manage` |
+| Settings | `/settings` | TikTok connection and test | `tiktok.manage` |
 
 ## How the data flows
 TikTok API → `tt_*` tables (Data Sync) → product analysis (`lib/products`) and creator rows (`lib/creators`) → Execution Plan rules (`lib/execution`) → tasks in `ep_*` tables.

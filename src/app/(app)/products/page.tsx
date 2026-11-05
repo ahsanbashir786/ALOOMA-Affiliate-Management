@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Package, Users, Video } from "lucide-react";
-import { requireUser } from "@/lib/auth";
+import { gate } from "@/lib/gate";
 import { analyseProducts, type ProductAnalysis } from "@/lib/products/analysis";
 import { hasSyncedData } from "@/lib/creators/load";
 import { parseRange } from "@/lib/creators/params";
@@ -66,7 +66,8 @@ function Card13({ p, q }: { p: ProductAnalysis; q: Record<string, string> }) {
 }
 
 export default async function ProductsPage({ searchParams }: PageProps<"/products">) {
-  await requireUser();
+  const { denied } = await gate("products.view", "Product Analysis");
+  if (denied) return denied;
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));
   if (!(await hasSyncedData())) {

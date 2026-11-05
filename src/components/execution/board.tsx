@@ -33,7 +33,7 @@ const sortTasks = (a: TaskView, b: TaskView) =>
   liveFirst(a) - liveFirst(b) || ORDER[a.status] - ORDER[b.status] || a.priority - b.priority || (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || b.impactRm - a.impactRm;
 const same = (a: Filters, b: Partial<Filters>) => (Object.keys(NO_FILTER) as (keyof Filters)[]).every((k) => a[k] === (b[k] ?? NO_FILTER[k]));
 
-export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData; me: string; meName: string; canManage: boolean }) {
+export function ExecutionBoard({ data, me, meName, canManage, canWork }: { data: PlanData; me: string; meName: string; canManage: boolean; canWork: boolean }) {
   const router = useRouter();
   // Team members start on their own work, grouped by when it is due; owners and managers start on everything, grouped by product.
   const [view, setView] = useState<View>("list");
@@ -432,7 +432,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
         </div>
       )}
 
-      {openTask && <TaskPanel key={openTask.id} task={openTask} data={data} me={me} canManage={canManage} mutate={mutate} onClose={() => setOpenId(null)} onNav={nav} />}
+      {openTask && <TaskPanel key={openTask.id} task={openTask} data={data} me={me} canManage={canManage} canWork={canWork} mutate={mutate} onClose={() => setOpenId(null)} onNav={nav} />}
       {toast && (
         <div role="status" className={cn("fixed bottom-5 left-1/2 z-[60] flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-xl border px-4 py-2.5 text-[14px] shadow-xl", toast.tone === "error" ? "border-critical/30 bg-critical-soft text-critical" : "border-line-strong bg-surface text-ink", picked.size > 0 && canManage && "bottom-24")}>
           {toast.tone === "error" ? <AlertCircle className="size-4" /> : <Check className="size-4 text-good" />}{toast.text}

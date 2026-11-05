@@ -5,8 +5,6 @@ import { LogOut } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { initials } from "@/lib/utils";
 
-const ROLE_LABEL = { admin: "Admin", manager: "Affiliate manager", viewer: "Viewer" } as const;
-
 export function UserMenu({
   name,
   email,
@@ -14,7 +12,7 @@ export function UserMenu({
 }: {
   name: string;
   email: string;
-  role: keyof typeof ROLE_LABEL;
+  role: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -41,7 +39,7 @@ export function UserMenu({
             <p className="text-[14px] font-semibold text-ink">{name}</p>
             <p className="truncate text-[13px] text-ink-3">{email}</p>
             <p className="mt-1.5 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-[12px] font-medium text-ink-2">
-              {ROLE_LABEL[role]}
+              {role}
             </p>
           </div>
           <form action={logout} className="mt-1 border-t border-line pt-1">

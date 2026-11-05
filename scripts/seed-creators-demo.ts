@@ -97,6 +97,12 @@ async function main() {
   await ins("tt_lives", "live_id, creator, title, started_at, gmv, items_sold, viewers", lives);
   await ins("tt_sample_requests", "id, status, creator_id, creator, nickname, followers, creator_gmv, creator_videos, creator_video_views, fulfilment_pct, product_id, sku_id, product_title, sku_name, commission_rate, order_id, is_approvable, expires_at, available_quantity, first_seen_at", reqs);
   await ins("tt_orders", "order_id, status, is_sample, created_at, paid_at, updated_at, delivered_at, total_amount, currency, tracking_number, shipping_provider, lines, is_final", ords);
+  // Demo sign-ins for the browser tests: owner@, manager@ and viewer@test.local (password Passw0rd!test).
+  const bcrypt = (await import("bcryptjs")).default;
+  const hash = await bcrypt.hash("Passw0rd!test", 10);
+  for (const [name, email, role] of [["Test Owner", "owner@test.local", "admin"], ["Test Manager", "manager@test.local", "manager"], ["Test Viewer", "viewer@test.local", "viewer"]]) {
+    await q(sql`insert into users (name, email, password_hash, role_id, active) values (${name}, ${email}, ${hash}, (select id from roles where key = ${role}), true) on conflict (email) do nothing`);
+  }
   console.log(`creators ${creators.length} · order lines ${lines.length} · videos ${vids.length} · lives ${lives.length} · sample requests ${reqs.length} · sample orders ${ords.length}`);
   process.exit(0);
 }

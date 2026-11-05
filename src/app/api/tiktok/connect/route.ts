@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 /** Starts the connection: sends the owner to TikTok to approve, with a one-time `state` kept in a cookie. */
 export async function GET(request: Request) {
   const user = await getCurrentUser();
-  if (!user || !can(user, "admin")) return NextResponse.redirect(new URL("/login", request.url));
+  if (!user || !can(user, "tiktok.manage")) return NextResponse.redirect(new URL("/login", request.url));
   const cfg = tiktokConfig();
   const state = randomBytes(16).toString("hex");
   const url = cfg ? authorizeUrl(cfg, state) : null;

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsLeft, ChevronsRight, X } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Lock, X } from "lucide-react";
+import { can } from "@/lib/can";
+import type { PermissionKey } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 import { NAV, type NavItem } from "./nav";
 
 type Props = {
-  role: "admin" | "manager" | "viewer";
-  user: { name: string; email: string };
+  user: { name: string; email: string; roleName: string; isAdmin: boolean; permissions: PermissionKey[] };
   sync: { label: string; ok: boolean };
   open: boolean;
   onClose: () => void;
@@ -16,12 +17,10 @@ type Props = {
   onToggleCollapsed: () => void;
 };
 
-const RANK = { viewer: 1, manager: 2, admin: 3 } as const;
-const ROLE_LABEL = { admin: "Admin", manager: "Affiliate manager", viewer: "Viewer" } as const;
 
-export function Sidebar({ role, user, sync, open, onClose, collapsed, onToggleCollapsed }: Props) {
+export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapsed }: Props) {
   const pathname = usePathname();
-  const isActive = (item: NavItem) => pathname === item.href || pathname.startsWith(item.href + "/") || !!item.also?.some((p) => pathname.startsWith(p));
+  const isActive = (item: NavItem) => pathname === item.href || pathname.startsWith(item.href + "/");
   // On phones the menu is always the full one.
   const rail = collapsed;
 
@@ -49,8 +48,7 @@ export function Sidebar({ role, user, sync, open, onClose, collapsed, onToggleCo
 
         <nav className={cn("flex-1 overflow-y-auto px-3 py-3", rail && "lg:px-2")}>
           {NAV.map((group, gi) => {
-            const items = group.items.filter((i) => !i.min || RANK[role] >= RANK[i.min]);
-            if (!items.length) return null;
+            const items = group.items;
             return (
               <div key={group.label} className={cn(gi > 0 && "mt-3")}>
                 <p className={cn("px-3 pb-1.5 text-[11.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase", rail && "lg:hidden")}>{group.label}</p>
@@ -59,22 +57,25 @@ export function Sidebar({ role, user, sync, open, onClose, collapsed, onToggleCo
                   {items.map((item) => {
                     const active = isActive(item);
                     const Icon = item.icon;
+                    const allowed = can(user, item.perm);
                     return (
                       <li key={item.href}>
                         <Link
                           href={item.href}
                           onClick={onClose}
-                          title={rail ? item.label : undefined}
+                          title={rail ? item.label : allowed ? undefined : "Your role cannot open this"}
                           aria-current={active ? "page" : undefined}
                           className={cn(
                             "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14.5px] font-medium transition-colors",
                             rail && "lg:justify-center lg:px-0",
                             active ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+                            !allowed && !active && "text-ink-3",
                           )}
                         >
                           {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-3 w-[3px] rounded-r-full bg-brand lg:-left-3" />}
                           <Icon className={cn("size-[18px] shrink-0", active ? "text-brand" : "text-ink-3 group-hover:text-ink-2")} />
                           <span className={cn("flex-1 truncate", rail && "lg:hidden")}>{item.label}</span>
+                          {!allowed && <Lock data-testid="nav-lock" aria-label="Locked for your role" className={cn("size-3.5 shrink-0 text-ink-3", rail && "lg:absolute lg:top-1 lg:right-2 lg:size-3")} />}
                         </Link>
                       </li>
                     );
@@ -96,10 +97,10 @@ export function Sidebar({ role, user, sync, open, onClose, collapsed, onToggleCo
             <span className={cn("truncate", rail && "lg:hidden")}>{sync.label}</span>
           </Link>
           <div className={cn("flex items-center gap-2.5 rounded-lg bg-surface-2 p-2", rail && "lg:justify-center lg:bg-transparent")}>
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[12px] font-semibold text-white" title={rail ? `${user.name} · ${ROLE_LABEL[role]}` : undefined}>{initials(user.name)}</span>
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[12px] font-semibold text-white" title={rail ? `${user.name} · ${user.roleName}` : undefined}>{initials(user.name)}</span>
             <span className={cn("min-w-0 flex-1", rail && "lg:hidden")}>
               <span className="block truncate text-[13.5px] font-medium text-ink">{user.name}</span>
-              <span className="block truncate text-[12px] text-ink-3">{ROLE_LABEL[role]}</span>
+              <span className="block truncate text-[12px] text-ink-3">{user.roleName}</span>
             </span>
           </div>
           <button

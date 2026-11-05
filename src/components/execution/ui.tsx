@@ -99,7 +99,7 @@ export function PeoplePicker({ staff, value, onChange, disabled }: { staff: Staf
           <li key={s.id}>
             <button type="button" disabled={disabled} onClick={() => onChange(on ? value.filter((v) => v !== s.id) : [...value, s.id])} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[14px] hover:bg-surface-2 disabled:opacity-50">
               <Person name={s.name} size={24} />
-              <span className="min-w-0 flex-1 truncate text-ink">{s.name}<span className="ml-1.5 text-[12px] text-ink-3">{s.role === "admin" ? "Owner" : s.role === "manager" ? "Manager" : "Team"}</span></span>
+              <span className="min-w-0 flex-1 truncate text-ink">{s.name}<span className="ml-1.5 text-[12px] text-ink-3">{s.role}</span></span>
               <span className={cn("flex size-5 items-center justify-center rounded border", on ? "border-brand/30 bg-brand-soft text-brand-strong" : "border-line-strong")}>{on && <Check className="size-3.5" strokeWidth={3} />}</span>
             </button>
           </li>

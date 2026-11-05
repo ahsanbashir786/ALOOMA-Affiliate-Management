@@ -5,7 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import * as z from "zod";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { roles, users } from "@/db/schema";
 import { landingFor, createSession, destroySession } from "@/lib/auth";
 
 export type FormState = { error?: string; values?: Record<string, string> } | undefined;
@@ -45,15 +45,16 @@ export async function setupAdmin(_: FormState, formData: FormData): Promise<Form
   const values = { name: String(formData.get("name") ?? ""), email: String(formData.get("email") ?? "") };
   const parsed = SetupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message, values };
+  const [adminRole] = await db.select({ id: roles.id }).from(roles).where(eq(roles.isAdmin, true)).limit(1);
   const [created] = await db
     .insert(users)
     .values({
       name: parsed.data.name,
       email: parsed.data.email,
       passwordHash: await bcrypt.hash(parsed.data.password, 12),
-      role: "admin",
+      roleId: adminRole.id,
     })
     .returning({ id: users.id });
   await createSession(created.id);
-  redirect("/command");
+  redirect(landingFor());
 }

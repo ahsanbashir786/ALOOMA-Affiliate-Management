@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Fragment } from "react";
 import Link from "next/link";
 import { ExternalLink, MessageCircle, Users } from "lucide-react";
-import { can, requireUser } from "@/lib/auth";
+import { can } from "@/lib/auth";
+import { gate } from "@/lib/gate";
 import { ACTION_ORDER, getAffiliateDirectory, STATUS_ORDER, type DirLine, type DirRow } from "@/lib/creators/workflow/directory";
 import { parseCreatorParams } from "@/lib/creators/params";
 import { getStaff, syncFreshness } from "@/lib/creators/meta";
@@ -133,8 +134,10 @@ function CreatorBlock({ r, staff, canAct }: { r: DirRow; staff: { id: string; na
 }
 
 export default async function CreatorsPage({ searchParams }: PageProps<"/creators">) {
-  const user = await requireUser();
-  const canAct = can(user, "manager");
+  const { user, denied } = await gate("affiliates.view", "Affiliate Data");
+  if (denied) return denied;
+  const canAct = can(user, "affiliates.work");
+  const canExport = can(user, "affiliates.export");
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));
   const opts = parseCreatorParams(raw);
@@ -194,6 +197,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
           statuses={STATUS_ORDER.map((k) => ({ key: k, count: dir.statusCounts[k] }))}
           staff={staff}
           today={todayKL()}
+          canExport={canExport}
           shown={`${dir.total.toLocaleString("en-MY")} creator${dir.total === 1 ? "" : "s"} · ${dir.totalLines.toLocaleString("en-MY")} product line${dir.totalLines === 1 ? "" : "s"} · orders, GMV and videos: ${opts.range ? periodLabel : "all time"}`}
         />
 

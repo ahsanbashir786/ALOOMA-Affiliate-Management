@@ -16,7 +16,7 @@ async function login(p, email) {
   await login(p, "owner@test.local");
   ok(/\/execution$/.test(p.url()), "landing: everyone opens on the Execution Plan");
   const links = (await p.locator("aside nav a").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(links) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "Data Sync", "Settings"]), `menu: exactly the five screens (${links.join(", ")})`);
+  ok(JSON.stringify(links) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "Data Sync", "Users & Roles", "Settings"]), `menu: the six items (${links.join(", ")})`);
   for (const gone of ["/today", "/command", "/data", "/samples", "/affiliates", "/progress", "/orders", "/content", "/demand", "/order-health", "/opportunities"]) {
     const r = await p.goto(BASE + gone); ok(r.status() === 404, `old screen ${gone} is gone`);
   }
@@ -38,8 +38,9 @@ async function login(p, email) {
   // Settings + Data Sync
   await p.goto(BASE + "/settings"); await p.waitForSelector("h1");
   const settingsText = await p.locator("main").innerText();
-  ok(/TikTok Shop connection/.test(settingsText) && /Team/.test(settingsText) && /Daily workflow/.test(settingsText), "Settings: TikTok, Team and Daily workflow");
+  ok(/TikTok Shop connection/.test(settingsText) && !/Daily workflow/.test(settingsText), "Settings: the TikTok connection only");
   ok(!/Recommendation rules|Brand accounts|upload/i.test(settingsText), "Settings: no old upload-era forms");
+  await p.goto(BASE + "/users"); await p.waitForSelector("[data-testid=user-row]"); ok(true, "Users & Roles: opens for the owner");
   await p.goto(BASE + "/sync"); await p.waitForSelector("h1");
   ok(!/upload/i.test(await p.locator("main").innerText()), "Data Sync: no mention of uploads");
   ok(errs.length === 0, "no browser errors (owner)"); if (errs.length) console.log(errs);
@@ -47,7 +48,7 @@ async function login(p, email) {
   p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   await login(p, "viewer@test.local");
   const vl = (await p.locator("aside nav a").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(vl) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis"]), `viewer: sees only the three working screens (${vl.join(", ")})`);
+  ok(vl.length === 6, `viewer: sees the whole menu (${vl.length} items)`);
   // mobile
   p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await login(p, "manager@test.local");
