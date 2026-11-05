@@ -60,7 +60,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
   const D = kd("tl.created_at");
   const refD = ref ?? "1970-01-01";
 
-  const [csales, psales, weekly, vidsC, vidsP, livesC, samples, reqs, topSkus, contact, owners, doneRows, names, firsts] = await Promise.all([
+  const [csales, psales, weekly, vidsC, vidsP, livesC, samples, reqs, topSkus, contact, owners, doneRows, names, firsts, alsoRows, vidsU] = await Promise.all([
     rows<{ creator: string; gmv_all: number; gmv28: number; prev28: number; ov: number; ol: number; last: string | null }>(sql`
       select tl.creator,
         coalesce(sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")}), 0)::float8 as gmv_all,
@@ -153,6 +153,28 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
         select creator, ${kd("created_at")} as d from tt_affiliate_order_lines where creator is not null
         union all select creator, ${kd("posted_at")} from tt_videos where creator is not null and posted_at is not null
         union all select creator, ${kd("started_at")} from tt_lives where creator is not null and started_at is not null) x group by creator`),
+    // A video can link two products: sales of the OTHER products made through the videos that link a sampled product.
+    rows<{ creator: string; sample_pk: string; other_pk: string; gmv: number; orders: number }>(sql`
+      select vk.creator, vk.pk as sample_pk, tl.pk as other_pk,
+        coalesce(sum(tl.pay) filter (where tl.valid), 0)::float8 as gmv, (count(distinct tl.order_id) filter (where tl.valid))::int as orders
+      from (select v.creator, v.video_id as vid, ${sql.raw(PK_LISTING("p->>'id'"))} as pk
+            from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
+            where v.creator is not null and p->>'id' is not null group by 1, 2, 3) vk
+      join ${TL} on tl.creator = vk.creator and tl.content_id = vk.vid
+      where tl.pk <> vk.pk and vk.pk not in ('excluded', 'unmapped') and ${R("tl.created_at")}
+      group by 1, 2, 3`),
+    // Videos per product = TikTok's video list plus every video that produced a sale (orders reach back further than the list).
+    rows<{ creator: string; pid: string; n: number; sold_only: number }>(sql`
+      with listed as (
+        select v.creator, ${sql.raw(PK_LISTING("p->>'id'"))} as pk, v.video_id as vid
+        from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
+        where v.creator is not null and p->>'id' is not null and ${R("v.posted_at")} group by 1, 2, 3),
+      sold as (
+        select tl.creator, tl.pk, tl.content_id as vid from ${TL}
+        where tl.creator is not null and tl.valid and tl.content_type = 'Video' and tl.content_id is not null and ${R("tl.created_at")} group by 1, 2, 3)
+      select coalesce(l.creator, s.creator) as creator, coalesce(l.pk, s.pk) as pid, count(*)::int as n, (count(*) filter (where l.vid is null))::int as sold_only
+      from listed l full join sold s on s.creator = l.creator and s.pk = l.pk and s.vid = l.vid
+      where coalesce(l.pk, s.pk) <> 'excluded' group by 1, 2`),
   ]);
 
   const usernames = names.map((n) => n.c);
@@ -167,6 +189,9 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
   for (const x of weekly) { const a = wkBy.get(x.creator) ?? wkBy.set(x.creator, new Array(8).fill(0)).get(x.creator)!; if (x.w >= 0 && x.w < 8) a[7 - x.w] = x.g; }
   const vcBy = new Map(vidsC.map((x) => [x.creator, x]));
   const vpBy = new Map(vidsP.map((x) => [`${x.creator}|${x.pid}`, x]));
+  const vuBy = new Map(vidsU.map((x) => [`${x.creator}|${x.pid}`, x]));
+  const alsoBy = new Map<string, NonNullable<DirLine["alsoSold"]>>();
+  for (const x of alsoRows) { const k = `${x.creator}|${x.sample_pk}`; const e = alsoBy.get(k) ?? alsoBy.set(k, { gmv: 0, orders: 0, products: [] }).get(k)!; e.gmv += x.gmv; e.orders += x.orders; e.products.push({ key: x.other_pk, gmv: x.gmv }); }
   const lvBy = new Map(livesC.map((x) => [x.creator, x]));
   const smBy = new Map<string, typeof samples>();
   for (const x of samples) (smBy.get(x.creator) ?? smBy.set(x.creator, []).get(x.creator)!).push(x);
@@ -214,6 +239,8 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
     const lines: DirLine[] = [];
     for (const [pid, { sample, sale }] of pids) {
       const vp = vpBy.get(`${username}|${pid}`);
+      const vu = vuBy.get(`${username}|${pid}`);
+      const also = sample ? alsoBy.get(`${username}|${pid}`) : undefined;
       const input: StatusInput = {
         paused,
         gmv28: sale?.gmv28 ?? 0, prev28: sale?.prev28 ?? 0, gmvAll: sale?.gmv ?? 0, videos28: vp?.n28 ?? 0,
@@ -225,7 +252,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
       lines.push({
         pid, name: productName(pid), skus, noSample: false, sampled: !!sample,
         ordersVideo: sale?.ov ?? 0, ordersLive: sale?.ol ?? 0, orders: sale?.ot ?? 0, gmvVideo: sale?.gv ?? 0, gmvLive: sale?.gl ?? 0, gmv: sale?.gmv ?? 0, gmv28: sale?.gmv28 ?? 0, prev28: sale?.prev28 ?? 0,
-        videos: vp?.n ?? 0, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null,
+        videos: Math.max(vu?.n ?? 0, vp?.n ?? 0), videosSoldOnly: vu?.sold_only ?? 0, alsoSold: also && also.gmv > 0 ? { ...also, products: [...also.products].sort((a, b) => productRank(a.key) - productRank(b.key)) } : undefined, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null,
         lastVideoDaysAgo: vp?.last && ref ? Math.max(0, daysBetweenISO(vp.last, ref)) : null, undatedVideos: 0,
         status: s.status, action: s.action, reason: explainStatus(input, s.status), doneOn: doneBy.get(`${username}|${pid}|${s.action}`) ?? null,
       });

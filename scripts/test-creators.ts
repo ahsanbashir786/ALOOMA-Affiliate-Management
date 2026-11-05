@@ -49,9 +49,9 @@ async function main() {
   await q(sql`delete from users where email like 'zzc-%'`);
   await q(sql`insert into tt_skus (sku_id, product_id, product_title, seller_sku, price, stock) values ('SKU-A', '1111111', 'ALOOMA Waterproof Mattress Protector Anti-Dust Mite', 'MP-A', 59, 10), ('SKU-B', '2222222', 'ALOOMA Selimut Soft Blanket', 'SL-B', 69, 5), ('SKU-T', '3333333', 'Magnetic Stick Toy Balls Building Blocks', 'MST25', 35, 5)`);
   let n = 0;
-  const line = (creator: string, daysAgo: number, pid: string, price: number, qty = 1, extra: { type?: string; ret?: boolean; oid?: string } = {}) =>
-    q(sql`insert into tt_affiliate_order_lines (order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, quantity, price, commission_rate, est_commission, fully_return)
-      values (${extra.oid ?? "O" + ++n}, ${pid === "1111111" ? "SKU-A" : "SKU-B"}, ${ago(daysAgo)}, ${creator}, ${extra.type ?? "VIDEO"}, ${pid}, ${pid === "1111111" ? "MP-A" : "SL-B"}, ${qty}, ${price}, 1000, ${price * 0.1}, ${extra.ret ?? false})`);
+  const line = (creator: string, daysAgo: number, pid: string, price: number, qty = 1, extra: { type?: string; ret?: boolean; oid?: string; cid?: string } = {}) =>
+    q(sql`insert into tt_affiliate_order_lines (order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, quantity, price, commission_rate, est_commission, fully_return, content_id)
+      values (${extra.oid ?? "O" + ++n}, ${pid === "1111111" ? "SKU-A" : "SKU-B"}, ${ago(daysAgo)}, ${creator}, ${extra.type ?? "VIDEO"}, ${pid}, ${pid === "1111111" ? "MP-A" : "SL-B"}, ${qty}, ${price}, 1000, ${price * 0.1}, ${extra.ret ?? false}, ${extra.cid ?? null})`);
   // star: many sales lately
   for (let d = 1; d <= 20; d++) await line("zz_c_star", d, "1111111", 100, 2);
   await line("zz_c_star", 3, "1111111", 50, 1, { type: "LIVE" });
@@ -71,6 +71,12 @@ async function main() {
       values (${id}, ${status}, ${creator}, ${creator}, ${followers}, 9000, 80, ${pid}, ${pid === "1111111" ? "SKU-A" : "SKU-B"}, 'x', 'y', ${orderId}, ${status === "PENDING"}, ${ago(40)})`);
   const sampleOrder = (id: string, deliveredDaysAgo: number | null) =>
     q(sql`insert into tt_orders (order_id, status, is_sample, created_at, paid_at, updated_at, delivered_at, is_final) values (${id}, ${deliveredDaysAgo == null ? "IN_TRANSIT" : "DELIVERED"}, true, ${ago((deliveredDaysAgo ?? 2) + 4)}, ${ago((deliveredDaysAgo ?? 2) + 4)}, ${ago(1)}, ${deliveredDaysAgo == null ? null : ago(deliveredDaysAgo)}, ${deliveredDaysAgo != null})`);
+  // one sample, one video that links TWO products, sales of both through it, and a video that sold but is not in TikTok's video list
+  await req("R10", "zz_c_vl", "2222222", "COMPLETED", "SO10", 700); await sampleOrder("SO10", 30);
+  await q(sql`insert into tt_videos (video_id, creator, title, posted_at, products) values ('V10', 'zz_c_vl', 'two products', ${ago(20)}, ${JSON.stringify([{ id: "2222222" }, { id: "1111111" }])}::jsonb)`);
+  await line("zz_c_vl", 15, "2222222", 69, 1, { cid: "V10" });
+  await line("zz_c_vl", 14, "1111111", 59, 1, { cid: "V10" }); await line("zz_c_vl", 13, "1111111", 59, 1, { cid: "V10" });
+  await line("zz_c_vl", 12, "1111111", 59, 1, { cid: "VX1" });
   await req("R1", "zz_c_silent", "2222222", "APPROVED", "SO1", 12000); await sampleOrder("SO1", 30);
   await req("R2", "zz_c_wait", "2222222", "APPROVED", "SO2", 800); await sampleOrder("SO2", 3);
   await req("R3", "zz_c_posted", "2222222", "APPROVED", "SO3", 50000); await sampleOrder("SO3", 30);
@@ -112,6 +118,12 @@ async function main() {
   check("overdue on TikTok even inside 14 days is still not posted without evidence", ov2?.sampled === true && ov2.status === "Silent", `${ov2?.status}`);
   check("overdue on TikTok but she sold the product after delivery → posted, not Silent", ov3?.sampled === true && ov3.status !== "Silent" && ov3.orders === 1, `${ov3?.status}/${ov3?.orders}`);
   check("a cancelled request is not a sample", by("zz_c_cancelled")!.lines.every((l) => !l.sampled));
+  const vlQ = line1("zz_c_vl", "quilt")!, vlM = line1("zz_c_vl", "mp_wp")!;
+  check("video links: sales of the OTHER product made through the sampled product's video are shown on the sampled line", vlQ.sampled === true && vlQ.alsoSold?.gmv === 118 && vlQ.alsoSold.orders === 2 && vlQ.alsoSold.products.length === 1 && vlQ.alsoSold.products[0].key === "mp_wp", JSON.stringify(vlQ.alsoSold));
+  check("video links: they are not added to the sampled line's own sales (no double counting)", vlQ.gmv === 69 && vlM.gmv === 177 && by("zz_c_vl")!.gmvAll === 246, `${vlQ.gmv}/${vlM.gmv}/${by("zz_c_vl")!.gmvAll}`);
+  check("video links: only sampled products carry the note", vlM.alsoSold === undefined);
+  check("videos that sold: a video missing from TikTok's list is counted and labelled", vlM.videos === 2 && vlM.videosSoldOnly === 1 && vlQ.videos === 1 && vlQ.videosSoldOnly === 0, `${vlM.videos}/${vlM.videosSoldOnly}/${vlQ.videos}/${vlQ.videosSoldOnly}`);
+  check("videos that sold: the 28-day posting count still uses only videos posted in the list (the sales-only video adds nothing)", vlM.videos28 === 1, String(vlM.videos28));
   check("creator with only a video is New / Approach", by("zz_c_new")!.lines[0].status === "New" && by("zz_c_new")!.lines[0].action === "Approach");
   check("followers and TikTok creator GMV come from sample requests", by("zz_c_silent")!.extra!.followers === 12000 && by("zz_c_silent")!.extra!.creatorGmv === 9000);
   check("lines: product names are short listing names", line1("zz_c_star", "mp_wp")!.name === "Mattress Protector · Waterproof", line1("zz_c_star", "mp_wp")!.name);

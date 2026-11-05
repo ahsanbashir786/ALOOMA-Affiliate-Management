@@ -20,6 +20,10 @@ export type DirLine = {
   sampled?: boolean;
   /** Synced data only: sample requests of this product still waiting for a decision. */
   samplesOpen?: number;
+  /** Synced data only: videos counted only because they produced sales (older than TikTok's video list, or missing from it). Included in `videos`. */
+  videosSoldOnly?: number;
+  /** Synced data only, sampled products: sales of OTHER products made through the videos that link this sampled product (a video can link two products, so one sample sells both). Not added to this line's own sales. */
+  alsoSold?: { gmv: number; orders: number; products: { key: string; gmv: number }[] };
   ordersVideo: number;
   ordersLive: number;
   orders: number;

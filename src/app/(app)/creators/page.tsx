@@ -10,6 +10,7 @@ import { hasSyncedData } from "@/lib/creators/load";
 import { getMappingStatus } from "@/lib/products/mapping";
 import { countsToCompare, recordDailyCounts } from "@/lib/creators/counts";
 import { STATUS_HELP, ACTION_HELP, type CreatorStatus } from "@/lib/affiliates/status";
+import { productName } from "@/lib/products/catalog";
 import { fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
@@ -73,10 +74,12 @@ function Gmv({ l }: { l: DirLine }) {
   );
 }
 function Videos({ l }: { l: DirLine }) {
+  const sold = l.videosSoldOnly ?? 0;
   return (
     <div className="tnum">
       <p className="text-[15px] font-semibold text-ink">{l.videos || "–"}</p>
-      {l.videos > 0 && <p className="text-[12px] text-ink-3">{l.lastVideoOn ? `last ${fmtDayLabel(l.lastVideoOn)}` : "date unknown"}</p>}
+      {l.videos > 0 && <p className="text-[12px] text-ink-3">{l.lastVideoOn ? `last ${fmtDayLabel(l.lastVideoOn)}` : sold >= l.videos ? "from sales" : "date unknown"}</p>}
+      {sold > 0 && sold < l.videos && <p className="text-[12px] text-ink-3" title={`${l.videos - sold} videos are in TikTok's video list. ${sold} more were found only because they produced sales. Older videos that sold nothing may be missing.`}>+{sold} from sales</p>}
     </div>
   );
 }
@@ -221,6 +224,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
                           <div className="min-w-0">
                             <p className={cn("text-[14.5px] leading-snug", l.noSample ? "text-ink-3" : "font-medium text-ink")} title={l.name}>{l.name}</p>
                             {l.sampled ? <p className="text-[12px] text-brand">Sample sent</p> : !l.noSample ? <p className="text-[12px] text-ink-3">Sells without a sample</p> : null}
+                            {l.alsoSold && <p className="text-[12px] text-ink-3" data-testid="also-sold" title={l.alsoSold.products.map((p) => `${productName(p.key)}: RM ${Math.round(p.gmv).toLocaleString("en-MY")}`).join("\n")}>+RM {Math.round(l.alsoSold.gmv).toLocaleString("en-MY")} from other products in its videos</p>}
                           </div>
                           <div className="min-w-0 text-[13px] leading-snug text-ink-2">{l.skus.length ? l.skus.map((s) => <p key={s} className="break-words" title={s}>{s}</p>) : <span className="text-ink-3">–</span>}</div>
                           <Orders l={l} /><Videos l={l} /><Gmv l={l} />

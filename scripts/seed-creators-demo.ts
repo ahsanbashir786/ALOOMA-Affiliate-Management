@@ -65,8 +65,13 @@ async function main() {
         for (let k = 0; k < n; k++) vids.push([`V${vid++}`, c.u, `${p.title.slice(0, 40)} #${k + 1}`, iso(Math.max(0, askedAgo - 6 - Math.floor(rnd() * Math.max(1, askedAgo - 6)))), Math.round(c.followers * (0.2 + rnd() * 3)), Math.round(rnd() * 900 * c.quality), 0, 0.03, JSON.stringify([{ id: p.id, name: p.title }])]);
       }
     }
-    // sales across days
     const sellers = mine.length ? mine : [pick(PRODUCTS)];
+    // video / live output
+    const nv = c.kind === "LIVE" ? 0 : Math.floor((first - last) / 18 * (0.2 + c.quality) * 2);
+    for (let k = 0; k < nv; k++) { const pr = pick(sellers); vids.push([`V${vid++}`, c.u, `${pr.title.slice(0, 40)} review`, iso(last + Math.floor(rnd() * (first - last + 1))), Math.round(c.followers * (0.1 + rnd() * 2)), Math.round(rnd() * 1200 * c.quality), 0, 0.02, JSON.stringify([{ id: pr.id, name: pr.title }])]); }
+    const nl = c.kind === "VIDEO" ? 0 : Math.floor((first - last) / 25 * (0.3 + c.quality) * 2);
+    for (let k = 0; k < nl; k++) lives.push([`L${lives.length + 1}`, c.u, "LIVE " + (k + 1), iso(last + Math.floor(rnd() * (first - last + 1))), Math.round(rnd() * 3000 * c.quality), Math.round(rnd() * 30), Math.round(c.followers * 0.05)]);
+    // sales across days
     for (let d = first; d >= last; d--) {
       const p = rnd() < 0.5 ? 0.04 + c.quality * 0.5 : 0.01 + c.quality * 0.22;
       if (!chance(p)) continue;
@@ -74,14 +79,11 @@ async function main() {
       for (let k = 0; k < n; k++) {
         const pr = pick(sellers); const sku = pick(pr.skus); const qty = chance(0.85) ? 1 : 2;
         const live = c.kind === "LIVE" ? chance(0.85) : c.kind === "BOTH" ? chance(0.4) : chance(0.05);
-        lines.push([`AO${oid++}`, "SKU-" + sku, iso(d, 9 + Math.floor(rnd() * 14)), c.u, live ? "LIVE" : "VIDEO", pr.id, sku, pr.title, qty, pr.price, 1200, chance(0.04)]);
+        const mine2 = vids.filter((v) => v[1] === c.u);
+        const cid = live ? `L-${c.u}` : mine2.length && chance(0.8) ? String(pick(mine2)[0]) : `OLD-${c.u}-${Math.floor(rnd() * 4)}`;
+        lines.push([`AO${oid++}`, "SKU-" + sku, iso(d, 9 + Math.floor(rnd() * 14)), c.u, live ? "LIVE" : "VIDEO", pr.id, sku, pr.title, qty, pr.price, 1200, chance(0.04), cid]);
       }
     }
-    // video / live output
-    const nv = c.kind === "LIVE" ? 0 : Math.floor((first - last) / 18 * (0.2 + c.quality) * 2);
-    for (let k = 0; k < nv; k++) { const pr = pick(sellers); vids.push([`V${vid++}`, c.u, `${pr.title.slice(0, 40)} review`, iso(last + Math.floor(rnd() * (first - last + 1))), Math.round(c.followers * (0.1 + rnd() * 2)), Math.round(rnd() * 1200 * c.quality), 0, 0.02, JSON.stringify([{ id: pr.id, name: pr.title }])]); }
-    const nl = c.kind === "VIDEO" ? 0 : Math.floor((first - last) / 25 * (0.3 + c.quality) * 2);
-    for (let k = 0; k < nl; k++) lives.push([`L${lives.length + 1}`, c.u, "LIVE " + (k + 1), iso(last + Math.floor(rnd() * (first - last + 1))), Math.round(rnd() * 3000 * c.quality), Math.round(rnd() * 30), Math.round(c.followers * 0.05)]);
   }
   const ins = async (table: string, cols: string, data: unknown[][]) => {
     for (let i = 0; i < data.length; i += 300) {
@@ -90,7 +92,7 @@ async function main() {
       await q(sql`insert into ${sql.raw(table)} (${sql.raw(cols)}) values ${sql.join(vals, sql`, `)}`);
     }
   };
-  await ins("tt_affiliate_order_lines", "order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, sku_name, quantity, price, commission_rate, fully_return", lines.map((l) => { const x = l.slice(); return x; }));
+  await ins("tt_affiliate_order_lines", "order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, sku_name, quantity, price, commission_rate, fully_return, content_id", lines.map((l) => { const x = l.slice(); return x; }));
   await ins("tt_videos", "video_id, creator, title, posted_at, views, gmv, units_sold, click_through_rate, products", vids);
   await ins("tt_lives", "live_id, creator, title, started_at, gmv, items_sold, viewers", lives);
   await ins("tt_sample_requests", "id, status, creator_id, creator, nickname, followers, creator_gmv, creator_videos, creator_video_views, fulfilment_pct, product_id, sku_id, product_title, sku_name, commission_rate, order_id, is_approvable, expires_at, available_quantity, first_seen_at", reqs);

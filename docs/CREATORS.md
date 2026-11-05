@@ -57,3 +57,8 @@ Mattress Protector Non-Waterproof, Waterproof, Quilt Comforter, Pillows, Bedshee
 | Log and undo | Every change is logged (who, when, from → to) with Undo |
 | Samples | Matched to the sale through the same product: a sample's SKU ID, else its listing, gives its product |
 | Overdue samples | TikTok's `UNFULFILL_CANCELLED` (portal: Overdue) is a shipped sample. Posted = her video linking the product, or her sales of it, after delivery (orders reach back further than the video list); otherwise Not posted |
+
+## Sales through a sample's videos, and "videos that sold"
+- **One sample can sell two products.** A video can link more than one product. For a sampled product, the sales of OTHER products made through the videos that link it are shown under "Sample sent" as "+RM X from other products in its videos" (hover for the list). They are never added to the line's own Orders/GMV, so nothing is counted twice. The link is order line `content_id` = video ID, and the video's product links.
+- **Videos** = TikTok's video list **plus** every video that produced a sale (from the order lines, which reach back to March 2025). The extra ones show as "+N from sales". Old videos that sold nothing may still be missing. The 28-day posting count used by status and score still uses only videos from the list (it needs a posting date).
+- Both follow the date range and the 13-product mapping.
