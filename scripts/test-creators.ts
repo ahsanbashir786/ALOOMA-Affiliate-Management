@@ -43,11 +43,11 @@ async function main() {
   check("params: follow-up type", parseCreatorParams({ contact: "contacted" }).contact === "contacted" && parseCreatorParams({ contact: "never" }).contact === "never");
 
   // ── fixture ──
-  for (const t of ["tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_orders", "tt_skus", "tt_cancellations", "tt_returns", "tt_video_windows", "product_map", "sku_map"]) await q(sql.raw(`delete from ${t}`));
+  for (const t of ["tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_orders", "tt_skus", "tt_cancellations", "tt_returns", "tt_video_windows", "product_map"]) await q(sql.raw(`delete from ${t}`));
   await q(sql`delete from creator_owners`);
   await q(sql`delete from staff_events where username like 'zz_c_%'`);
   await q(sql`delete from users where email like 'zzc-%'`);
-  await q(sql`insert into tt_skus (sku_id, product_id, product_title, seller_sku, price, stock) values ('SKU-A', '1111111', 'ALOOMA Waterproof Mattress Protector Anti-Dust Mite', 'MP-A', 59, 10), ('SKU-B', '2222222', 'ALOOMA Selimut Soft Blanket', 'SL-B', 69, 5), ('SKU-T', '3333333', 'Magnetic Stick Toy Balls Building Blocks', 'MST25', 35, 5)`);
+  await q(sql`insert into tt_skus (sku_id, product_id, product_title, seller_sku, price, stock) values ('SKU-A', '1111111', 'ALOOMA Waterproof Mattress Protector Anti-Dust Mite', 'MP-A', 59, 10), ('SKU-B', '2222222', 'ALOOMA Selimut Soft Blanket', 'SL-B', 69, 5), ('SKU-B2', '2222222', 'ALOOMA Selimut Soft Blanket', 'SL-B2', 69, 5), ('SKU-T', '3333333', 'Magnetic Stick Toy Balls Building Blocks', 'MST25', 35, 5)`);
   let n = 0;
   const line = (creator: string, daysAgo: number, pid: string, price: number, qty = 1, extra: { type?: string; ret?: boolean; oid?: string; cid?: string } = {}) =>
     q(sql`insert into tt_affiliate_order_lines (order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, quantity, price, commission_rate, est_commission, fully_return, content_id)
@@ -66,9 +66,9 @@ async function main() {
   await line("zz_c_ret", 7, "1111111", 60, 2, { oid: "OOK1" });
   await q(sql`insert into tt_cancellations (cancel_id, order_id, status) values ('X1', 'OCAN1', 'CANCELLATION_REQUEST_SUCCESS'), ('X2', 'OOK1', 'CANCELLATION_REQUEST_CANCELLED')`);
   // samples
-  const req = (id: string, creator: string, pid: string, status: string, orderId: string | null, followers: number) =>
+  const req = (id: string, creator: string, pid: string, status: string, orderId: string | null, followers: number, skuId?: string, skuName = "y") =>
     q(sql`insert into tt_sample_requests (id, status, creator, nickname, followers, creator_gmv, fulfilment_pct, product_id, sku_id, product_title, sku_name, order_id, is_approvable, first_seen_at)
-      values (${id}, ${status}, ${creator}, ${creator}, ${followers}, 9000, 80, ${pid}, ${pid === "1111111" ? "SKU-A" : "SKU-B"}, 'x', 'y', ${orderId}, ${status === "PENDING"}, ${ago(40)})`);
+      values (${id}, ${status}, ${creator}, ${creator}, ${followers}, 9000, 80, ${pid}, ${skuId ?? (pid === "1111111" ? "SKU-A" : "SKU-B")}, 'x', ${skuName}, ${orderId}, ${status === "PENDING"}, ${ago(40)})`);
   const sampleOrder = (id: string, deliveredDaysAgo: number | null) =>
     q(sql`insert into tt_orders (order_id, status, is_sample, created_at, paid_at, updated_at, delivered_at, is_final) values (${id}, ${deliveredDaysAgo == null ? "IN_TRANSIT" : "DELIVERED"}, true, ${ago((deliveredDaysAgo ?? 2) + 4)}, ${ago((deliveredDaysAgo ?? 2) + 4)}, ${ago(1)}, ${deliveredDaysAgo == null ? null : ago(deliveredDaysAgo)}, ${deliveredDaysAgo != null})`);
   // one sample, one video that links TWO products, sales of both through it, and a video that sold but is not in TikTok's video list
@@ -77,6 +77,13 @@ async function main() {
   await line("zz_c_vl", 15, "2222222", 69, 1, { cid: "V10" });
   await line("zz_c_vl", 14, "1111111", 59, 1, { cid: "V10" }); await line("zz_c_vl", 13, "1111111", 59, 1, { cid: "V10" });
   await line("zz_c_vl", 12, "1111111", 59, 1, { cid: "VX1" });
+  // SKU Sampled: the same SKU twice, a second SKU of the same listing, one not delivered yet, a SKU the catalogue does not know, and a request whose SKU belongs to another listing
+  await req("R20", "zz_c_sk", "2222222", "COMPLETED", "SO20", 500, "SKU-B"); await sampleOrder("SO20", 60);
+  await req("R21", "zz_c_sk", "2222222", "COMPLETED", "SO21", 500, "SKU-B"); await sampleOrder("SO21", 30);
+  await req("R22", "zz_c_sk", "2222222", "COMPLETED", "SO22", 500, "SKU-B2"); await sampleOrder("SO22", 20);
+  await req("R23", "zz_c_sk", "2222222", "APPROVED", "SO23", 500, "SKU-B"); await sampleOrder("SO23", null);
+  await req("R24", "zz_c_sk2", "2222222", "COMPLETED", "SO24", 500, "SKU-GONE", "Queen, White"); await sampleOrder("SO24", 25);
+  await req("R25", "zz_c_sk3", "2222222", "COMPLETED", "SO25", 500, "SKU-A"); await sampleOrder("SO25", 25);
   await req("R1", "zz_c_silent", "2222222", "APPROVED", "SO1", 12000); await sampleOrder("SO1", 30);
   await req("R2", "zz_c_wait", "2222222", "APPROVED", "SO2", 800); await sampleOrder("SO2", 3);
   await req("R3", "zz_c_posted", "2222222", "APPROVED", "SO3", 50000); await sampleOrder("SO3", 30);
@@ -121,15 +128,12 @@ async function main() {
   check("overdue on TikTok but she sold the product after delivery → posted, not Silent", ov3?.sampled === true && ov3.status !== "Silent" && ov3.orders === 1, `${ov3?.status}/${ov3?.orders}`);
   check("a cancelled request is not a sample", by("zz_c_cancelled")!.lines.every((l) => !l.sampled));
   const vlQ = line1("zz_c_vl", "quilt")!, vlM = line1("zz_c_vl", "mp_wp")!;
-  check("video links: sales of the OTHER product made through the sampled product's video are shown on the sampled line", vlQ.sampled === true && vlQ.alsoSold?.gmv === 118 && vlQ.alsoSold.orders === 2 && vlQ.alsoSold.products.length === 1 && vlQ.alsoSold.products[0].key === "mp_wp", JSON.stringify(vlQ.alsoSold));
-  check("video links: they are not added to the sampled line's own sales (no double counting)", vlQ.gmv === 69 && vlM.gmv === 177 && by("zz_c_vl")!.gmvAll === 246, `${vlQ.gmv}/${vlM.gmv}/${by("zz_c_vl")!.gmvAll}`);
-  check("video links: only sampled products carry the note", vlM.alsoSold === undefined);
   check("videos that sold: a video missing from TikTok's list is counted and labelled", vlM.videos === 2 && vlM.videosSoldOnly === 1 && vlQ.videos === 1 && vlQ.videosSoldOnly === 0, `${vlM.videos}/${vlM.videosSoldOnly}/${vlQ.videos}/${vlQ.videosSoldOnly}`);
   check("videos that sold: the 28-day posting count still uses only videos posted in the list (the sales-only video adds nothing)", vlM.videos28 === 1, String(vlM.videos28));
   check("creator with only a video is New / Approach", by("zz_c_new")!.lines[0].status === "New" && by("zz_c_new")!.lines[0].action === "Approach");
   check("followers and TikTok creator GMV come from sample requests", by("zz_c_silent")!.extra!.followers === 12000 && by("zz_c_silent")!.extra!.creatorGmv === 9000);
   check("lines: product names are short listing names", line1("zz_c_star", "mp_wp")!.name === "Mattress Protector · Waterproof", line1("zz_c_star", "mp_wp")!.name);
-  check("lines: SKU codes come from the sold SKUs", line1("zz_c_star", "mp_wp")!.skus.includes("MP-A"));
+  check("lines: the SKU column holds sampled SKUs only – a product she just sells has none", line1("zz_c_star", "mp_wp")!.skus.length === 0);
   check("type: LIVE session or LIVE orders make a creator Video + LIVE", star.type === "Video + LIVE", String(star.type));
   check("weeks: 8 weekly points and they add up to the last 8 weeks", star.extra!.weeks.length === 8 && Math.round(star.extra!.weeks.reduce((a, b) => a + b, 0)) > 3000);
   check("score and tier are filled for everyone", all.every((r) => r.extra && r.extra.score >= 0 && r.extra.score <= 100));
@@ -164,21 +168,33 @@ async function main() {
   check("steady seller who posts little gets Push", line1("zz_c_fill3", "mp_wp")!.action === "Push" || line1("zz_c_fill3", "mp_wp")!.status !== "Steady");
   check("directory: paging", (await dir({ size: 5, page: 2 })).rows.length === 5);
 
-  // ── product mapping in use ──
+  // ── product names (automatic) in use ──
   check("mapping: a toy is excluded – it is not in the creator's sales and not in any product list", Math.round(star.gmvAll) === 20 * 200 + 50 && !star.lines.some((l) => l.name.toLowerCase().includes("toy")) && !all0.products.some((p) => p.name.toLowerCase().includes("toy")), String(star.gmvAll));
   const unm = by("zz_c_unm")!;
   check("mapping: a listing nobody has named is shown as Unmapped (never hidden)", unm.lines[0].pid === "unmapped" && unm.lines[0].name === "Unmapped product" && unm.gmvAll === 10, JSON.stringify(unm.lines.map((l) => [l.pid, l.name])));
   check("mapping: a creator's lines follow the owner's product order", by("zz_c_multi")!.lines.map((l) => l.pid).join() === "mp_wp,quilt", by("zz_c_multi")!.lines.map((l) => l.pid).join());
   check("mapping: the product filter list follows the owner's order and uses the 13 names", all0.products.map((p) => p.name).join(" | ").startsWith("Mattress Protector · Waterproof | Quilt Comforter"), all0.products.map((p) => p.name).join(" | "));
   check("mapping: the product filter accepts a product key and the unmapped bucket", (await dir({ product: "unmapped" })).rows.some((r) => r.username === "zz_c_unm") && (await dir({ product: "mp_wp" })).rows.every((r) => r.lines.every((l) => l.pid === "mp_wp")));
-  await q(sql`insert into sku_map (sku_id, product_id, product_key) values ('SKU-B', '2222222', 'pillows')`);
-  const moved = (await loadCreatorRows()).all.find((r) => r.username === "zz_c_multi")!;
-  check("mapping: an add-on SKU override moves its sales to the other product at once (cache follows)", moved.lines.map((l) => l.pid).join() === "mp_wp,pillows", moved.lines.map((l) => l.pid).join());
-  await q(sql`delete from sku_map`);
-  await q(sql`update product_map set product_key = 'excluded' where product_id = '2222222'`);
-  const gone = (await loadCreatorRows()).all.find((r) => r.username === "zz_c_silent")!;
-  check("mapping: marking a listing Excluded removes its sales AND its samples everywhere", gone.lines.every((l) => l.pid !== "quilt") && gone.lines[0].noSample === true, JSON.stringify(gone.lines.map((l) => l.pid)));
-  await q(sql`update product_map set product_key = 'quilt' where product_id = '2222222'`);
+
+  // ── SKU Sampled ──
+  const dKL = (d: number) => new Date(ago(d)).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+  const sk = line1("zz_c_sk", "quilt")!;
+  const sB = sk.sampleSkus?.find((x) => x.sku === "SL-B"), sB2 = sk.sampleSkus?.find((x) => x.sku === "SL-B2");
+  check("SKU sampled: only the SKUs sent as samples, each once, the same SKU twice has both dates", sk.sampleSkus?.length === 2 && sB?.times.length === 3 && sB2?.times.length === 1, JSON.stringify(sk.sampleSkus));
+  check("SKU sampled: the date is the delivery date, in order, and 'not delivered' is marked (shipped date)", sB?.times[0].on === dKL(60) && sB?.times[0].delivered === true && sB?.times[1].on === dKL(30) && sB?.times[2].delivered === false && sB2?.times[0].on === dKL(20), JSON.stringify(sB));
+  check("SKU sampled: the SKU list matches the sample SKUs (skus field), nothing else", sk.skus.join() === "SL-B,SL-B2");
+  check("SKU sampled: a SKU the catalogue does not know shows the variation name from the request", line1("zz_c_sk2", "quilt")?.sampleSkus?.[0]?.sku === "Queen, White", JSON.stringify(line1("zz_c_sk2", "quilt")?.sampleSkus));
+  const sk3 = by("zz_c_sk3")!;
+  check("SKU sampled: the SKU decides the product – a request whose SKU belongs to another listing goes to that listing's product", sk3.lines.some((l) => l.pid === "mp_wp" && l.sampleSkus?.[0]?.sku === "MP-A") && !sk3.lines.some((l) => l.pid === "quilt"), JSON.stringify(sk3.lines.map((l) => [l.pid, l.sampleSkus])));
+  check("SKU sampled: a product she only sells, with no sample, has none", star.lines.every((l) => !l.sampleSkus || l.sampleSkus.length === 0) && (by("zz_c_multi")!.lines.every((l) => !l.sampleSkus?.length)));
+  check("SKU sampled: the export carries the SKUs with their dates", await (async () => {
+    const d = await getAffiliateDirectory({ source: "synced", samples: "all", size: 500, q: "zz_c_sk" });
+    const buf = await buildDirectoryWorkbook(d.rows.filter((r) => r.username === "zz_c_sk"), d.dataEnd);
+    const wb = new (await import("exceljs")).default.Workbook(); await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const ws = wb.worksheets[0]; const heads = (ws.getRow(1).values as unknown[]).map(String);
+    const cell = String(ws.getRow(2).getCell(heads.indexOf("SKU Sampled (date given)")).value);
+    return cell.includes("SL-B ×3") && cell.includes(dKL(60)) && cell.includes("SL-B2");
+  })());
 
   // ── daily counts (the change on the top boxes) ──
   const { recordDailyCounts, countsToCompare } = await import("../src/lib/creators/counts");

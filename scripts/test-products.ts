@@ -30,42 +30,33 @@ async function main() {
   check("suggest: other brands and toys are excluded", suggestListing("Magnetic Stick Toy Balls Building Blocks 25/42/64").key === EXCLUDED && suggestListing("【TENDER TWIGS】Kids Magical Tracing Workbook").key === EXCLUDED);
   check("suggest: no title → no suggestion", suggestListing(null).key === null && suggestListing("ALOOMA Something New Entirely").key === null);
 
-  // ── database: seeding, add-ons, coverage ──
+  // ── database: automatic product names ──
   const { db } = await import("../src/db");
   const { sql } = await import("drizzle-orm");
   const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
-  for (const t of ["tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_orders", "tt_skus", "product_map", "sku_map", "product_map_log"]) await q(sql.raw(`delete from ${t}`));
+  for (const t of ["tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_orders", "tt_skus", "product_map"]) await q(sql.raw(`delete from ${t}`));
   const MP = "1111111111", PL = "2222222222", TOY = "3333333333", NEWP = "4444444444", MPX = "5555555555";
   await q(sql`insert into tt_skus (sku_id, product_id, product_title, seller_sku, price, stock) values
     ('S1', ${MP}, ${NWPL}, 'NMP-Q-WH-ST', 59, 1), ('S2', ${PL}, 'ALOOMA Kualiti Premium Bantal Tidur Hotel Pillow', 'STD-PLW-WH', 30, 1),
     ('S3', ${TOY}, 'Magnetic Stick Toy Balls', 'MST25', 35, 1), ('S4', ${MPX}, ${"{Exclusive} " + NWPL}, 'NMP-Q-WH-ST', 59, 1)`);
   let n = 0;
   const line = (pid: string, sku: string, seller: string, count: number) => (async () => { for (let i = 0; i < count; i++) await q(sql`insert into tt_affiliate_order_lines (order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, quantity, price) values (${"T" + ++n}, ${sku}, now(), 'zz_p', 'VIDEO', ${pid}, ${seller}, 1, 10)`); })();
-  await line(MP, "S1", "NMP-Q-WH-ST", 60);          // the mattress protector listing: mostly NMP
-  await line(MP, "S1b", "STD-PLW-WH", 4);           // a pillow add-on sold inside it (4 of 64 lines = 6%)
-  await line(PL, "S2", "STD-PLW-WH", 30);           // pillows listing: STD is its main item
-  await line(MPX, "S4", "NMP-Q-WH-ST", 25);         // the Exclusive twin sells the same NMP SKU: NOT an add-on
-  await line(TOY, "S3", "MST25", 3);
-  await line(NEWP, "S9", "ZZ-1", 2);                // a listing with no title: stays unmapped
-
-  const { ensureSuggested, getMappingView } = await import("../src/lib/products/mapping");
-  const added = await ensureSuggested();
-  const maps = new Map((await q(sql`select product_id, product_key, confirmed from product_map`)).map((r) => [r.product_id as string, r]));
-  check("seed: listings with a suggestion get an unconfirmed mapping; unknown ones get none", added === 4 && maps.get(MP)?.product_key === "mp_nwp" && maps.get(PL)?.product_key === "pillows" && maps.get(TOY)?.product_key === EXCLUDED && maps.get(MPX)?.product_key === "mp_nwp_x" && !maps.has(NEWP) && [...maps.values()].every((m) => m.confirmed === false), `${added} ${JSON.stringify([...maps.entries()])}`);
-  check("seed: running it again adds nothing", (await ensureSuggested()) === 0);
-
-  const v = await getMappingView();
-  check("view: add-on pillow SKU inside the mattress protector listing is found and suggested as Pillows", v.addons.length === 1 && v.addons[0].skuId === "S1b" && v.addons[0].suggestedKey === "pillows" && v.addons[0].listingKey === "mp_nwp", JSON.stringify(v.addons));
-  check("view: the same SKU sold evenly in the normal and Exclusive listing is not an add-on", !v.addons.some((a) => a.sellerSku === "NMP-Q-WH-ST"));
-  check("view: coverage adds up and shows what is unmapped", v.coverage.adds && v.coverage.totalLines === 124 && v.coverage.unmappedLines === 2 && v.coverage.rows.find((r) => r.key === "pillows")?.lines === 30 && v.coverage.rows.find((r) => r.key === EXCLUDED)?.lines === 3, JSON.stringify(v.coverage));
-  check("view: an owner's add-on decision moves its lines to that product", await (async () => {
-    await q(sql`insert into sku_map (sku_id, product_id, product_key) values ('S1b', ${MP}, 'pillows')`);
-    const v2 = await getMappingView();
-    return v2.coverage.adds && v2.coverage.rows.find((r) => r.key === "pillows")?.lines === 34 && v2.coverage.rows.find((r) => r.key === "mp_nwp")?.lines === 60 && v2.addons[0].overrideKey === "pillows";
-  })());
-  check("view: unconfirmed listings are counted", v.unconfirmed === 4 && v.listings.length === 5);
-
-  for (const t of ["tt_affiliate_order_lines", "tt_skus", "product_map", "sku_map", "product_map_log"]) await q(sql.raw(`delete from ${t}`));
+  await line(MP, "S1", "NMP-Q-WH-ST", 60); await line(MP, "S1b", "STD-PLW-WH", 4); await line(PL, "S2", "STD-PLW-WH", 30); await line(MPX, "S4", "NMP-Q-WH-ST", 25); await line(TOY, "S3", "MST25", 3); await line(NEWP, "S9", "ZZ-1", 2);
+  const { refreshProductKeys } = await import("../src/lib/products/classify");
+  await refreshProductKeys();
+  const maps = new Map((await q(sql`select product_id, product_key, updated_at from product_map`)).map((r) => [r.product_id as string, r]));
+  check("auto: every recognised listing gets its product; a toy is excluded; an unrecognised one gets nothing", maps.get(MP)?.product_key === "mp_nwp" && maps.get(PL)?.product_key === "pillows" && maps.get(TOY)?.product_key === EXCLUDED && maps.get(MPX)?.product_key === "mp_nwp_x" && !maps.has(NEWP), JSON.stringify([...maps.entries()].map(([k, v]) => [k, v.product_key])));
+  check("auto: the exclusive twin selling the same SKU is its own product", maps.get(MP)?.product_key !== maps.get(MPX)?.product_key);
+  await refreshProductKeys();
+  const again = new Map((await q(sql`select product_id, updated_at from product_map`)).map((r) => [r.product_id as string, String(r.updated_at)]));
+  check("auto: running it again changes nothing (so caches stay valid)", [...maps.entries()].every(([k, v]) => again.get(k) === String(v.updated_at)));
+  await q(sql`update product_map set product_key = 'quilt' where product_id = ${PL}`);
+  await refreshProductKeys();
+  check("auto: a wrong stored answer is corrected by the rules on the next refresh", ((await q(sql`select product_key from product_map where product_id = ${PL}`))[0].product_key) === "pillows");
+  await q(sql`update tt_skus set product_title = 'ALOOMA Premium Coral Fleece Bath Towel' where product_id = ${PL}`);
+  await refreshProductKeys();
+  check("auto: when a listing's title changes, its product follows", ((await q(sql`select product_key from product_map where product_id = ${PL}`))[0].product_key) === "towel_coral");
+  for (const t of ["tt_affiliate_order_lines", "tt_skus", "product_map"]) await q(sql.raw(`delete from ${t}`));
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }

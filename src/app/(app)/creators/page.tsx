@@ -7,10 +7,8 @@ import { ACTION_ORDER, getAffiliateDirectory, STATUS_ORDER, type DirLine, type D
 import { parseCreatorParams } from "@/lib/creators/params";
 import { getStaff, syncFreshness } from "@/lib/creators/meta";
 import { hasSyncedData } from "@/lib/creators/load";
-import { getMappingStatus } from "@/lib/products/mapping";
 import { countsToCompare, recordDailyCounts } from "@/lib/creators/counts";
 import { STATUS_HELP, ACTION_HELP, type CreatorStatus } from "@/lib/affiliates/status";
-import { productName } from "@/lib/products/catalog";
 import { fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
@@ -19,6 +17,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { OpenPanelButton } from "@/components/creator/open-panel-button";
 import { CreatorFilters } from "@/components/creators/creator-filters";
 import { LineAction } from "@/components/affiliates/line-action";
+import { SkuSampled } from "@/components/creators/sku-sampled";
 import { Avatar } from "@/components/creators/avatar";
 import { TierBadge } from "@/components/creators/tier-badge";
 import { OwnerPicker } from "@/components/creators/owner-picker";
@@ -151,7 +150,6 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   }
 
   const dir = await getAffiliateDirectory({ ...opts, size: SIZE });
-  const mapStatus = await getMappingStatus(); // after the table: loading it gives new listings their suggested product
   const ov = dir.overview!;
   const periodLabel = opts.range ? `${fmtDayLabel(opts.range.start)} – ${fmtDayLabel(opts.range.end)}` : "All time";
   const values = { q: opts.q ?? "", samples: opts.samples ?? "all", product: opts.product ?? "", status: opts.status ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", owner: opts.owner ?? "", tier: opts.tier ?? "", sort: opts.sort ?? "gmv", from: opts.from, to: opts.to };
@@ -177,13 +175,6 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
         description={<span className="inline-flex items-center gap-2"><span className={cn("size-2 rounded-full", fresh.ok ? "bg-good" : "bg-warn")} />{fresh.label} from TikTok Shop</span>}
         actions={<Link href="/sync" className={buttonClasses({ variant: "secondary" })}>Data Sync</Link>}
       />
-
-      {(mapStatus.unconfirmed > 0 || mapStatus.unmappedLines > 0) && (
-        <Link href="/product-mapping" data-testid="mapping-banner" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[14px] text-ink hover:opacity-90">
-          <span>{mapStatus.unconfirmed > 0 ? `${mapStatus.unconfirmed} product listing${mapStatus.unconfirmed === 1 ? " is" : "s are"} only suggested` : ""}{mapStatus.unconfirmed > 0 && mapStatus.unmappedLines > 0 ? " · " : ""}{mapStatus.unmappedLines > 0 ? `${mapStatus.unmappedLines.toLocaleString("en-MY")} order lines have no product` : ""}. Check them so every list shows your 13 products correctly.</span>
-          <span className="font-medium text-brand">Open Product mapping →</span>
-        </Link>
-      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Creators at a glance" data-testid="creator-kpis">
         <Kpi label="Creators" value={ov.creators.toLocaleString("en-MY")} sub={`${goldN} Gold · ${ov.tiers.Silver} Silver`} change={ov.newCreators28 > 0 ? <span className="tnum text-[12.5px] font-semibold text-good">▲ (+{ov.newCreators28.toLocaleString("en-MY")} new)</span> : undefined} href="/creators?sort=recent" />
@@ -211,7 +202,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
         ) : (
           <>
             <div className={cn("hidden gap-x-3 border-b border-line px-5 py-2.5 text-[13px] font-medium text-ink-3 lg:grid", COLS)}>
-              <span className="flex items-center gap-2"><SelectAllPage />Creator</span><span>Product</span><span>SKU</span>{head("Orders", "orders_asc", "orders")}{head("Videos", "videos_all_asc", "videos_all")}{head("GMV", "linegmv_asc", "linegmv")}{head("Total GMV", "gmv_asc", "gmv")}<span>Status</span><span>Action</span>
+              <span className="flex items-center gap-2"><SelectAllPage />Creator</span><span>Product</span><span>SKU Sampled</span>{head("Orders", "orders_asc", "orders")}{head("Videos", "videos_all_asc", "videos_all")}{head("GMV", "linegmv_asc", "linegmv")}{head("Total GMV", "gmv_asc", "gmv")}<span>Status</span><span>Action</span>
             </div>
             <ul className="divide-y divide-line">
               {dir.rows.map((r) => (
@@ -223,10 +214,8 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
                         <div data-testid="dir-line" className={cn("col-start-2 col-end-7 grid grid-cols-subgrid items-start gap-x-3", i > 0 && "border-t border-dashed border-line pt-3")} style={{ gridRow: i + 1 }}>
                           <div className="min-w-0">
                             <p className={cn("text-[14.5px] leading-snug", l.noSample ? "text-ink-3" : "font-medium text-ink")} title={l.name}>{l.name}</p>
-                            {l.sampled ? <p className="text-[12px] text-brand">Sample sent</p> : !l.noSample ? <p className="text-[12px] text-ink-3">Sells without a sample</p> : null}
-                            {l.alsoSold && <p className="text-[12px] text-ink-3" data-testid="also-sold" title={l.alsoSold.products.map((p) => `${productName(p.key)}: RM ${Math.round(p.gmv).toLocaleString("en-MY")}`).join("\n")}>+RM {Math.round(l.alsoSold.gmv).toLocaleString("en-MY")} from other products in its videos</p>}
                           </div>
-                          <div className="min-w-0 text-[13px] leading-snug text-ink-2">{l.skus.length ? l.skus.map((s) => <p key={s} className="break-words" title={s}>{s}</p>) : <span className="text-ink-3">–</span>}</div>
+                          <div className="min-w-0"><SkuSampled l={l} /></div>
                           <Orders l={l} /><Videos l={l} /><Gmv l={l} />
                         </div>
                         <div className={cn("col-start-8 col-end-10 grid grid-cols-subgrid items-start gap-x-3", i > 0 && "border-t border-dashed border-line pt-3")} style={{ gridRow: i + 1 }}>
@@ -247,7 +236,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
                     {r.lines.map((l, i) => (
                       <div key={l.pid ?? `m${i}`} data-testid="dir-line-m" className="rounded-xl bg-surface-2 p-3.5">
                         <p className={cn("text-[14.5px]", l.noSample ? "text-ink-3" : "font-medium text-ink")}>{l.name}</p>
-                        {l.skus.length > 0 && <p className="break-words text-[12.5px] text-ink-3">{l.skus.join(" · ")}</p>}
+                        {(l.sampleSkus?.length ?? 0) > 0 && <div className="mt-1"><p className="text-[12px] text-ink-3">SKU Sampled</p><SkuSampled l={l} /></div>}
                         <div className="mt-2.5 grid grid-cols-3 gap-2 text-[13px]">
                           <div><p className="text-ink-3">Orders</p><Orders l={l} /></div>
                           <div><p className="text-ink-3">Videos</p><Videos l={l} /></div>

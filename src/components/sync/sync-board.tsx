@@ -131,6 +131,11 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
       ? { title: "Out Of Date", text: `${stale.map((d) => d.label).join(", ")} not synced for over a day.`, tone: "warn" }
       : { title: "Up To Date", text: ov.lastFullAt ? `Last full sync ${ago(ov.lastFullAt, now).toLowerCase()}.` : "Waiting for the first sync.", tone: ov.lastFullAt ? "good" : "warn" },
     { title: "Latest Order Data", text: newest ? `Orders up to ${dmy(newest)}.` : "No orders yet.", tone: newest ? "good" : "warn" },
+    ov.samples.orders === 0
+      ? { title: "Samples Tally", text: "No sample orders found yet.", tone: "warn" }
+      : ov.samples.matched === ov.samples.orders
+        ? { title: "Samples Tally", text: `All ${ov.samples.orders.toLocaleString("en-MY")} sample orders belong to a creator.`, tone: "good" }
+        : { title: "Samples Tally", text: `${ov.samples.matched.toLocaleString("en-MY")} of ${ov.samples.orders.toLocaleString("en-MY")} sample orders belong to a creator. ${(ov.samples.orders - ov.samples.matched).toLocaleString("en-MY")} have no sample request, so we cannot tell who received them.`, tone: "warn" },
     skippedNotes.length
       ? { title: "Some Records Skipped", text: `${skippedNotes.map((d) => d.label).join(", ")}: TikTok would not return a few records. They are tried again on the next sync.`, tone: "warn" }
       : { title: "Nothing Skipped", text: "TikTok returned every record we asked for.", tone: "good" },

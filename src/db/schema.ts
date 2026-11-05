@@ -955,33 +955,9 @@ export const creatorDailyCounts = pgTable("creator_daily_counts", {
   recordedAt: tz("recorded_at").notNull().defaultNow(),
 });
 
-// Mirrors migrations/0011_product_map.sql
+// Mirrors migrations/0011 + 0013: the automatic answer of which of the 13 products a TikTok listing is
 export const productMap = pgTable("product_map", {
   productId: text("product_id").primaryKey(),
   productKey: text("product_key").notNull(),
-  confirmed: boolean("confirmed").notNull().default(false),
   updatedAt: tz("updated_at").notNull().defaultNow(),
-  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
 });
-export const skuMap = pgTable("sku_map", {
-  skuId: text("sku_id").primaryKey(),
-  productId: text("product_id"),
-  productKey: text("product_key").notNull(),
-  updatedAt: tz("updated_at").notNull().defaultNow(),
-  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
-});
-export const productMapLog = pgTable(
-  "product_map_log",
-  {
-    id: bigserial("id", { mode: "number" }).primaryKey(),
-    at: tz("at").notNull().defaultNow(),
-    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-    kind: text("kind").notNull(),
-    ref: text("ref").notNull(),
-    fromKey: text("from_key"),
-    fromConfirmed: boolean("from_confirmed"),
-    toKey: text("to_key"),
-    undoneAt: tz("undone_at"),
-  },
-  (t) => [index("product_map_log_at").on(t.at)],
-);

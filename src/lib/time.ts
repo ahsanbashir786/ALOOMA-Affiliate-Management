@@ -31,3 +31,7 @@ export function weekStartISO(day: string): string {
   const dow = new Date(day + "T12:00:00Z").getUTCDay(); // 0 = Sunday
   return addDaysISO(day, -((dow + 6) % 7));
 }
+
+const fullDayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
+/** "9 Nov 2025" for a YYYY-MM-DD day (no timezone shift) – used where the year matters, such as the date a sample was given. */
+export const fmtFullDay = (day: string): string => fullDayFmt.format(new Date(day + "T12:00:00Z"));

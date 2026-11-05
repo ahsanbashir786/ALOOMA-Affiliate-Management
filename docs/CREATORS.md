@@ -44,21 +44,15 @@ Sales 35 + Posting 25 + Reliability 15 + Consistency 15 + Reach 10. Gold 70+, Si
 - Old pages (Affiliate Data (old), analysis, Samples, Segments) still read uploaded files; they sit under "Earlier version" until their module is rebuilt.
 - Demo data for testing only: `DATABASE_URL=…_test npx tsx scripts/seed-creators-demo.ts` (refuses any database not ending in `_test`). Tests: `npm run test:creators`.
 
-## Product mapping (the 13 products)
-Every list in the Creators module uses ALOOMA's 13 products, in the owner's order, never TikTok's long titles:
+## Products (the 13) and SKU Sampled
+Every list in the Creators module uses ALOOMA's 13 products in the owner's order, never TikTok's long titles:
 Mattress Protector Non-Waterproof, Waterproof, Quilt Comforter, Pillows, Bedsheet Non-Waterproof / Waterproof (single), Bedsheet Non-Waterproof / Waterproof (set), Cotton Towel, Coral Fleece Towel, Mattress Protector Non-Waterproof / Waterproof (Exclusive), Pillow Protectors.
 
-| Screen / rule | Detail |
-|---|---|
-| **System → Product mapping** (managers) | One row per TikTok listing (product ID) with a dropdown of the 13 products or **Excluded** (toys: never shown or counted). Evidence beside each row: title, price, variation names, what it sells, orders, samples |
-| Suggestions | Computed from the API data only (title words + which SKU family the listing mostly sells). Marked **Suggested** until confirmed; "Confirm all suggested" or per row. Pages work from the first visit using the suggestions and show a banner until everything is confirmed |
-| Add-on SKUs | The same seller SKU in several listings, big in one (its home) and tiny in another = probably an add-on (a pillow inside a mattress protector listing). Choose what it counts as; the key is the unique **SKU ID** |
-| Coverage | Order lines per product + Excluded + Unmapped must add up to the total, or the screen says so. New listings or SKUs show as **Unmapped** (last in every list) until assigned |
-| Log and undo | Every change is logged (who, when, from → to) with Undo |
-| Samples | Matched to the sale through the same product: a sample's SKU ID, else its listing, gives its product |
-| Overdue samples | TikTok's `UNFULFILL_CANCELLED` (portal: Overdue) is a shipped sample. Posted = her video linking the product, or her sales of it, after delivery (orders reach back further than the video list); otherwise Not posted |
+- **Automatic, no screen.** Which product a TikTok listing is comes from its title and from what it mostly sells (`src/lib/products/suggest.ts`), refreshed whenever the Creators data is rebuilt. Not-ALOOMA listings (toys) are left out everywhere. A listing that cannot be recognised shows as "Unmapped product" at the end of the list.
+- **SKU Sampled column.** It lists only the SKUs that were sent to her as samples for that product, each with the date it was given (delivered date; "shipped" when it has not arrived). The same SKU sent twice shows `×2` with both dates; two different SKUs of one listing are listed one under the other. A product she only sells (no sample) shows "–". The SKU comes from the sample request's SKU ID (which says which listing it belongs to), so it lands on the right product; a SKU the catalogue no longer knows shows the variation name from the request.
+- **There is no "Sample sent / Sells without a sample" label.** A creator can use one sample while also promoting another listing, so the screen shows the facts (which SKU, when) instead of a verdict. Status and Action still use the sample requests (shipped, posted or not) as before.
+- **Overdue samples.** TikTok's `UNFULFILL_CANCELLED` (portal: Overdue) is a shipped sample. Posted = her video linking the product, or her sales of it, after delivery (orders reach back further than the video list); otherwise Not posted.
+- **Samples tally.** A sample order never names the creator (its Buyer Username is not her creator handle), so only a sample request links a creator to a sample order. Data Health shows "N of M sample orders belong to a creator"; the rest were sent without a request or TikTok did not return the request.
 
-## Sales through a sample's videos, and "videos that sold"
-- **One sample can sell two products.** A video can link more than one product. For a sampled product, the sales of OTHER products made through the videos that link it are shown under "Sample sent" as "+RM X from other products in its videos" (hover for the list). They are never added to the line's own Orders/GMV, so nothing is counted twice. The link is order line `content_id` = video ID, and the video's product links.
-- **Videos** = TikTok's video list **plus** every video that produced a sale (from the order lines, which reach back to March 2025). The extra ones show as "+N from sales". Old videos that sold nothing may still be missing. The 28-day posting count used by status and score still uses only videos from the list (it needs a posting date).
-- Both follow the date range and the 13-product mapping.
+## Videos that sold
+- **Videos** = TikTok's video list plus every video that produced a sale (from the order lines, which reach back to March 2025). The extra ones show as "+N from sales". Old videos that sold nothing may still be missing. The 28-day posting count used by status and score still uses only videos from the list (it needs a posting date).

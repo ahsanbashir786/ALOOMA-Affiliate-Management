@@ -3,13 +3,13 @@ import { sql } from "drizzle-orm";
 import { rows } from "@/lib/analytics/sql";
 import { creatorStatus, explainStatus, winnerThreshold, type StatusInput } from "@/lib/affiliates/status";
 import { productName, productRank } from "@/lib/products/catalog";
-import { ensureSuggested } from "@/lib/products/mapping";
+import { refreshProductKeys } from "@/lib/products/classify";
 import { addDaysISO, daysBetweenISO, dayKL, fmtDayLabel, todayKL } from "@/lib/time";
 import { getWorkflowStates } from "@/lib/workflow/events";
 import { getCommitments } from "@/lib/workflow/commitments";
 import type { DirLine, DirRow } from "@/lib/workflow/directory";
 import { creatorScore } from "./score";
-import { kd, PK_LISTING, PK_SKU, TL } from "./sql";
+import { kd, PK_LISTING, TL } from "./sql";
 import { hasOrderSql, SAMPLE_OVERDUE_SQL, SAMPLE_SHIPPED_SQL } from "./sample-status";
 
 /** A sample is "late" this many days after it was delivered with nothing posted. */
@@ -35,20 +35,29 @@ const cache = new Map<string, { stamp: string; at: number; value: Loaded }>();
 export async function loadCreatorRows(opts: { range?: { start: string; end: string } } = {}): Promise<Loaded> {
   const [st] = await rows<{ s: string }>(sql`select concat_ws('|',
     (select max(synced_at) from tt_affiliate_order_lines), (select max(synced_at) from tt_videos), (select max(synced_at) from tt_sample_requests), (select max(synced_at) from tt_orders),
-    (select max(id) from staff_events), (select max(reverted_at) from staff_events), (select max(assigned_at) from creator_owners), (select count(*) from creators), (select max(id) from commitments),
-    (select max(updated_at) from product_map), (select count(*) from product_map), (select max(updated_at) from sku_map), (select count(*) from sku_map), todayKL.d) as s
+    (select max(id) from staff_events), (select max(reverted_at) from staff_events), (select count(*) from creators), (select max(id) from commitments),
+    (select max(updated_at) from product_map), (select count(*) from product_map), todayKL.d) as s
     from (select to_char(now() at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as d) todayKL`);
   const key = opts.range ? `${opts.range.start}..${opts.range.end}` : "all";
   const hit = cache.get(key);
-  if (hit && hit.stamp === st.s && Date.now() - hit.at < 5 * 60_000) return hit.value;
-  const value = await computeCreatorRows(opts);
-  if (cache.size > 12) cache.clear();
-  cache.set(key, { stamp: st.s, at: Date.now(), value });
-  return value;
+  let value: Loaded;
+  if (hit && hit.stamp === st.s && Date.now() - hit.at < 5 * 60_000) value = hit.value;
+  else {
+    value = await computeCreatorRows(opts);
+    if (cache.size > 12) cache.clear();
+    cache.set(key, { stamp: st.s, at: Date.now(), value });
+  }
+  return withOwners(value);
+}
+
+/** Who looks after each creator changes often and changes no number, so it is read fresh each time instead of rebuilding everything. */
+async function withOwners(v: Loaded): Promise<Loaded> {
+  const owners = new Map((await rows<{ username: string; user_id: string | null; name: string | null }>(sql`select o.username, o.user_id, u.name from creator_owners o left join users u on u.id = o.user_id`)).map((o) => [o.username, o]));
+  return { ...v, all: v.all.map((r) => { const o = owners.get(r.username); return r.extra && (r.extra.ownerId ?? null) === (o?.user_id ?? null) && (r.extra.ownerName ?? null) === (o?.name ?? null) ? r : r.extra ? { ...r, extra: { ...r.extra, ownerId: o?.user_id ?? null, ownerName: o?.name ?? null } } : r; }) };
 }
 
 async function computeCreatorRows(opts: { range?: { start: string; end: string } }): Promise<Loaded> {
-  await ensureSuggested(); // every listing has a product (suggested until the owner confirms), so no screen shows raw TikTok titles
+  await refreshProductKeys(); // which of the 13 products every listing is (automatic), so no screen shows raw TikTok titles
   const [refRow] = await rows<{ d: string | null }>(sql`select to_char(max(${kd("created_at")}), 'YYYY-MM-DD') as d from tt_affiliate_order_lines`);
   const ref = refRow?.d ?? null;
   const s28 = ref ? addDaysISO(ref, -27) : null;
@@ -60,7 +69,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
   const D = kd("tl.created_at");
   const refD = ref ?? "1970-01-01";
 
-  const [csales, psales, weekly, vidsC, vidsP, livesC, samples, reqs, topSkus, contact, owners, doneRows, names, firsts, alsoRows, vidsU] = await Promise.all([
+  const [csales, psales, weekly, vidsC, vidsP, livesC, samples, reqs, contact, owners, doneRows, names, firsts, vidsU] = await Promise.all([
     rows<{ creator: string; gmv_all: number; gmv28: number; prev28: number; ov: number; ol: number; last: string | null }>(sql`
       select tl.creator,
         coalesce(sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")}), 0)::float8 as gmv_all,
@@ -103,9 +112,9 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
       from tt_lives l where l.creator is not null group by l.creator`),
     // Samples per creator × product (one of the 13). A sample counts as "posted" when the creator posted a video that links that product,
     // or sold that product, after it was sent – this also works for old samples, because orders reach back further than the video list.
-    rows<{ creator: string; pid: string; title: string | null; sku_name: string | null; skus: string[] | null; sent: number; waiting: number; not_posted: number; posted: number }>(sql`
-      select x.creator, x.pk as pid, null::text as title, null::text as sku_name,
-        array_agg(distinct upper(x.seller_sku)) filter (where x.seller_sku is not null) as skus,
+    rows<{ creator: string; pid: string; given: { sku: string; on: string; d: boolean }[] | null; sent: number; waiting: number; not_posted: number; posted: number }>(sql`
+      select x.creator, x.pk as pid,
+        jsonb_agg(jsonb_build_object('sku', x.sku_code, 'on', x.given_on, 'd', x.delivered) order by x.given_on) filter (where x.sku_code is not null) as given,
         count(*)::int as sent,
         (count(*) filter (where x.res = 'waiting'))::int as waiting,
         (count(*) filter (where x.res = 'not_posted'))::int as not_posted,
@@ -116,11 +125,14 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
           select z.*,
             (exists (select 1 from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
                      where v.creator = z.creator and v.posted_at >= z.t0 - interval '1 day' and ${sql.raw(PK_LISTING("p->>'id'"))} = z.pk)
-             or exists (select 1 from tt_affiliate_order_lines a left join sku_map sm on sm.sku_id = a.sku_id left join product_map pm on pm.product_id = a.product_id
-                        where a.creator = z.creator and coalesce(sm.product_key, pm.product_key, 'unmapped') = z.pk and a.created_at >= z.t0 - interval '1 day')) as has_post
+             or exists (select 1 from tt_affiliate_order_lines a left join product_map pm on pm.product_id = a.product_id
+                        where a.creator = z.creator and coalesce(pm.product_key, 'unmapped') = z.pk and a.created_at >= z.t0 - interval '1 day')) as has_post
           from (
-            select r.creator, k.seller_sku, ${sql.raw(SAMPLE_OVERDUE_SQL)} as overdue, ${sql.raw(PK_SKU("r.sku_id", "r.product_id"))} as pk,
+            -- The SKU she was sent comes from the request's SKU ID (the catalogue says which listing it belongs to); the date is when it was delivered, else shipped.
+            select r.creator, coalesce(k.seller_sku, r.sku_name) as sku_code, ${sql.raw(SAMPLE_OVERDUE_SQL)} as overdue, ${sql.raw(PK_LISTING("coalesce(k.product_id, r.product_id)"))} as pk,
               coalesce(o.delivered_at, case when o.status in ('DELIVERED', 'COMPLETED') then o.updated_at end) as dlv,
+              (coalesce(o.delivered_at, case when o.status in ('DELIVERED', 'COMPLETED') then o.updated_at end) is not null) as delivered,
+              to_char(${kd("coalesce(o.delivered_at, case when o.status in ('DELIVERED', 'COMPLETED') then o.updated_at end, o.paid_at, o.created_at, r.first_seen_at)")}, 'YYYY-MM-DD') as given_on,
               coalesce(o.delivered_at, o.created_at, r.first_seen_at) as t0
             from tt_sample_requests r
             left join tt_orders o on o.order_id = r.order_id
@@ -133,10 +145,6 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
       select distinct on (r.creator) r.creator, r.nickname, r.followers::float8::bigint::int as followers, r.creator_gmv::float8 as gmv, r.fulfilment_pct::float8 as fulfil,
         (select count(*) from tt_sample_requests q where q.creator = r.creator and not coalesce(${sql.raw(hasOrderSql("q"))}, false) and q.is_approvable and coalesce(upper(q.status), '') !~ '(REJECT|EXPIRE|CANCEL|APPROVED)')::int as open
       from tt_sample_requests r where r.creator is not null order by r.creator, coalesce(r.synced_at, r.first_seen_at) desc`),
-    // The three SKUs she sold most under each product (shown when no sample SKU is known).
-    rows<{ creator: string; pk: string; skus: string[] }>(sql`
-      select creator, pk, (array_agg(sku order by n desc))[1:3] as skus from (
-        select tl.creator, tl.pk, upper(tl.seller_sku) as sku, count(*)::int as n from ${TL} where tl.creator is not null and tl.seller_sku is not null group by 1, 2, 3) q group by creator, pk`),
     rows<{ username: string; phone: string | null; approach: string | null }>(sql`select username, phone, approach from creators`),
     rows<{ username: string; user_id: string | null; name: string | null }>(sql`select o.username, o.user_id, u.name from creator_owners o left join users u on u.id = o.user_id`),
     rows<{ username: string; action: string; pid: string | null; d: string }>(sql`
@@ -153,16 +161,6 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
         select creator, ${kd("created_at")} as d from tt_affiliate_order_lines where creator is not null
         union all select creator, ${kd("posted_at")} from tt_videos where creator is not null and posted_at is not null
         union all select creator, ${kd("started_at")} from tt_lives where creator is not null and started_at is not null) x group by creator`),
-    // A video can link two products: sales of the OTHER products made through the videos that link a sampled product.
-    rows<{ creator: string; sample_pk: string; other_pk: string; gmv: number; orders: number }>(sql`
-      select vk.creator, vk.pk as sample_pk, tl.pk as other_pk,
-        coalesce(sum(tl.pay) filter (where tl.valid), 0)::float8 as gmv, (count(distinct tl.order_id) filter (where tl.valid))::int as orders
-      from (select v.creator, v.video_id as vid, ${sql.raw(PK_LISTING("p->>'id'"))} as pk
-            from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
-            where v.creator is not null and p->>'id' is not null group by 1, 2, 3) vk
-      join ${TL} on tl.creator = vk.creator and tl.content_id = vk.vid
-      where tl.pk <> vk.pk and vk.pk not in ('excluded', 'unmapped') and ${R("tl.created_at")}
-      group by 1, 2, 3`),
     // Videos per product = TikTok's video list plus every video that produced a sale (orders reach back further than the list).
     rows<{ creator: string; pid: string; n: number; sold_only: number }>(sql`
       with listed as (
@@ -190,13 +188,10 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
   const vcBy = new Map(vidsC.map((x) => [x.creator, x]));
   const vpBy = new Map(vidsP.map((x) => [`${x.creator}|${x.pid}`, x]));
   const vuBy = new Map(vidsU.map((x) => [`${x.creator}|${x.pid}`, x]));
-  const alsoBy = new Map<string, NonNullable<DirLine["alsoSold"]>>();
-  for (const x of alsoRows) { const k = `${x.creator}|${x.sample_pk}`; const e = alsoBy.get(k) ?? alsoBy.set(k, { gmv: 0, orders: 0, products: [] }).get(k)!; e.gmv += x.gmv; e.orders += x.orders; e.products.push({ key: x.other_pk, gmv: x.gmv }); }
   const lvBy = new Map(livesC.map((x) => [x.creator, x]));
   const smBy = new Map<string, typeof samples>();
   for (const x of samples) (smBy.get(x.creator) ?? smBy.set(x.creator, []).get(x.creator)!).push(x);
   const rqBy = new Map(reqs.map((x) => [x.creator, x]));
-  const skuBy = new Map(topSkus.map((x) => [`${x.creator}|${x.pk}`, x.skus]));
   const infoBy = new Map(contact.map((c) => [c.username, c]));
   const ownBy = new Map(owners.map((o) => [o.username, o]));
   const firstBy = new Map(firsts.map((x) => [x.creator, x.d]));
@@ -240,7 +235,6 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
     for (const [pid, { sample, sale }] of pids) {
       const vp = vpBy.get(`${username}|${pid}`);
       const vu = vuBy.get(`${username}|${pid}`);
-      const also = sample ? alsoBy.get(`${username}|${pid}`) : undefined;
       const input: StatusInput = {
         paused,
         gmv28: sale?.gmv28 ?? 0, prev28: sale?.prev28 ?? 0, gmvAll: sale?.gmv ?? 0, videos28: vp?.n28 ?? 0,
@@ -248,11 +242,14 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
         samples: { sent: sample?.sent ?? 0, waiting: sample?.waiting ?? 0, notPosted: sample?.not_posted ?? 0, posted: sample?.posted ?? 0 },
       };
       const s = creatorStatus(input);
-      const skus = sample?.skus?.length ? sample.skus : (skuBy.get(`${username}|${pid}`) ?? []);
+      // Only the SKUs that were sent to her as samples, each with the date(s) given (the same SKU twice = two dates).
+      const sampleSkus: NonNullable<DirLine["sampleSkus"]> = [];
+      for (const g of sample?.given ?? []) { const e = sampleSkus.find((x) => x.sku === g.sku) ?? (sampleSkus.push({ sku: g.sku, times: [] }), sampleSkus[sampleSkus.length - 1]); e.times.push({ on: g.on, delivered: g.d }); }
+      const skus = sampleSkus.map((x) => x.sku);
       lines.push({
         pid, name: productName(pid), skus, noSample: false, sampled: !!sample,
         ordersVideo: sale?.ov ?? 0, ordersLive: sale?.ol ?? 0, orders: sale?.ot ?? 0, gmvVideo: sale?.gv ?? 0, gmvLive: sale?.gl ?? 0, gmv: sale?.gmv ?? 0, gmv28: sale?.gmv28 ?? 0, prev28: sale?.prev28 ?? 0,
-        videos: Math.max(vu?.n ?? 0, vp?.n ?? 0), videosSoldOnly: vu?.sold_only ?? 0, alsoSold: also && also.gmv > 0 ? { ...also, products: [...also.products].sort((a, b) => productRank(a.key) - productRank(b.key)) } : undefined, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null,
+        videos: Math.max(vu?.n ?? 0, vp?.n ?? 0), videosSoldOnly: vu?.sold_only ?? 0, sampleSkus, videos28: vp?.n28 ?? 0, lastVideoOn: vp?.last ?? null, lastVideoLabel: vp?.last ? fmtDayLabel(vp.last) : null,
         lastVideoDaysAgo: vp?.last && ref ? Math.max(0, daysBetweenISO(vp.last, ref)) : null, undatedVideos: 0,
         status: s.status, action: s.action, reason: explainStatus(input, s.status), doneOn: doneBy.get(`${username}|${pid}|${s.action}`) ?? null,
       });

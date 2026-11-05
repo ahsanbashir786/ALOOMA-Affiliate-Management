@@ -150,6 +150,9 @@ async function main() {
   const isolated = await runDataset("sample_orders", "manual", null, deps);
   const got = (await q(sql`select order_id from tt_orders where order_id in ('GOOD1','GOOD2','BAD1')`)).map((r) => r.order_id).sort();
   check("33b order number 0 / empty is never asked for and never saved as an order; the Samples Issued card counts only real shipments", ((await q(sql`select count(*)::int as n from tt_orders where order_id in ('0', '')`))[0].n as number) === 0 && (await syncOverview()).datasets.find((d) => d.key === "sample_orders")!.records === (((await q(sql`select count(distinct o.order_id)::int as n from tt_orders o join tt_sample_requests r on r.order_id = o.order_id and r.order_id !~ '^0*$'`))[0].n as number)));
+  await q(sql`insert into tt_orders (order_id, status, is_sample, is_final) values ('LONE1', 'DELIVERED', true, false)`);
+  const tally = (await syncOverview()).samples;
+  check("33c the samples tally counts sample orders and how many belong to a creator through a sample request", tally.orders >= 1 && tally.matched < tally.orders && tally.matched >= 0, JSON.stringify(tally));
   const ovSk = (await syncOverview()).datasets.find((d) => d.key === "sample_orders")!;
   check("33 skipped orders are counted and shown as a warning (with an example id and TikTok's message), not hidden, and the card is not red", ovSk.lastError === null && /1 skipped/.test(ovSk.note ?? "") && /BAD1/.test(ovSk.note ?? ""), String(ovSk.note));
   check("32 one order TikTok cannot read does not fail the dataset: the group is split, the bad one is skipped and the others are saved", isolated.status === "ok" && got.join() === "GOOD1,GOOD2", JSON.stringify([isolated, got]));

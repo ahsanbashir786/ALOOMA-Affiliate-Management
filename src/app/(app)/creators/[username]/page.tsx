@@ -6,7 +6,7 @@ import { can, requireUser } from "@/lib/auth";
 import { getCreatorProfile, type ProfileSample, type SampleResult } from "@/lib/creators/profile";
 import { getStaff } from "@/lib/creators/meta";
 import { statsOf } from "@/lib/affiliates/action-messages";
-import { productName } from "@/lib/products/catalog";
+import { SkuSampled } from "@/components/creators/sku-sampled";
 import { STATUS_HELP, type CreatorStatus } from "@/lib/affiliates/status";
 import { fmtDayLabel } from "@/lib/time";
 import { Avatar } from "@/components/creators/avatar";
@@ -122,12 +122,12 @@ export default async function CreatorProfilePage({ params }: PageProps<"/creator
       <Section title="Products" hint="Each product has its own status and action">
         <div className="-mx-2 overflow-x-auto">
           <table className="w-full min-w-[820px]">
-            <thead><tr className="border-b border-line"><Th>Product</Th><Th>SKU</Th><Th right>Orders</Th><Th right>Videos</Th><Th right>GMV</Th><Th>Status</Th><Th>Action</Th></tr></thead>
+            <thead><tr className="border-b border-line"><Th>Product</Th><Th>SKU Sampled</Th><Th right>Orders</Th><Th right>Videos</Th><Th right>GMV</Th><Th>Status</Th><Th>Action</Th></tr></thead>
             <tbody className="divide-y divide-line">
               {row.lines.map((l, i) => (
                 <tr key={l.pid ?? i}>
-                  <Td><p className="font-medium">{l.name}</p><p className="text-[12px] text-ink-3">{l.sampled ? "Sample sent" : l.noSample ? "" : "Sells without a sample"}</p>{l.alsoSold && <p className="text-[12px] text-ink-3" title={l.alsoSold.products.map((p) => `${productName(p.key)}: ${fmtRM(p.gmv)}`).join("\n")}>+{fmtRM(l.alsoSold.gmv)} from other products in its videos ({l.alsoSold.products.map((p) => productName(p.key)).join(", ")})</p>}</Td>
-                  <Td className="text-[13px] text-ink-2">{l.skus.join(", ") || "–"}</Td>
+                  <Td><p className="font-medium">{l.name}</p></Td>
+                  <Td><SkuSampled l={l} /></Td>
                   <Td right>{l.orders || "–"}</Td>
                   <Td right>{l.videos || "–"}{(l.videosSoldOnly ?? 0) > 0 && <span className="block text-[12px] text-ink-3" title="Found only because they produced sales; older videos that sold nothing may be missing">{(l.videosSoldOnly ?? 0) >= l.videos ? "from sales" : `+${l.videosSoldOnly} from sales`}</span>}</Td>
                   <Td right><span className="font-semibold">{l.gmv > 0 ? fmtRM(l.gmv) : "–"}</span>{l.gmv > 0 && <span className="block text-[12px] text-ink-3">V {Math.round(l.gmvVideo).toLocaleString("en-MY")} · L {Math.round(l.gmvLive).toLocaleString("en-MY")}</span>}</Td>

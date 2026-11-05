@@ -5,7 +5,7 @@ import { dayKL, fmtDayLabel, addDaysISO, daysBetweenISO, weekStartISO } from "@/
 import type { DirRow } from "@/lib/workflow/directory";
 import { loadCreatorRows, POST_WINDOW_DAYS } from "./load";
 import { productName } from "@/lib/products/catalog";
-import { kd, PK_SKU, PK_LISTING, TL } from "./sql";
+import { kd, PK_LISTING, TL } from "./sql";
 import { hasOrderSql, isOverdueStatus, isShippedStatus } from "./sample-status";
 
 export type SampleResult = "posted" | "waiting" | "not_posted" | "pending" | "closed";
@@ -54,12 +54,12 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
       select z.id, z.pk, z.sku, z.status, z.order_id, z.approvable, z.req, z.ship, z.dlv, z.ostatus,
         (exists (select 1 from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
                  where v.creator = z.creator and v.posted_at >= z.t0 - interval '1 day' and ${sql.raw(PK_LISTING("p->>'id'"))} = z.pk)
-         or exists (select 1 from tt_affiliate_order_lines a left join sku_map sm on sm.sku_id = a.sku_id left join product_map pm on pm.product_id = a.product_id
-                    where a.creator = z.creator and coalesce(sm.product_key, pm.product_key, 'unmapped') = z.pk and a.created_at >= z.t0 - interval '1 day')) as has_post,
+         or exists (select 1 from tt_affiliate_order_lines a left join product_map pm on pm.product_id = a.product_id
+                    where a.creator = z.creator and coalesce(pm.product_key, 'unmapped') = z.pk and a.created_at >= z.t0 - interval '1 day')) as has_post,
         (select to_char(min(${kd("v.posted_at")}), 'YYYY-MM-DD') from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
           where v.creator = z.creator and v.posted_at >= z.t0 - interval '1 day' and ${sql.raw(PK_LISTING("p->>'id'"))} = z.pk) as first_post
       from (
-        select r.id, r.creator, r.status, case when ${sql.raw(hasOrderSql("r"))} then r.order_id end as order_id, r.is_approvable as approvable, r.first_seen_at, k.seller_sku as sku, ${sql.raw(PK_SKU("r.sku_id", "r.product_id"))} as pk,
+        select r.id, r.creator, r.status, case when ${sql.raw(hasOrderSql("r"))} then r.order_id end as order_id, r.is_approvable as approvable, r.first_seen_at, coalesce(k.seller_sku, r.sku_name) as sku, ${sql.raw(PK_LISTING("coalesce(k.product_id, r.product_id)"))} as pk,
           coalesce(o.delivered_at, o.created_at, r.first_seen_at) as t0,
           to_char(${kd("r.first_seen_at")}, 'YYYY-MM-DD') as req,
           to_char(${kd("coalesce(o.paid_at, o.created_at)")}, 'YYYY-MM-DD') as ship,
