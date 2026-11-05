@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, CalendarDays, CheckCircle2, ListChecks, MessageSquare, Send, Users, X } from "lucide-react";
-import { CopyButton } from "@/components/ui/copy-button";
 import { MESSAGES, PRIORITY_LABEL } from "@/lib/execution/rules";
 import type { PlanData, Staff, Status, TaskView } from "@/lib/execution/plan";
 import { fmtDateTimeKL } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
-import { CategoryChip, dueInfo, PeoplePicker, Person, PersonStack, Popover, PriorityFlag, StatusIcon, STATUS_META } from "./ui";
+import { CreatorList } from "./creator-list";
+import { CategoryChip, dueInfo, PeoplePicker, PersonStack, Popover, PriorityFlag, StatusIcon, STATUS_META } from "./ui";
 
 export type Mutate = {
   status: (id: string, s: Status, note?: string) => void;
@@ -16,6 +16,7 @@ export type Mutate = {
   assign: (id: string, ids: string[]) => void;
   step: (id: string, i: number) => void;
   comment: (id: string, text: string) => void;
+  contacted: (id: string, n: number) => void;
 };
 
 const SEGMENTS: Status[] = ["not_started", "pending", "done"];
@@ -47,7 +48,6 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
   const doneSteps = task.stepsDone.length;
   const brief = data.products.find((p) => p.key === task.productKey);
   const msg = MESSAGES[task.kind];
-  const product = task.productName.replace(" · ", " ");
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -60,8 +60,6 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose, onNav]);
-
-  const fill = (t: string, name: string) => t.replace("{name}", name).replace("{product}", product);
 
   return (
     <>
@@ -163,25 +161,13 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
             </ol>
           </Block>
 
-          {task.creators.length > 0 && (
-            <Block icon={Users} title="Creators To Contact" right={msg && (
+          {task.creatorCount > 0 && (
+            <Block icon={Users} title={`Creators To Contact · ${task.creatorCount}`} right={msg && (
               <div className="inline-flex overflow-hidden rounded-md border border-line-strong text-[12px] font-medium">
                 {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1", lang === l ? "bg-ink text-white" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
               </div>
             )}>
-              <ul className="divide-y divide-line rounded-xl border border-line">
-                {task.creators.map((c, i) => (
-                  <li key={`${c.name}-${i}`} className="flex items-center gap-3 px-3 py-2.5">
-                    <Person name={c.name} size={30} />
-                    <div className="min-w-0 flex-1">
-                      <Link href={`/creators/${encodeURIComponent(c.name)}`} className="block truncate text-[14px] font-semibold text-ink hover:text-brand-strong hover:underline">@{c.name}</Link>
-                      <p className="truncate text-[12.5px] text-ink-3">{c.note}{c.owner && <> · Owner: {c.owner}</>}</p>
-                    </div>
-                    {msg && <CopyButton text={fill(msg[lang], c.name)} label="Message" />}
-                  </li>
-                ))}
-              </ul>
-              {msg && <p className="mt-2.5 rounded-lg bg-surface-2 px-3 py-2.5 text-[13.5px] leading-relaxed text-ink-2">{fill(msg[lang], task.creators[0].name)}</p>}
+              <CreatorList key={task.id} taskId={task.id} kind={task.kind} product={task.productName} canEdit={canEdit} closed={closed} total={task.creatorCount} contacted={task.contactedCount} lang={lang} onContacted={(n) => mutate.contacted(task.id, n)} />
             </Block>
           )}
 
@@ -206,7 +192,11 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
           </Block>
         </div>
         <footer className="flex items-center justify-between border-t border-line px-5 py-2.5 text-[12.5px] text-ink-3">
-          <span>Use <kbd className="rounded border border-line-strong px-1">↑</kbd> <kbd className="rounded border border-line-strong px-1">↓</kbd> to move between tasks, <kbd className="rounded border border-line-strong px-1">Esc</kbd> to close</span>
+          <span className="hidden sm:inline">Use <kbd className="rounded border border-line-strong px-1">↑</kbd> <kbd className="rounded border border-line-strong px-1">↓</kbd> to move between actions, <kbd className="rounded border border-line-strong px-1">Esc</kbd> to close</span>
+          <span className="ml-auto flex gap-1.5">
+            <button onClick={() => onNav(-1)} className="rounded-lg border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2">Previous</button>
+            <button onClick={() => onNav(1)} data-testid="next-task" className="rounded-lg border border-line-strong px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2">Next</button>
+          </span>
         </footer>
       </aside>
     </>

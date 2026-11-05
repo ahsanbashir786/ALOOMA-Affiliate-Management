@@ -85,6 +85,45 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   await p.keyboard.press("Escape");
   await p.getByTestId("team-row").filter({ hasText: "Siti Nur" }).first().click(); await p.waitForSelector("[data-testid=task-row], [data-testid=task-list]");
   ok(await p.getByTestId("filter-person").inputValue() !== "all", "team: clicking a person filters the list");
+  // creators inside an action: full list, search, tick, video, message
+  await p.getByTestId("view-list").click().catch(() => {}); await p.getByTestId("scope-all").click(); await p.getByTestId("group-by").selectOption("product"); await p.waitForTimeout(300);
+  await p.locator("[data-testid=task-row][data-kind=lapsed_stars]").first().click(); await p.waitForSelector("[data-testid=creator-list]");
+  const cl = p.getByTestId("creator-list");
+  await cl.getByTestId("creator-row").first().waitFor();
+  ok(await cl.getByText(/of \d+ contacted/).isVisible(), "creators: shows how many were contacted");
+  ok(await cl.getByText(/Video from .*days old, sold RM/).first().isVisible(), "creators: each creator shows the old video to remake");
+  ok(await cl.getByRole("link", { name: /Watch/ }).first().isVisible(), "creators: link to watch the video");
+  const total = Number((await cl.getByText(/of \d+ contacted/).innerText()).match(/of (\d+)/)[1]);
+  await cl.getByTestId("creator-row").first().getByRole("button", { name: /Tick/ }).click(); await p.waitForTimeout(700);
+  ok(Number(await cl.getByTestId("contacted-count").innerText()) === 1, "creators: ticking one counts it");
+  await cl.getByTestId("cl-done").click(); await p.waitForTimeout(500);
+  ok((await cl.getByTestId("creator-row").count()) === 1, "creators: Done filter shows only ticked creators");
+  await cl.getByTestId("cl-all").click(); await p.waitForTimeout(400);
+  const first = await cl.getByTestId("creator-row").first().locator("a").first().innerText();
+  await cl.getByTestId("creator-search").fill(first.replace("@", "").slice(0, 6)); await p.waitForTimeout(700);
+  ok((await cl.getByTestId("creator-row").count()) >= 1 && (await cl.getByTestId("creator-row").count()) <= total, "creators: search finds a creator by name");
+  await p.keyboard.press("Escape"); await p.keyboard.press("Escape");
+  // quick views and needs-attention
+  await p.getByTestId("scope-unassigned").click(); await p.waitForTimeout(300);
+  ok(await p.getByTestId("scope-unassigned").getAttribute("aria-pressed") === "true" && (await p.locator("[data-testid=task-row]").count()) > 0, "views: Unassigned quick view works");
+  ok(await p.getByTestId("attention").isVisible(), "admin: Needs Attention strip is shown");
+  // bulk: select two, assign, mark pending, undo toast on done
+  await p.getByTestId("scope-all").click(); await p.waitForTimeout(300);
+  await p.getByTestId("pick").nth(0).check(); await p.getByTestId("pick").nth(1).check();
+  ok(await p.getByTestId("picked-count").innerText() === "2", "bulk: shows how many are selected");
+  await p.getByTestId("bulk-assign").locator("button").first().click(); await p.getByRole("button", { name: /Siti Nur/ }).click(); await p.waitForTimeout(1200);
+  ok(!(await p.getByTestId("bulk-bar").isVisible().catch(() => false)), "bulk: bar closes after the change");
+  await p.waitForTimeout(500);
+  // inline assign
+  await p.locator("[data-testid=row-assign]").first().locator("button").first().click();
+  ok(await p.getByRole("button", { name: /Daniel Lim/ }).first().isVisible(), "assign: people can be changed right in the list");
+  await p.keyboard.press("Escape");
+  // done with undo
+  const title = await p.locator("[data-testid=task-row][data-status=not_started]").first().locator("p").first().innerText();
+  const row = p.locator("[data-testid=task-row]", { hasText: title }).first();
+  await row.getByRole("button", { name: /Status:/ }).click(); await row.getByRole("button", { name: /Status:/ }).click(); await p.waitForTimeout(300);
+  ok(await p.getByRole("button", { name: "Undo" }).isVisible(), "undo: marking done offers Undo");
+  await p.getByRole("button", { name: "Undo" }).click(); await p.waitForTimeout(500);
   // refresh
   await p.getByTestId("refresh-plan").click(); await p.waitForTimeout(2500);
   ok(await p.getByText(/Plan updated/).isVisible(), "plan: Update Plan works");
@@ -93,11 +132,15 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
 
   // ── viewer
   ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } }); p = await ctx.newPage();
-  await login(p, "viewer@test.local"); await p.goto(BASE + "/execution"); await p.waitForSelector("[data-testid=task-row]");
-  ok((await p.getByTestId("refresh-plan").count()) === 0, "viewer: no Update Plan button");
+  await login(p, "viewer@test.local"); await p.goto(BASE + "/execution"); await p.waitForSelector("[data-testid=scopes]");
+  ok(await p.getByTestId("scope-mine").getAttribute("aria-pressed") === "true", "team member: starts on My Work");
+  ok((await p.getByTestId("attention").count()) === 0 && (await p.getByTestId("pick").count()) === 0, "team member: no admin strip, no tick boxes");
+  await p.getByTestId("scope-all").click(); await p.waitForSelector("[data-testid=task-row]");
+  ok((await p.getByTestId("refresh-plan").count()) === 0, "team member: no Update Plan button");
+  await p.getByTestId("filter-person").selectOption({ label: "Unassigned" }); await p.waitForTimeout(300);
   await p.locator("[data-testid=task-row]").first().click(); await p.waitForSelector("[data-testid=task-panel]");
-  ok((await p.getByTestId("due-input").count()) === 0, "viewer: cannot change dates");
-  ok(await p.getByTestId("set-pending").isDisabled(), "viewer: cannot change an action that is not theirs");
+  ok((await p.getByTestId("due-input").count()) === 0, "team member: cannot change dates");
+  ok(await p.getByTestId("set-pending").isDisabled(), "team member: cannot change an action that is not theirs");
   await ctx.close();
 
   // ── mobile

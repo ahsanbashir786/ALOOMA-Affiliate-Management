@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { syncPlan, loadPlan } from "@/lib/execution/plan";
 import { analyseProducts } from "@/lib/products/analysis";
 import { buildDrafts } from "@/lib/execution/rules";
+import { loadHistory } from "@/lib/execution/history";
+import { todayKL } from "@/lib/time";
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, extra = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${ok ? "" : "  " + extra}`); };
@@ -13,17 +15,20 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
 (async () => {
   await q(sql`delete from ep_tasks`); await q(sql`delete from ep_product_leads`); await q(sql`delete from settings where key = 'ep_stamp'`);
   const a = await analyseProducts();
-  const drafts = a.products.filter((p) => p.key !== "unmapped").flatMap((p) => buildDrafts(p));
+  const history = await loadHistory(a);
+  const ctx = { history, today: todayKL(), periodStart: a.period.start, prevStart: a.period.prevStart };
+  const drafts = a.products.filter((p) => p.key !== "unmapped").flatMap((p) => buildDrafts(p, ctx));
   check("rules: the demo data produces actions", drafts.length > 10, String(drafts.length));
   check("rules: every action has a reason, a checklist and a due time", drafts.every((d) => d.summary.length > 20 && d.steps.length >= 3 && d.dueDays >= 3 && [1, 2, 3].includes(d.priority)));
   check("rules: one fingerprint per product and kind", new Set(drafts.map((d) => d.fingerprint)).size === drafts.length);
-  check("rules: products with no sales get no actions", a.products.filter((p) => p.diagnosis.tag === "No Sales").every((p) => buildDrafts(p).length === 0));
+  check("rules: products with no sales get no actions", a.products.filter((p) => p.diagnosis.tag === "No Sales").every((p) => buildDrafts(p, ctx).length === 0));
   check("rules: a creator is never listed twice in one action", drafts.every((d) => new Set(d.creators.map((c) => c.name)).size === d.creators.length));
   const kinds = new Set(drafts.map((d) => d.kind));
+  console.log("kinds:", Object.fromEntries([...kinds].map((k) => [k, drafts.filter((d) => d.kind === k).reduce((n, d) => n + d.creators.length, 0)])));
   check("rules: several kinds of action across content, creators and samples", ["new_videos", "reactivate", "chase_unposted"].every((k) => kinds.has(k)) && new Set(drafts.map((d) => d.category)).size >= 3, [...kinds].join(","));
   const react = drafts.filter((d) => d.kind === "reactivate");
   check("rules: win-back names only creators who really dropped", react.every((d) => d.creators.length > 0 && d.impactRm > 0));
-  check("rules: sorted most important first", drafts.length === 0 || buildDrafts(a.products.find((p) => p.key === drafts[0].productKey)!)[0].priority <= 2);
+  check("rules: sorted most important first", drafts.length === 0 || buildDrafts(a.products.find((p) => p.key === drafts[0].productKey)!, ctx)[0].priority <= 2);
 
   const r1 = await syncPlan(true);
   const [{ n }] = await q(sql`select count(*)::int as n from ep_tasks`) as { n: number }[];
@@ -60,7 +65,23 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
     check("assign: new tasks of a product go to its lead", (lead.c as number) > 0 && (lead.a as number) >= (lead.c as number), JSON.stringify(lead));
   } else check("assign: needs test users", false, "no users");
 
+  // Full lists, personal video details, and ticks that survive a refresh.
+  const biggest = drafts.reduce((m, d) => (d.creators.length > m.creators.length ? d : m), drafts[0]);
+  const [stored] = await q(sql`select count(*)::int as n from ep_task_creators tc join ep_tasks t on t.id = tc.task_id where t.fingerprint = ${biggest.fingerprint}`);
+  check("lists: an action keeps every creator, not just a few", (stored.n as number) === biggest.creators.length && biggest.creators.length > 100, `${stored.n} of ${biggest.creators.length}`);
+  const old = drafts.filter((d) => d.kind === "refresh_old");
+  check("videos: every creator in a refresh action comes with the old video to remake", old.every((d) => d.creators.every((c) => (c.data.videos?.length ?? 0) > 0 && !!c.data.videos![0].url)), "missing video");
+  const lapsed = drafts.filter((d) => d.kind === "lapsed_stars" || d.kind === "lapsed_regular" || d.kind === "one_hit");
+  check("history: past sellers who went quiet are found from older sales", lapsed.length > 0 && lapsed.every((d) => d.creators.every((c) => (c.data.lifetime ?? 0) > 0 && (c.data.daysSince ?? 0) >= 28)));
+  check("history: proven sellers of other products are offered this one", drafts.some((d) => d.kind === "cross_sell" && d.creators.length >= 5));
+  const [pick] = await q(sql`select tc.task_id::text as tid, tc.username from ep_task_creators tc join ep_tasks t on t.id = tc.task_id where t.fingerprint = ${biggest.fingerprint} order by tc.rank limit 1`);
+  await q(sql`update ep_task_creators set contacted_at = now() where task_id = ${pick.tid as string}::uuid and username = ${pick.username as string}`);
+  await syncPlan(true);
+  const [kept] = await q(sql`select count(*)::int as n from ep_task_creators where task_id = ${pick.tid as string}::uuid and username = ${pick.username as string} and contacted_at is not null`);
+  check("ticks: a contacted creator stays ticked after the plan is refreshed", (kept.n as number) === 1);
+
   const plan = await loadPlan();
+  check("load: the list gets counts, not thousands of creators", plan.tasks.every((x) => x.creators.length <= 5 && x.creatorCount >= x.creators.length) && plan.tasks.some((x) => x.contactedCount === 1));
   check("load: tasks come with product names, creators and history", plan.tasks.length > 0 && plan.tasks.every((x) => x.productName && Array.isArray(x.creators) && x.events.length >= 1));
   check("load: all 13 products listed, even with no actions", plan.products.length === 13);
 

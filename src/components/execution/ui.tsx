@@ -71,7 +71,7 @@ export function dueInfo(due: string | null, today: string, open: boolean): { tex
 }
 
 /** A small pop-over that closes when you click outside it. */
-export function Popover({ trigger, children, align = "left", testId }: { trigger: React.ReactNode; children: React.ReactNode; align?: "left" | "right"; testId?: string }) {
+export function Popover({ trigger, children, align = "left", up = false, testId }: { trigger: React.ReactNode; children: React.ReactNode; align?: "left" | "right"; up?: boolean; testId?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -84,7 +84,7 @@ export function Popover({ trigger, children, align = "left", testId }: { trigger
   return (
     <div ref={ref} className="relative inline-block" data-testid={testId}>
       <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} aria-expanded={open} className="rounded-lg text-left">{trigger}</button>
-      {open && <div className={cn("absolute z-40 mt-1.5 min-w-60 rounded-xl border border-line-strong bg-surface p-1.5 shadow-lg", align === "right" ? "right-0" : "left-0")} onClick={(e) => e.stopPropagation()}>{children}</div>}
+      {open && <div className={cn("absolute z-40 min-w-60 rounded-xl border border-line-strong bg-surface p-1.5 shadow-lg", up ? "bottom-full mb-1.5" : "mt-1.5", align === "right" ? "right-0" : "left-0")} onClick={(e) => e.stopPropagation()}>{children}</div>}
     </div>
   );
 }

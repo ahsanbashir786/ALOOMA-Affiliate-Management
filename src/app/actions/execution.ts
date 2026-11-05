@@ -5,7 +5,7 @@ import * as z from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { can, requireUser, type SessionUser } from "@/lib/auth";
-import { syncPlan } from "@/lib/execution/plan";
+import { listTaskCreators, syncPlan, type CreatorItem } from "@/lib/execution/plan";
 
 type R = { ok?: true; error?: string };
 const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
@@ -125,4 +125,76 @@ export async function refreshPlan(): Promise<R & { created?: number; closed?: nu
   const r = await syncPlan(true);
   refresh();
   return { ok: true, created: r.created, closed: r.closed };
+}
+
+/** One page of the creators an action is about. Anyone signed in may look. */
+export async function getTaskCreators(taskId: string, offset: number, q: string, filter: "all" | "todo" | "done"): Promise<{ items: CreatorItem[]; total: number; contacted: number } | { error: string }> {
+  await requireUser();
+  const p = z.object({ id: Id, o: z.number().int().min(0).max(5000), q: z.string().trim().max(60), f: z.enum(["all", "todo", "done"]) }).safeParse({ id: taskId, o: offset, q, f: filter });
+  if (!p.success) return { error: "Something is wrong with that request." };
+  return listTaskCreators(p.data.id, { offset: p.data.o, limit: 50, q: p.data.q, filter: p.data.f });
+}
+
+/** Ticks creators off as contacted (or back). The tick shows who did it and when. */
+export async function setCreatorsContacted(taskId: string, usernames: string[], on: boolean): Promise<R & { contacted?: number }> {
+  const user = await requireUser();
+  const p = z.object({ id: Id, u: z.array(z.string().min(1).max(80)).min(1).max(500) }).safeParse({ id: taskId, u: usernames });
+  if (!p.success) return { error: "Choose creators first." };
+  if (!(await mayEdit(user, p.data.id))) return { error: "Only the assigned person or a manager can tick creators." };
+  const list = sql.join(p.data.u.map((n) => sql`${n}`), sql`, `);
+  await q(on
+    ? sql`update ep_task_creators set contacted_at = now(), contacted_by = ${user.id}::uuid where task_id = ${p.data.id}::uuid and username in (${list}) and contacted_at is null`
+    : sql`update ep_task_creators set contacted_at = null, contacted_by = null where task_id = ${p.data.id}::uuid and username in (${list})`);
+  const [c] = await q(sql`select count(contacted_at)::int as c, count(*)::int as n from ep_task_creators where task_id = ${p.data.id}::uuid`);
+  await q(sql`update ep_tasks set updated_at = now() where id = ${p.data.id}::uuid`);
+  if (p.data.u.length > 1 || (c.c as number) === (c.n as number)) await log(p.data.id, user.id, "contacted", on ? `Contacted ${p.data.u.length > 1 ? `${p.data.u.length} creators` : "the last creator"} (${c.c} of ${c.n})` : `Unticked ${p.data.u.length} creator${p.data.u.length === 1 ? "" : "s"}`);
+  refresh();
+  return { ok: true, contacted: c.c as number };
+}
+
+/** Every creator of an action as a CSV (for sharing with the team or a WhatsApp broadcast tool). */
+export async function exportTaskCreators(taskId: string): Promise<{ csv: string; name: string } | { error: string }> {
+  await requireUser();
+  const p = Id.safeParse(taskId);
+  if (!p.success) return { error: "Something is wrong with that request." };
+  const [t] = await q(sql`select title, product_key from ep_tasks where id = ${p.data}::uuid`);
+  if (!t) return { error: "This task no longer exists." };
+  const r = await q(sql`select tc.username, tc.note, tc.value::float8 as value, cr.phone, ow.name as owner, tc.contacted_at is not null as contacted
+    from ep_task_creators tc left join creators cr on cr.username = tc.username left join creator_owners co on co.username = tc.username left join users ow on ow.id = co.user_id
+    where tc.task_id = ${p.data}::uuid order by tc.rank`);
+  const esc = (v: unknown) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = ["Creator,Note,Value (RM),WhatsApp,Owner,Contacted", ...r.map((x) => [x.username, x.note, Math.round(x.value as number), x.phone, x.owner, x.contacted ? "Yes" : "No"].map(esc).join(","))].join("\n");
+  return { csv, name: `${(t.product_key as string)}-${(t.title as string).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}.csv` };
+}
+
+/** Several tasks at once (managers and owners): add people, set a status, set a due date. */
+export async function bulkUpdateTasks(ids: string[], patch: { status?: string; addAssignees?: string[]; due?: string | null }): Promise<R & { count?: number }> {
+  const user = await requireUser("manager");
+  const p = z.object({
+    ids: z.array(Id).min(1).max(200),
+    patch: z.object({ status: STATUS.optional(), addAssignees: z.array(Id).max(12).optional(), due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() }),
+  }).safeParse({ ids, patch });
+  if (!p.success) return { error: "Choose tasks and a change." };
+  const list = sql.join(p.data.ids.map((i) => sql`${i}::uuid`), sql`, `);
+  const rows = await q(sql`select id::text, status from ep_tasks where id in (${list}) and status <> 'auto_closed'`);
+  const targets = rows.map((r) => r.id as string);
+  if (!targets.length) return { error: "Those tasks cannot be changed." };
+  const tl = sql.join(targets.map((i) => sql`${i}::uuid`), sql`, `);
+  if (p.data.patch.status) {
+    const s = p.data.patch.status;
+    await q(sql`update ep_tasks set status = ${s}, updated_at = now(), completed_at = ${s === "done" ? sql`now()` : sql`null`} where id in (${tl}) and status <> ${s}`);
+    for (const t of targets) await log(t, user.id, "status", `${LABEL[s as keyof typeof LABEL]} (changed for several tasks)`);
+  }
+  if (p.data.patch.addAssignees?.length) {
+    const ok = await q(sql`select id::text from users where active and id in (${sql.join(p.data.patch.addAssignees.map((i) => sql`${i}::uuid`), sql`, `)})`);
+    for (const t of targets) for (const u of ok) await q(sql`insert into ep_task_assignees (task_id, user_id, assigned_by) values (${t}::uuid, ${u.id as string}::uuid, ${user.id}::uuid) on conflict do nothing`);
+    const names = (await q(sql`select name from users where id in (${sql.join(ok.map((u) => sql`${u.id as string}::uuid`), sql`, `)}) order by name`)).map((r) => r.name as string).join(", ");
+    for (const t of targets) { await q(sql`update ep_tasks set updated_at = now() where id = ${t}::uuid`); await log(t, user.id, "assigned", `Added ${names}`); }
+  }
+  if (p.data.patch.due !== undefined) {
+    await q(sql`update ep_tasks set due_on = ${p.data.patch.due}::date, updated_at = now() where id in (${tl})`);
+    for (const t of targets) await log(t, user.id, "due", p.data.patch.due ? `Due date set to ${p.data.patch.due}` : "Due date cleared");
+  }
+  refresh();
+  return { ok: true, count: targets.length };
 }

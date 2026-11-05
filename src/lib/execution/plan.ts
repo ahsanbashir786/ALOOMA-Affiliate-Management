@@ -6,7 +6,8 @@ import { rows } from "@/lib/analytics/sql";
 import { analyseProducts } from "@/lib/products/analysis";
 import { PRODUCTS, productName } from "@/lib/products/catalog";
 import { addDaysISO, todayKL } from "@/lib/time";
-import { buildDrafts, type Draft } from "./rules";
+import { buildDrafts, type CreatorLine, type Draft } from "./rules";
+import { loadHistory } from "./history";
 
 export type Status = "not_started" | "pending" | "done" | "skipped" | "auto_closed";
 export const OPEN: Status[] = ["not_started", "pending"];
@@ -14,7 +15,9 @@ export const OPEN: Status[] = ["not_started", "pending"];
 export type TaskView = {
   id: string; productKey: string; productName: string; category: string; kind: string; priority: 1 | 2 | 3;
   title: string; summary: string; steps: string[]; stepsDone: number[];
-  creators: { name: string; note: string; owner: string | null }[];
+  /** The first few creators, for the list. The full list is loaded when the task is opened. */
+  creators: { name: string; note: string }[];
+  creatorCount: number; contactedCount: number;
   evidence: Record<string, number | string>; impactRm: number; status: Status; dueOn: string | null; closedReason: string | null;
   createdAt: string; updatedAt: string; completedAt: string | null; assignees: string[];
   events: { id: number; user: string | null; kind: string; text: string | null; at: string }[];
@@ -23,18 +26,35 @@ export type ProductBrief = { key: string; name: string; tag: string; sales: numb
 export type Staff = { id: string; name: string; role: string };
 export type PlanData = { tasks: TaskView[]; products: ProductBrief[]; staff: Staff[]; leads: Record<string, string[]>; today: string; generatedAt: string | null };
 
+const preview = (list: CreatorLine[]) => list.slice(0, 5).map((c) => ({ name: c.name, note: c.note }));
+
+/** Writes every creator of an action. People already contacted keep their tick; people who no longer belong are removed. */
+async function saveCreators(q: (s: ReturnType<typeof sql>) => Promise<Record<string, unknown>[]>, taskId: string, list: CreatorLine[]) {
+  for (let i = 0; i < list.length; i += 300) {
+    const part = list.slice(i, i + 300);
+    const vals = sql.join(part.map((c, j) => sql`(${taskId}::uuid, ${c.name}, ${i + j}, ${c.note}, ${c.value}, ${JSON.stringify(c.data)}::jsonb)`), sql`, `);
+    await q(sql`insert into ep_task_creators (task_id, username, rank, note, value, data) values ${vals}
+      on conflict (task_id, username) do update set rank = excluded.rank, note = excluded.note, value = excluded.value, data = excluded.data`);
+  }
+  if (list.length) {
+    const keep = sql.join(list.map((c) => sql`${c.name}`), sql`, `);
+    await q(sql`delete from ep_task_creators where task_id = ${taskId}::uuid and contacted_at is null and username not in (${keep})`);
+  } else await q(sql`delete from ep_task_creators where task_id = ${taskId}::uuid and contacted_at is null`);
+}
+
 const COOLDOWN_DONE = 14;
 const COOLDOWN_SKIPPED = 30;
 
 /** Writes the plan from today's product analysis: new problems become tasks, known ones are refreshed, solved ones close themselves. */
 export async function syncPlan(force = false): Promise<{ created: number; updated: number; closed: number; skipped: boolean }> {
   const a = await analyseProducts();
-  const drafts: Draft[] = a.products.filter((p) => p.key !== "unmapped").flatMap((p) => buildDrafts(p));
-  const stamp = createHash("sha1").update(JSON.stringify(drafts.map((d) => [d.fingerprint, d.title, d.summary, d.priority, d.creators, Math.round(d.impactRm)])) + todayKL()).digest("hex");
+  const history = await loadHistory(a);
+  const today = todayKL();
+  const drafts: Draft[] = a.products.filter((p) => p.key !== "unmapped").flatMap((p) => buildDrafts(p, { history, today, periodStart: a.period.start, prevStart: a.period.prevStart }));
+  const stamp = createHash("sha1").update(JSON.stringify(drafts.map((d) => [d.fingerprint, d.title, d.summary, d.priority, d.creators.length, d.creators.slice(0, 40).map((c) => c.name), Math.round(d.impactRm)])) + today + "v2").digest("hex");
   const [last] = await rows<{ value: unknown }>(sql`select value from settings where key = 'ep_stamp'`);
   if (!force && last && last.value === stamp) return { created: 0, updated: 0, closed: 0, skipped: true };
 
-  const today = todayKL();
   let created = 0, updated = 0, closed = 0;
   await db.transaction(async (tx) => {
     const q = async (s: ReturnType<typeof sql>) => (await tx.execute(s)) as unknown as Record<string, unknown>[];
@@ -57,24 +77,26 @@ export async function syncPlan(force = false): Promise<{ created: number; update
       const json = (v: unknown) => sql`${JSON.stringify(v)}::jsonb`;
       const id = openBy.get(d.fingerprint);
       if (id) {
-        await q(sql`update ep_tasks set title = ${d.title}, summary = ${d.summary}, steps = ${json(d.steps)}, creators = ${json(d.creators)}, evidence = ${json(d.evidence)},
+        await q(sql`update ep_tasks set title = ${d.title}, summary = ${d.summary}, steps = ${json(d.steps)}, creators = ${json(preview(d.creators))}, evidence = ${json(d.evidence)},
           impact_rm = ${d.impactRm}, priority = ${d.priority}, updated_at = now() where id = ${id}::uuid`);
+        await saveCreators(q, id, d.creators);
         updated++;
         continue;
       }
       if (cool.has(d.fingerprint)) continue;
       const [row] = await q(sql`insert into ep_tasks (fingerprint, product_key, category, kind, priority, title, summary, steps, creators, evidence, impact_rm, due_on)
-        values (${d.fingerprint}, ${d.productKey}, ${d.category}, ${d.kind}, ${d.priority}, ${d.title}, ${d.summary}, ${json(d.steps)}, ${json(d.creators)}, ${json(d.evidence)}, ${d.impactRm},
+        values (${d.fingerprint}, ${d.productKey}, ${d.category}, ${d.kind}, ${d.priority}, ${d.title}, ${d.summary}, ${json(d.steps)}, ${json(preview(d.creators))}, ${json(d.evidence)}, ${d.impactRm},
           ${addDaysISO(today, d.dueDays)}::date)
         on conflict do nothing returning id::text`);
       if (!row) continue;
       created++;
       const tid = row.id as string;
+      await saveCreators(q, tid, d.creators);
       // Who handles it: the product's leads; otherwise the person who owns most of the creators named in it.
       let who = leads.get(d.productKey) ?? [];
       if (!who.length && d.creators.length) {
         const count = new Map<string, number>();
-        for (const c of d.creators) { const o = owners.get(c.name); if (o) count.set(o, (count.get(o) ?? 0) + 1); }
+        for (const c of d.creators.slice(0, 200)) { const o = owners.get(c.name); if (o) count.set(o, (count.get(o) ?? 0) + 1); }
         const best = [...count.entries()].sort((x, y) => y[1] - x[1])[0];
         if (best) who = [best[0]];
       }
@@ -94,7 +116,7 @@ export async function syncPlan(force = false): Promise<{ created: number; update
 }
 
 export async function loadPlan(): Promise<PlanData> {
-  const [tasks, assignees, events, users, leads, owners, a, stamp] = await Promise.all([
+  const [tasks, assignees, events, users, leads, counts, a, stamp] = await Promise.all([
     rows<{ id: string; product_key: string; category: string; kind: string; priority: number; title: string; summary: string; steps: string[]; steps_done: number[]; creators: { name: string; note: string }[]; evidence: Record<string, number | string>; impact: number; status: Status; due_on: string | null; closed_reason: string | null; created_at: string; updated_at: string; completed_at: string | null }>(sql`
       select id::text, product_key, category, kind, priority::int, title, summary, steps, steps_done, creators, evidence, impact_rm::float8 as impact, status,
         to_char(due_on, 'YYYY-MM-DD') as due_on, closed_reason, created_at::text, updated_at::text, completed_at::text
@@ -104,7 +126,7 @@ export async function loadPlan(): Promise<PlanData> {
       select e.id::int, e.task_id::text, u.name as user, e.kind, e.text, e.created_at::text as at from ep_events e left join users u on u.id = e.user_id order by e.created_at, e.id`),
     rows<Staff>(sql`select id::text, name, role::text from users where active order by name`),
     rows<{ product_key: string; user_id: string }>(sql`select product_key, user_id::text from ep_product_leads`),
-    rows<{ username: string; name: string }>(sql`select o.username, u.name from creator_owners o join users u on u.id = o.user_id`),
+    rows<{ task_id: string; n: number; c: number }>(sql`select task_id::text, count(*)::int as n, count(contacted_at)::int as c from ep_task_creators group by 1`),
     analyseProducts(),
     rows<{ value: unknown }>(sql`select updated_at::text as value from ep_tasks order by updated_at desc limit 1`),
   ]);
@@ -112,7 +134,7 @@ export async function loadPlan(): Promise<PlanData> {
   for (const r of assignees) (who.get(r.task_id) ?? who.set(r.task_id, []).get(r.task_id)!).push(r.user_id);
   const ev = new Map<string, TaskView["events"]>();
   for (const e of events) (ev.get(e.task_id) ?? ev.set(e.task_id, []).get(e.task_id)!).push({ id: e.id, user: e.user, kind: e.kind, text: e.text, at: e.at });
-  const ownerOf = new Map(owners.map((o) => [o.username, o.name]));
+  const countOf = new Map(counts.map((c) => [c.task_id, c]));
   const leadMap: Record<string, string[]> = {};
   for (const l of leads) (leadMap[l.product_key] ??= []).push(l.user_id);
   const products: ProductBrief[] = PRODUCTS.map((p) => {
@@ -122,9 +144,27 @@ export async function loadPlan(): Promise<PlanData> {
   return {
     tasks: tasks.map((t) => ({
       id: t.id, productKey: t.product_key, productName: productName(t.product_key), category: t.category, kind: t.kind, priority: t.priority as 1 | 2 | 3, title: t.title, summary: t.summary,
-      steps: t.steps, stepsDone: t.steps_done, creators: t.creators.map((c) => ({ ...c, owner: ownerOf.get(c.name) ?? null })), evidence: t.evidence, impactRm: t.impact, status: t.status,
+      steps: t.steps, stepsDone: t.steps_done, creators: t.creators, creatorCount: countOf.get(t.id)?.n ?? t.creators.length, contactedCount: countOf.get(t.id)?.c ?? 0, evidence: t.evidence, impactRm: t.impact, status: t.status,
       dueOn: t.due_on, closedReason: t.closed_reason, createdAt: t.created_at, updatedAt: t.updated_at, completedAt: t.completed_at, assignees: who.get(t.id) ?? [], events: ev.get(t.id) ?? [],
     })),
     products, staff: users, leads: leadMap, today: todayKL(), generatedAt: (stamp[0]?.value as string | undefined) ?? null,
   };
+}
+
+export type CreatorItem = { name: string; note: string; value: number; data: import("./rules").LineData; contactedAt: string | null; contactedBy: string | null; owner: string | null; phone: string | null };
+/** One page of the creators an action is about (searchable), loaded when the task is opened. */
+export async function listTaskCreators(taskId: string, o: { offset: number; limit: number; q: string; filter: "all" | "todo" | "done" }): Promise<{ items: CreatorItem[]; total: number; contacted: number }> {
+  const like = `%${o.q.replace(/[%_\\]/g, "").toLowerCase()}%`;
+  const f = o.filter === "todo" ? sql`and tc.contacted_at is null` : o.filter === "done" ? sql`and tc.contacted_at is not null` : sql``;
+  const where = sql`tc.task_id = ${taskId}::uuid and (${o.q === "" ? sql`true` : sql`lower(tc.username) like ${like}`}) ${f}`;
+  const [items, [t], [c]] = await Promise.all([
+    rows<{ username: string; note: string; value: number; data: import("./rules").LineData; contacted_at: string | null; contacted_by: string | null; owner: string | null; phone: string | null }>(sql`
+      select tc.username, tc.note, tc.value::float8 as value, tc.data, tc.contacted_at::text, cu.name as contacted_by, ow.name as owner, cr.phone
+      from ep_task_creators tc left join users cu on cu.id = tc.contacted_by left join creators cr on cr.username = tc.username
+        left join creator_owners co on co.username = tc.username left join users ow on ow.id = co.user_id
+      where ${where} order by tc.rank limit ${o.limit} offset ${o.offset}`),
+    rows<{ n: number }>(sql`select count(*)::int as n from ep_task_creators tc where ${where}`),
+    rows<{ c: number }>(sql`select count(contacted_at)::int as c from ep_task_creators where task_id = ${taskId}::uuid`),
+  ]);
+  return { items: items.map((r) => ({ name: r.username, note: r.note, value: r.value, data: r.data, contactedAt: r.contacted_at, contactedBy: r.contacted_by, owner: r.owner, phone: r.phone })), total: t.n, contacted: c.c };
 }

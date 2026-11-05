@@ -1002,3 +1002,15 @@ export const epProductLeads = pgTable("ep_product_leads", {
   productKey: text("product_key").notNull(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
 }, (t) => [primaryKey({ columns: [t.productKey, t.userId] })]);
+
+// Mirrors migrations/0015: every creator an Execution Plan action is about, and whether they were contacted
+export const epTaskCreators = pgTable("ep_task_creators", {
+  taskId: uuid("task_id").notNull().references(() => epTasks.id, { onDelete: "cascade" }),
+  username: text("username").notNull(),
+  rank: integer("rank").notNull().default(0),
+  note: text("note").notNull().default(""),
+  value: numeric("value").notNull().default("0"),
+  data: jsonb("data").notNull().default(sql`'{}'::jsonb`),
+  contactedAt: tz("contacted_at"),
+  contactedBy: uuid("contacted_by").references(() => users.id, { onDelete: "set null" }),
+}, (t) => [primaryKey({ columns: [t.taskId, t.username] }), index("ep_task_creators_rank").on(t.taskId, t.rank)]);

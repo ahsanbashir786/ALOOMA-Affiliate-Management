@@ -24,9 +24,9 @@ export type ProductAnalysis = {
   ageCurve: { band: string; sales: number; contents: number }[];
   newContent: { now: NewContent; prev: NewContent };
   creators: CreatorRow[];
-  /** Up to 60 creators who sold this product in the period or the one before (the Execution Plan names people from this). */
+  /** Every creator who sold this product in the period or the one before (the Execution Plan names people from this). */
   creatorsAll: CreatorRow[];
-  /** Delivered samples of this product, 14+ days old, with no video and no sale since (last 120 days). */
+  /** Delivered samples of this product, 14+ days old, with no video and no sale since (within the compared periods). */
   unposted: { creator: string; givenOn: string; days: number }[];
   creatorStats: { active: Pair; fresh: number; quiet: number; top1: number; top3: number; top10: number };
   samples: { now: Funnel; prev: Funnel };
@@ -209,7 +209,7 @@ async function compute(period: Period, ref: string | null): Promise<Analysis> {
       if (acc.salesLines.some((x) => x.creator === s.creator && x.day >= s.given_on)) continue;
       out.push({ creator: s.creator, givenOn: s.given_on, days });
     }
-    return out.sort((x, y) => x.days - y.days).slice(0, 40);
+    return out.sort((x, y) => x.days - y.days).slice(0, 600);
   };
 
   const keys = [...PRODUCTS.map((p) => p.key as string), ...[...accs.keys()].filter((k) => k === UNMAPPED)].sort((a, b) => productRank(a) - productRank(b));
@@ -253,7 +253,7 @@ async function compute(period: Period, ref: string | null): Promise<Analysis> {
       ageCurve: AGE_BANDS.map((x, i) => ({ band: x.band, sales: a.age[i].sales, contents: a.age[i].ids.size })),
       newContent: { now: nowC, prev: prevC },
       creators: creators.slice(0, 10),
-      creatorsAll: creators.slice(0, 60),
+      creatorsAll: creators,
       unposted: unposted(pk),
       creatorStats: { active: { now: a.creators.now.size, prev: a.creators.prev.size }, fresh: fresh.length, quiet: creators.filter((c) => c.prev > 0 && c.now <= c.prev * 0.2).length, top1: topShare(1), top3: topShare(3), top10: topShare(10) },
       samples: { now: funnel(pk, period.start, period.end), prev: funnel(pk, period.prevStart, period.prevEnd) },
