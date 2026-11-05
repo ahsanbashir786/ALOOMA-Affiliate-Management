@@ -194,7 +194,7 @@ export default async function CreatorProfilePage({ params }: PageProps<"/creator
               <thead><tr className="border-b border-line"><Th>Date</Th><Th>Order</Th><Th>Product</Th><Th>From</Th><Th right>Qty</Th><Th right>Amount</Th><Th>Counted?</Th></tr></thead>
               <tbody className="divide-y divide-line">
                 {p.orders.map((o) => (
-                  <tr key={`${o.orderId}-${o.product}`}>
+                  <tr key={o.key}>
                     <Td>{day(o.on)}</Td><Td className="text-[13px] text-ink-3">{o.orderId}</Td><Td>{o.product}</Td><Td>{o.type === "Livestream" ? "LIVE" : o.type}</Td><Td right>{o.qty}</Td><Td right>{fmtRM(o.amount, 2)}</Td>
                     <Td><Badge tone={o.state === "Counted" ? "good" : o.state === "Returned" ? "warn" : "critical"}>{o.state}</Badge></Td>
                   </tr>

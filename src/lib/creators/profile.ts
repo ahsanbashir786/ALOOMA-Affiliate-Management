@@ -30,7 +30,7 @@ export type CreatorProfile = {
   samples: ProfileSample[];
   videos: { id: string; title: string | null; postedOn: string | null; views: number; gmv: number; units: number; products: string[] }[];
   lives: { id: string; title: string | null; on: string | null; minutes: number | null; gmv: number; items: number; viewers: number; newFollowers: number }[];
-  orders: { orderId: string; on: string; product: string; qty: number; amount: number; type: string; state: "Counted" | "Returned" | "Cancelled" }[];
+  orders: { key: string; orderId: string; on: string; product: string; qty: number; amount: number; type: string; state: "Counted" | "Returned" | "Cancelled" }[];
   totals: { orders: number; units: number; gmv: number; aov: number; commission90: number; returnPct: number | null };
 };
 
@@ -77,8 +77,8 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
       select l.live_id as id, l.title, to_char(${kd("l.started_at")}, 'YYYY-MM-DD') as on,
         (extract(epoch from (l.ended_at - l.started_at)) / 60)::float8 as minutes, coalesce(l.gmv, 0)::float8 as gmv, coalesce(l.items_sold, 0)::int as items, coalesce(l.viewers, 0)::float8 as viewers, coalesce(l.new_followers, 0)::int as fol
       from tt_lives l where l.creator = ${username} order by l.started_at desc nulls last limit 6`),
-    rows<{ order_id: string; on: string; pid: string | null; qty: number; pay: number; type: string; valid: boolean; returned: boolean }>(sql`
-      select tl.order_id, to_char(${kd("tl.created_at")}, 'YYYY-MM-DD') as on, tl.pk as pid, tl.qty::int as qty, tl.pay::float8 as pay, tl.content_type as type, tl.valid,
+    rows<{ order_id: string; sku_id: string; on: string; pid: string | null; qty: number; pay: number; type: string; valid: boolean; returned: boolean }>(sql`
+      select tl.order_id, tl.sku_id, to_char(${kd("tl.created_at")}, 'YYYY-MM-DD') as on, tl.pk as pid, tl.qty::int as qty, tl.pay::float8 as pay, tl.content_type as type, tl.valid,
         coalesce((select a.fully_return from tt_affiliate_order_lines a where a.order_id = tl.order_id and a.sku_id = tl.sku_id), false) as returned
       from ${TL} where tl.creator = ${username} order by tl.created_at desc limit 12`),
     rows<{ orders: number; units: number; gmv: number; comm90: number; bad: number; n: number }>(sql`
@@ -122,7 +122,7 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
     samples: sampleList,
     videos: videos.map((v) => ({ id: v.id, title: v.title, postedOn: v.posted, views: v.views ?? 0, gmv: v.gmv, units: v.units, products: (v.products ?? []).map((p) => (p.id && listingKey.get(p.id) !== "excluded" ? productName(listingKey.get(p.id ?? "") ?? null) : "")).filter((x, i, a) => x && a.indexOf(x) === i) })),
     lives: lives.map((l) => ({ id: l.id, title: l.title, on: l.on, minutes: l.minutes, gmv: l.gmv, items: l.items, viewers: l.viewers, newFollowers: l.fol })),
-    orders: orders.map((o) => ({ orderId: o.order_id, on: o.on, product: productName(o.pid), qty: o.qty, amount: o.pay, type: o.type, state: o.valid ? "Counted" : o.returned ? "Returned" : "Cancelled" })),
+    orders: orders.map((o) => ({ key: `${o.order_id}|${o.sku_id}`, orderId: o.order_id, on: o.on, product: productName(o.pid), qty: o.qty, amount: o.pay, type: o.type, state: o.valid ? "Counted" : o.returned ? "Returned" : "Cancelled" })),
     totals: { orders: t?.orders ?? 0, units: t?.units ?? 0, gmv: t?.gmv ?? 0, aov: t && t.orders ? t.gmv / t.orders : 0, commission90: t?.comm90 ?? 0, returnPct: t && t.n ? (t.bad / t.n) * 100 : null },
   };
 }

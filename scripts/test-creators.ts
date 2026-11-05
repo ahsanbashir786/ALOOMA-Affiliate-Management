@@ -214,6 +214,11 @@ async function main() {
   // ── profile ──
   const pr = (await getCreatorProfile("zz_c_silent"))!;
   check("profile: samples with stage and result", pr.samples.length === 1 && pr.samples[0].result === "not_posted" && pr.samples[0].stage === "Delivered" && pr.samples[0].postByOn !== null, JSON.stringify(pr.samples));
+  // one order with two SKUs of the same product: two rows, two different keys (a duplicate key broke the page)
+  await q(sql`insert into tt_affiliate_order_lines (order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, quantity, price) values ('ODUP', 'SKU-B', ${ago(1)}, 'zz_c_vl', 'VIDEO', '2222222', 'SL-B', 1, 69), ('ODUP', 'SKU-B2', ${ago(1)}, 'zz_c_vl', 'VIDEO', '2222222', 'SL-B2', 1, 69)`);
+  const dupOrders = (await getCreatorProfile("zz_c_vl"))!.orders.filter((o) => o.orderId === "ODUP");
+  check("profile: two SKUs of the same product in one order give two rows with different keys", dupOrders.length === 2 && new Set(dupOrders.map((o) => o.key)).size === 2, JSON.stringify(dupOrders.map((o) => o.key)));
+  check("profile: every order row key is unique", (() => { const ks = (dupOrders.concat([])).map((o) => o.key); return new Set(ks).size === ks.length; })());
   const pov = (await getCreatorProfile("zz_c_over"))!;
   check("profile: overdue sample says so and is Not posted", pov.samples[0].result === "not_posted" && pov.samples[0].stage === "Delivered · overdue on TikTok", JSON.stringify(pov.samples[0]));
   check("profile: overdue sample with sales after delivery is Posted", (await getCreatorProfile("zz_c_over_sold"))!.samples[0].result === "posted");
