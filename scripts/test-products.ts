@@ -30,6 +30,34 @@ async function main() {
   check("suggest: other brands and toys are excluded", suggestListing("Magnetic Stick Toy Balls Building Blocks 25/42/64").key === EXCLUDED && suggestListing("【TENDER TWIGS】Kids Magical Tracing Workbook").key === EXCLUDED);
   check("suggest: no title → no suggestion", suggestListing(null).key === null && suggestListing("ALOOMA Something New Entirely").key === null);
 
+  // ── Products module rules (pure) ──
+  const { bucketOfAge, tagOf, diagnose, oldShare } = await import("../src/lib/products/diagnose");
+  const zero = { new: 0, recent: 0, old: 0, live: 0, other: 0 };
+  const M = (now: number, prev: number, over: Record<string, unknown> = {}) => ({
+    sales: { now, prev }, creators: { now: 5, prev: 5 }, newCreators: { count: 0, sales: 0 },
+    buckets: { now: { ...zero, new: now * 0.5, old: now * 0.5 }, prev: { ...zero, new: prev * 0.5, old: prev * 0.5 } },
+    videosPosted: { now: 10, prev: 10 }, hit: { now: { matured: 10, converting: 5 }, prev: { matured: 10, converting: 5 } },
+    salesPerNewVideo: { now: 100, prev: 100 }, returnRate: { now: 5, prev: 5 }, quietCreator: null, ...over,
+  });
+  check("content age: 0–14 days new, 15–30 recent, over 30 old", bucketOfAge(0) === "new" && bucketOfAge(14) === "new" && bucketOfAge(15) === "recent" && bucketOfAge(30) === "recent" && bucketOfAge(31) === "old" && bucketOfAge(400) === "old");
+  check("tag: +15% or more is Growing, −15% or worse is Slipping, in between Steady", tagOf(M(115, 100)) === "Growing" && tagOf(M(114, 100)) === "Steady" && tagOf(M(86, 100)) === "Steady" && tagOf(M(85, 100)) === "Slipping" && tagOf(M(100, 100)) === "Steady");
+  check("tag: −50% or worse is Dying; no new video with falling sales is Dying", tagOf(M(50, 100)) === "Dying" && tagOf(M(49, 100)) === "Dying" && tagOf(M(80, 100, { videosPosted: { now: 0, prev: 8 } })) === "Dying" && tagOf(M(95, 100, { videosPosted: { now: 0, prev: 8 } })) === "Steady");
+  check("tag: an unknown video count (period before the video list) never makes Dying by itself", tagOf(M(80, 100, { videosPosted: { now: null, prev: null } })) === "Slipping");
+  check("tag: nothing sold before is Growing; nothing sold at all is No Sales", tagOf(M(500, 0)) === "Growing" && tagOf(M(0, 0)) === "No Sales" && tagOf(M(0, 100)) === "Dying");
+  const frag = diagnose(M(100, 100, { buckets: { now: { ...zero, old: 80, new: 10, live: 10 }, prev: { ...zero, old: 80, new: 10, live: 10 } } }));
+  const heal = diagnose(M(100, 100, { buckets: { now: { ...zero, old: 40, new: 50, live: 10 }, prev: { ...zero, old: 40, new: 50, live: 10 } } }));
+  check("fragile: over 70% of video and LIVE sales from old videos; healthy otherwise; unknown with no sales", frag.fragile === true && heal.fragile === false && diagnose(M(0, 0)).fragile === null && oldShare({ ...zero, other: 50 }) === null && oldShare({ ...zero, old: 70, new: 30 }) === 0.7 && diagnose(M(100, 100, { buckets: { now: { ...zero, old: 70, new: 30 }, prev: zero } })).fragile === false);
+  check("reasons: a steady fragile product is called fragile; a steady healthy one healthy", /^Fragile: 80%/.test(frag.reasons[0].text) && /^Healthy: 60%/.test(heal.reasons[0].text), frag.reasons[0].text + " | " + heal.reasons[0].text);
+  const falling = diagnose(M(60, 100, { buckets: { now: { ...zero, old: 40, new: 20 }, prev: { ...zero, old: 70, new: 30 } }, videosPosted: { now: 3, prev: 10 }, hit: { now: { matured: 3, converting: 0 }, prev: { matured: 10, converting: 5 } }, quietCreator: { name: "star", drop: 12 } }));
+  const texts = falling.reasons.map((r) => r.text).join(" | ");
+  check("reasons: a slipping product says old videos fade, few new videos and the quiet creator (top 3 by size)", falling.tag === "Slipping" && falling.reasons.length === 3 && /Old videos are fading/.test(texts), texts);
+  check("reasons: poor conversion of new videos is named when the hit rate drops 10 points or more", diagnose(M(60, 100, { hit: { now: { matured: 10, converting: 1 }, prev: { matured: 10, converting: 6 } }, videosPosted: { now: 10, prev: 10 }, buckets: { now: { ...zero, new: 60 }, prev: { ...zero, new: 100 } } })).reasons.some((r) => /convert worse: 10% got 3\+ orders in 14 days \(was 60%\)/.test(r.text)));
+  const rising = diagnose(M(160, 100, { buckets: { now: { ...zero, new: 100, old: 60 }, prev: { ...zero, new: 40, old: 60 } }, newCreators: { count: 2, sales: 50 } }));
+  check("reasons: a growing product says new videos are selling, with how many posted and how many got 3+ orders", rising.tag === "Growing" && /New videos are selling: 10 posted, 50% got 3\+ orders in 14 days/.test(rising.reasons[0].text), rising.reasons.map((r) => r.text).join(" | "));
+  check("reasons: new creators and a better sales-per-video are listed when they matter", rising.reasons.some((r) => /2 new creators started selling it/.test(r.text)) && diagnose(M(160, 100, { salesPerNewVideo: { now: 200, prev: 100 } })).reasons.some((r) => /Each new video sells more: RM 200, was RM 100/.test(r.text)));
+  check("reasons: always at least one sentence, and No Sales says so", diagnose(M(100, 100)).reasons.length >= 1 && diagnose(M(0, 0)).reasons[0].text.startsWith("No sales"));
+  check("reasons: more returns than before is named (5 points or more)", diagnose(M(80, 100, { returnRate: { now: 14, prev: 5 } })).reasons.some((r) => /More returns and cancellations: 14% \(was 5%\)/.test(r.text)));
+
   // ── database: automatic product names ──
   const { db } = await import("../src/db");
   const { sql } = await import("drizzle-orm");

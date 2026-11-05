@@ -7,7 +7,7 @@ import { addDaysISO, fmtDayLabel } from "@/lib/time";
 import { RANGE_PRESETS } from "@/lib/creators/params";
 
 /** Date range for the Orders, Videos, GMV and Total GMV numbers: quick choices, or any From and To day. Empty = all time. */
-export function DateRange({ from, to, today, onApply }: { from: string; to: string; /** Today in Malaysia, from the server. */ today: string; onApply: (from: string, to: string) => void }) {
+export function DateRange({ from, to, today, onApply, hideAll, defaultLabel = "All time" }: { from: string; to: string; /** Today in Malaysia, from the server. */ today: string; onApply: (from: string, to: string) => void; /** No "All time" choice (a comparison needs an earlier period). */ hideAll?: boolean; /** Shown when no dates are chosen. */ defaultLabel?: string }) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
@@ -20,7 +20,7 @@ export function DateRange({ from, to, today, onApply }: { from: string; to: stri
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
   }, [open]);
-  const label = from || to ? `${fmtDayLabel(from || "2020-01-01")} – ${fmtDayLabel(to || today)}` : "All time";
+  const label = from || to ? `${fmtDayLabel(from || "2020-01-01")} – ${fmtDayLabel(to || today)}` : defaultLabel;
   const presets = RANGE_PRESETS.map((p) => ({ l: p.label, from: addDaysISO(today, -(p.days - 1)), to: today }));
   const valid = (!f && !t) || ((!f || f <= today) && (!t || t <= today) && (!f || !t || f <= t));
   const apply = (a: string, b: string) => { onApply(a, b); setOpen(false); };
@@ -37,7 +37,7 @@ export function DateRange({ from, to, today, onApply }: { from: string; to: stri
             {presets.map((p) => (
               <button key={p.l} type="button" onClick={() => apply(p.from, p.to)} className={cn("rounded-full border px-3 py-1 text-[13px]", from === p.from && to === p.to ? "border-brand bg-brand-soft text-brand" : "border-line-strong hover:bg-surface-2")}>{p.l}</button>
             ))}
-            <button type="button" onClick={() => apply("", "")} className={cn("rounded-full border px-3 py-1 text-[13px]", !from && !to ? "border-brand bg-brand-soft text-brand" : "border-line-strong hover:bg-surface-2")}>All time</button>
+            {!hideAll ? <button type="button" onClick={() => apply("", "")} className={cn("rounded-full border px-3 py-1 text-[13px]", !from && !to ? "border-brand bg-brand-soft text-brand" : "border-line-strong hover:bg-surface-2")}>All time</button> : <button type="button" onClick={() => apply("", "")} className={cn("rounded-full border px-3 py-1 text-[13px]", !from && !to ? "border-brand bg-brand-soft text-brand" : "border-line-strong hover:bg-surface-2")}>{defaultLabel}</button>}
           </div>
           <p className="mt-4 mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">Or choose dates</p>
           <div className="grid grid-cols-2 gap-3">

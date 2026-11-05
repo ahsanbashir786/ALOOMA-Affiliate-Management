@@ -48,6 +48,7 @@ export const NAV: NavGroup[] = [
     label: "Affiliates",
     items: [
       { href: "/creators", label: "Creators", icon: Users, also: ["/creators/"] },
+      { href: "/products", label: "Products", icon: Package, also: ["/products/"] },
       { href: "/today", label: "Daily Actions", icon: ClipboardList, badge: "actions" },
       { href: "/progress", label: "Progress", icon: LineChart, min: "admin" },
     ],
@@ -66,7 +67,6 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/", label: "Sales overview", icon: LayoutDashboard, usesPeriod: true, exact: true },
       { href: "/content", label: "Content", icon: Video, usesPeriod: true },
-      { href: "/products", label: "Products", icon: Package, usesPeriod: true },
       { href: "/orders", label: "Shop orders", icon: ShoppingCart, usesPeriod: true },
     ],
   },
