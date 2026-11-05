@@ -57,7 +57,10 @@ export function buildDrafts(p: ProductAnalysis): Draft[] {
   const tagBump = d.tag === "Dying" ? 1 : 0;
   const add = (x: Omit<Draft, "fingerprint" | "productKey" | "dueDays" | "priority"> & { priority?: Priority; bump?: number }) => {
     const priority = x.priority ?? priorityOf(x.impactRm, Math.max(sales, m.sales.prev), x.bump ?? tagBump);
-    out.push({ ...x, fingerprint: `${key}:${x.kind}`, productKey: key, priority, dueDays: DUE[priority] });
+    // One line per creator: the same person can have two samples or appear in two lists.
+    const seen = new Set<string>();
+    const creators = x.creators.filter((c) => (seen.has(c.name) ? false : (seen.add(c.name), true)));
+    out.push({ ...x, creators, fingerprint: `${key}:${x.kind}`, productKey: key, priority, dueDays: DUE[priority] });
   };
 
   const creatorsNow = p.creatorsAll.filter((c) => c.now > 0);
@@ -248,8 +251,8 @@ export function buildDrafts(p: ProductAnalysis): Draft[] {
     const per = p.samples.now.salesPerSample ?? p.samples.prev.salesPerSample ?? avgPerCreator * 0.5;
     add({
       category: "samples", kind: "chase_unposted",
-      title: `Chase ${plural(p.unposted.length, "sample")} that were delivered but not posted`,
-      summary: `${plural(p.unposted.length, "creator")} received this product 14+ days ago and have not posted a video or sold it. A sample that is not posted is money lost.`,
+      title: `Chase ${plural(new Set(p.unposted.map((u) => u.creator)).size, "creator")} who did not post their sample`,
+      summary: `${plural(new Set(p.unposted.map((u) => u.creator)).size, "creator")} received this product 14+ days ago and have not posted a video or sold it. A sample that is not posted is money lost.`,
       steps: [
         "Send a friendly reminder on WhatsApp (message ready below).",
         "If no reply in 3 days, ask their owner or try another contact.",

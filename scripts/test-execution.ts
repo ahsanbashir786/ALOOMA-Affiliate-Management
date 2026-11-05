@@ -18,6 +18,7 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   check("rules: every action has a reason, a checklist and a due time", drafts.every((d) => d.summary.length > 20 && d.steps.length >= 3 && d.dueDays >= 3 && [1, 2, 3].includes(d.priority)));
   check("rules: one fingerprint per product and kind", new Set(drafts.map((d) => d.fingerprint)).size === drafts.length);
   check("rules: products with no sales get no actions", a.products.filter((p) => p.diagnosis.tag === "No Sales").every((p) => buildDrafts(p).length === 0));
+  check("rules: a creator is never listed twice in one action", drafts.every((d) => new Set(d.creators.map((c) => c.name)).size === d.creators.length));
   const kinds = new Set(drafts.map((d) => d.kind));
   check("rules: several kinds of action across content, creators and samples", ["new_videos", "reactivate", "chase_unposted"].every((k) => kinds.has(k)) && new Set(drafts.map((d) => d.category)).size >= 3, [...kinds].join(","));
   const react = drafts.filter((d) => d.kind === "reactivate");
