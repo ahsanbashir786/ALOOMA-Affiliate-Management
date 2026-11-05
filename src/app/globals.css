@@ -211,3 +211,182 @@ body {
     animation: none;
   }
 }
+
+/* ───────── sign-in page ───────── */
+@keyframes au-float-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-2deg);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0) rotate(-1deg);
+  }
+}
+@keyframes au-float-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(2deg);
+  }
+  50% {
+    transform: translate3d(0, 12px, 0) rotate(1deg);
+  }
+}
+@keyframes au-float-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-8px, -10px, 0);
+  }
+}
+@keyframes au-orb {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(40px, 30px, 0) scale(1.12);
+  }
+}
+@keyframes au-draw {
+  from {
+    stroke-dashoffset: 320;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes au-fill {
+  from {
+    width: 0;
+  }
+  to {
+    width: var(--w, 70%);
+  }
+}
+@keyframes au-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes au-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(52 211 153 / 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 9px rgb(52 211 153 / 0);
+  }
+}
+@keyframes au-word {
+  0%,
+  4% {
+    opacity: 0;
+    transform: translateY(70%);
+  }
+  8%,
+  30% {
+    opacity: 1;
+    transform: none;
+  }
+  34%,
+  100% {
+    opacity: 0;
+    transform: translateY(-70%);
+  }
+}
+@keyframes au-shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(3px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-6px);
+  }
+  40%,
+  60% {
+    transform: translateX(6px);
+  }
+}
+@keyframes au-sweep {
+  from {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-18deg);
+  }
+}
+.au-float-a {
+  animation: au-float-a 7s ease-in-out infinite;
+}
+.au-float-b {
+  animation: au-float-b 8s ease-in-out infinite;
+}
+.au-float-c {
+  animation: au-float-c 6s ease-in-out infinite;
+}
+.au-orb {
+  animation: au-orb 14s ease-in-out infinite;
+}
+.au-draw {
+  stroke-dasharray: 320;
+  animation: au-draw 2.2s 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.au-fill {
+  animation: au-fill 1.6s 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.au-rise {
+  animation: au-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.au-live {
+  animation: au-pulse 1.8s ease-out infinite;
+}
+.au-word {
+  opacity: 0;
+  animation: au-word 9s ease-in-out infinite;
+}
+.au-shake {
+  animation: au-shake 0.5s both;
+}
+.au-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  transform: translateX(-120%) skewX(-18deg);
+}
+.au-sweep:hover::after {
+  animation: au-sweep 0.9s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .au-float-a,
+  .au-float-b,
+  .au-float-c,
+  .au-orb,
+  .au-live,
+  .au-shake {
+    animation: none;
+  }
+  .au-word:first-child {
+    opacity: 1;
+    animation: none;
+  }
+  .au-draw,
+  .au-fill,
+  .au-rise {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+}

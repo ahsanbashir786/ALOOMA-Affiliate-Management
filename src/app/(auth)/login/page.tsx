@@ -12,6 +12,11 @@ export const metadata: Metadata = { title: "Sign in" };
 // Reads the database on every request, so it must never be prerendered at build time (the Docker build has no database).
 export const dynamic = "force-dynamic";
 
+function greeting() {
+  const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kuala_Lumpur", hour: "numeric", hour12: false }).format(new Date())) % 24;
+  return h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
 export default async function LoginPage() {
   const me = await getCurrentUser();
   if (me) redirect(landingFor());
@@ -19,11 +24,11 @@ export default async function LoginPage() {
   if (n === 0) redirect("/setup");
   return (
     <>
-      <h1 className="text-[26px] font-semibold tracking-tight text-ink">Welcome back</h1>
-      <p className="mt-1.5 mb-7 text-[14px] text-ink-2">Sign in to your affiliate workspace.</p>
+      <h1 className="au-rise text-[28px] font-semibold tracking-tight text-ink">Welcome back</h1>
+      <p className="au-rise mt-1.5 mb-8 text-[14.5px] text-ink-2" style={{ animationDelay: "0.1s" }}>{greeting()}. Sign in to your affiliate workspace.</p>
       <AuthForm
         action={login}
-        submitLabel="Sign in"
+        submitLabel="Sign In"
         fields={[
           { name: "email", label: "Email", type: "email", placeholder: "you@company.com", autoComplete: "email" },
           { name: "password", label: "Password", type: "password", autoComplete: "current-password" },
