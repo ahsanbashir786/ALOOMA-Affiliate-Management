@@ -71,12 +71,14 @@ export function CommandPalette() {
   const hits: Hit[] = useMemo(() => {
     if (!reply) return [];
     const recents: Hit[] = !q ? recent.map((c) => ({ kind: "creator" as const, label: c })) : [];
-    return [
+    const all: Hit[] = [
       ...reply.pages.map((p) => ({ kind: "page" as const, ...p })),
       ...reply.products.map((p) => ({ kind: "product" as const, label: p.name, href: `/products/${p.key}` })),
       ...reply.creators.map((c) => ({ kind: "creator" as const, label: c })),
       ...recents,
     ];
+    const seen = new Set<string>();
+    return all.filter((h) => { const k = `${h.kind}-${h.label}`; if (seen.has(k)) return false; seen.add(k); return true; });
   }, [reply, recent, q]);
 
   useEffect(() => { listRef.current?.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest" }); }, [cur]);
