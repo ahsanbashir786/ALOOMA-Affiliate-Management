@@ -87,7 +87,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
   const count = (t: string) => all.filter((p) => (t === "Fragile" ? p.diagnosis.fragile === true : p.diagnosis.tag === t)).length;
   let list = all.filter((p) => !tag || (tag === "Fragile" ? p.diagnosis.fragile === true : p.diagnosis.tag === tag));
   if (sort === "sales") list = [...list].sort((x, y) => y.metrics.sales.now - x.metrics.sales.now);
-  if (sort === "drop") list = [...list].sort((x, y) => x.diagnosis.change - y.diagnosis.change);
+  if (sort === "drop") list = [...list].sort((x, y) => pct(x) - pct(y) || x.diagnosis.change - y.diagnosis.change);
   if (sort === "growth") list = [...list].sort((x, y) => pct(y) - pct(x) || y.diagnosis.change - x.diagnosis.change);
   const total = { now: all.reduce((n, p) => n + p.metrics.sales.now, 0), prev: all.reduce((n, p) => n + p.metrics.sales.prev, 0) };
   const chip = (on: boolean) => cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13.5px] font-medium transition-colors", on ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2");
