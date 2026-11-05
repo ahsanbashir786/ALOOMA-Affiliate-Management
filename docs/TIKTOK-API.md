@@ -50,7 +50,7 @@ Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).
 ## Data Sync cards (names and what they hold)
 | Card | What it holds |
 |---|---|
-| Products | Your listings (the big number counts products; SKUs and stock are under it) |
+| Products | Your listings (the big number counts products; the number of SKUs is under it). Stock is not shown: the same item sits in several listings and sets are made from singles, so a sum would double count. Real stock comes with Demand planning, from the single items and the set recipes |
 | Total Orders | Every shop order: status, dates, totals, shipping (no buyer data) |
 | Affiliate Orders | Sales made through creators, one row per order line, with the video or LIVE ID |
 | Affiliate Samples Issued | The shipments behind approved sample requests: delivery status and dates. Counts only those orders, not all orders |

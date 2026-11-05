@@ -434,7 +434,7 @@ export async function syncOverview(): Promise<SyncOverview> {
     rows<{ dataset: string; status: string; error: string | null }>(sql`select distinct on (dataset) dataset, status, error from tt_sync_runs where dataset <> ${CYCLE} order by dataset, started_at desc, id desc`),
   ]);
   const lastRun = new Map(latest.map((r) => [r.dataset, r]));
-  const [pc] = await rows<{ n: number; skus: number; units: number }>(sql`select count(distinct product_id)::int as n, count(*)::int as skus, coalesce(sum(stock), 0)::int as units from tt_skus`);
+  const [pc] = await rows<{ n: number; skus: number }>(sql`select count(distinct product_id)::int as n, count(*)::int as skus from tt_skus`);
   const spans = new Map<string, { a: string | null; b: string | null }>();
   const live = new Map<string, number>([["products", await liveCount("products")], ["sample_orders", await liveCount("sample_orders")]]);
   for (const d of DATASETS) {
@@ -452,7 +452,7 @@ export async function syncOverview(): Promise<SyncOverview> {
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   return {
     now: Date.now(),
-    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: live.get(d.key) ?? st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, detail: d.key === "products" && pc?.n ? `${pc.skus.toLocaleString("en-MY")} SKU${pc.skus === 1 ? "" : "s"} · ${pc.units.toLocaleString("en-MY")} units in stock` : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
+    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: live.get(d.key) ?? st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, detail: d.key === "products" && pc?.n ? `${pc.skus.toLocaleString("en-MY")} SKU${pc.skus === 1 ? "" : "s"}` : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,
     lastFullAt: times.length ? new Date(Math.min(...times)).toISOString() : null,
