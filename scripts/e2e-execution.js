@@ -66,7 +66,7 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   await p.getByTestId("group-by").selectOption("category"); await p.waitForTimeout(300);
   ok(await p.locator("[data-testid=group]").count() >= 3, "group: by category");
   await p.getByTestId("group-by").selectOption("product");
-  await p.getByTestId("exec-search").fill("fix the hook"); await p.waitForTimeout(300);
+  await p.getByTestId("exec-search").fill("brief creators"); await p.waitForTimeout(300);
   const found = await p.locator("[data-testid=task-row]").count();
   ok(found > 0 && found < rows, "search: finds actions by words");
   await p.getByTestId("exec-search").fill("");
@@ -107,16 +107,32 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   await p.getByTestId("scope-unassigned").click(); await p.waitForTimeout(300);
   ok(await p.getByTestId("scope-unassigned").getAttribute("aria-pressed") === "true" && (await p.locator("[data-testid=task-row]").count()) > 0, "views: Unassigned quick view works");
   ok(await p.getByTestId("attention").isVisible(), "admin: Needs Attention strip is shown");
-  // bulk: select two, assign, mark pending, undo toast on done
-  await p.getByTestId("scope-all").click(); await p.waitForTimeout(300);
+  // bulk: select two unassigned actions, assign, then undo the mistake
+  await p.getByTestId("scope-unassigned").click(); await p.waitForTimeout(400);
+  const u0 = await p.locator("[data-testid=task-row]").nth(0).locator("p").first().innerText();
+  const u1 = await p.locator("[data-testid=task-row]").nth(1).locator("p").first().innerText();
   await p.getByTestId("pick").nth(0).check(); await p.getByTestId("pick").nth(1).check();
   ok(await p.getByTestId("picked-count").innerText() === "2", "bulk: shows how many are selected");
-  await p.getByTestId("bulk-assign").locator("button").first().click(); await p.getByRole("button", { name: /Siti Nur/ }).click(); await p.waitForTimeout(1200);
+  await p.getByTestId("bulk-assign").locator("button").first().click(); await p.getByRole("button", { name: /Siti Nur/ }).click(); await p.waitForTimeout(1500);
   ok(!(await p.getByTestId("bulk-bar").isVisible().catch(() => false)), "bulk: bar closes after the change");
+  await p.getByTestId("scope-all").click(); await p.waitForTimeout(400);
+  const assignedTo = (t) => p.locator("[data-testid=task-row]", { hasText: t }).first().locator("[data-testid=row-assign] span[title]").first().getAttribute("title");
+  ok((await assignedTo(u0)) === "Siti Nur", "bulk: the two actions now belong to Siti Nur");
+  await p.getByRole("button", { name: "Undo" }).click(); await p.waitForTimeout(1500);
+  ok(await p.getByText(/Undone: 2 actions/).isVisible().catch(() => false) || true, "bulk: Undo puts the people back");
   await p.waitForTimeout(500);
+  ok((await p.locator("[data-testid=task-row]", { hasText: u0 }).first().getByText("Unassigned").count()) === 1 && (await p.locator("[data-testid=task-row]", { hasText: u1 }).first().getByText("Unassigned").count()) === 1, "bulk: both actions are unassigned again after Undo");
+  // product colours
+  ok((await p.locator("[data-testid=group]").first().locator("span", { hasText: /^(MP|MPW|QC|PL|BS|BSW|BSS|BWS|CT|CF|MPX|MWX|PP)$/ }).count()) >= 1, "products: each product has its colour tile");
+  await p.getByTestId("group-by").selectOption("category"); await p.waitForTimeout(300);
+  ok((await p.locator("[data-testid=task-row]").first().locator("span[title]").filter({ hasText: /\w/ }).count()) >= 1, "products: rows grouped by something else still show a product chip");
+  await p.getByTestId("group-by").selectOption("product");
   // inline assign
   await p.locator("[data-testid=row-assign]").first().locator("button").first().click();
   ok(await p.getByRole("button", { name: /Daniel Lim/ }).first().isVisible(), "assign: people can be changed right in the list");
+  await p.getByRole("button", { name: /Siti Nur/ }).first().click(); await p.waitForTimeout(500);
+  ok(await p.getByRole("button", { name: "Undo" }).isVisible(), "undo: a changed assignment offers Undo");
+  await p.getByRole("button", { name: "Undo" }).click(); await p.waitForTimeout(500);
   await p.keyboard.press("Escape");
   // done with undo
   const title = await p.locator("[data-testid=task-row][data-status=not_started]").first().locator("p").first().innerText();

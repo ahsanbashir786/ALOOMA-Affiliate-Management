@@ -198,3 +198,24 @@ export async function bulkUpdateTasks(ids: string[], patch: { status?: string; a
   refresh();
   return { ok: true, count: targets.length };
 }
+
+/** Puts tasks back exactly as they were (status, people, due date). Used by Undo after a bulk change. */
+export async function restoreTasks(items: { id: string; status: string; due: string | null; assignees: string[] }[]): Promise<R & { count?: number }> {
+  const user = await requireUser("manager");
+  const p = z.array(z.object({ id: Id, status: STATUS, due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), assignees: z.array(Id).max(12) })).min(1).max(200).safeParse(items);
+  if (!p.success) return { error: "Nothing to undo." };
+  let count = 0;
+  for (const it of p.data) {
+    const [cur] = await q(sql`select status from ep_tasks where id = ${it.id}::uuid`);
+    if (!cur || cur.status === "auto_closed") continue;
+    await q(sql`update ep_tasks set status = ${it.status}, due_on = ${it.due}::date, updated_at = now(),
+      completed_at = ${it.status === "done" ? sql`coalesce(completed_at, now())` : sql`null`}, closed_reason = ${it.status === "skipped" ? sql`closed_reason` : sql`null`} where id = ${it.id}::uuid`);
+    await q(sql`delete from ep_task_assignees where task_id = ${it.id}::uuid`);
+    const ok = it.assignees.length ? await q(sql`select id::text from users where active and id in (${sql.join(it.assignees.map((i) => sql`${i}::uuid`), sql`, `)})`) : [];
+    for (const u of ok) await q(sql`insert into ep_task_assignees (task_id, user_id, assigned_by) values (${it.id}::uuid, ${u.id as string}::uuid, ${user.id}::uuid)`);
+    await log(it.id, user.id, "undo", "Change undone");
+    count++;
+  }
+  refresh();
+  return { ok: true, count };
+}

@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight, Columns3, LayoutList, Loader2, RefreshCw, Search, SlidersHorizontal, UserX, Users, X } from "lucide-react";
-import { addTaskComment, bulkUpdateTasks, refreshPlan, setProductLeads, setTaskAssignees, setTaskDue, setTaskStatus, toggleTaskStep } from "@/app/actions/execution";
+import { addTaskComment, bulkUpdateTasks, refreshPlan, restoreTasks, setProductLeads, setTaskAssignees, setTaskDue, setTaskStatus, toggleTaskStep } from "@/app/actions/execution";
 import { Select } from "@/components/ui/primitives";
 import { TagBadge } from "@/components/products/ui";
 import { CATEGORIES, PRIORITY_LABEL } from "@/lib/execution/rules";
@@ -14,7 +14,7 @@ import { daysBetweenISO } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
 import { TaskPanel, type Mutate } from "./task-panel";
 import { TeamView } from "./team";
-import { CategoryChip, dueInfo, NEXT_STATUS, PeoplePicker, PersonStack, Popover, PriorityFlag, StatusIcon, STATUS_META } from "./ui";
+import { CategoryChip, dueInfo, NEXT_STATUS, PeoplePicker, PersonStack, Popover, PriorityFlag, ProductChip, ProductTile, productColor, productTint, StatusIcon, STATUS_META } from "./ui";
 
 type View = "list" | "board" | "team";
 type GroupBy = "product" | "category" | "status" | "person" | "due" | "priority";
@@ -51,7 +51,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
   const flash = useCallback((text: string, opts: { undo?: () => void; tone?: "ok" | "error" } = {}) => {
     const t: Toast = { text, ...opts };
     setToast(t);
-    setTimeout(() => setToast((cur) => (cur === t ? null : cur)), opts.undo ? 8000 : 5000);
+    setTimeout(() => setToast((cur) => (cur === t ? null : cur)), opts.undo ? 10000 : 5000);
   }, []);
 
   const apply = useCallback(async (id: string, patch: (t: TaskView) => Partial<TaskView>, call: () => Promise<{ error?: string }>) => {
@@ -79,13 +79,22 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
   }, [tasks, doStatus, flash]);
   const mutate: Mutate = useMemo(() => ({
     status: (id, s, note) => setStatus(id, s, note),
-    due: (id, d) => apply(id, (t) => ({ dueOn: d, events: evt(t, "due", d ? `Due date set to ${d}` : "Due date cleared") }), () => setTaskDue(id, d)),
-    assign: (id, ids) => apply(id, (t) => ({ assignees: ids, events: evt(t, "assigned", `Assigned to ${ids.map((i) => data.staff.find((s) => s.id === i)?.name).filter(Boolean).join(", ") || "nobody"}`) }), () => setTaskAssignees(id, ids)),
+    due: (id, d) => {
+      const prev = tasks.find((t) => t.id === id)?.dueOn ?? null;
+      void apply(id, (t) => ({ dueOn: d, events: evt(t, "due", d ? `Due date set to ${d}` : "Due date cleared") }), () => setTaskDue(id, d));
+      flash("Due date changed", { undo: () => { void apply(id, (t) => ({ dueOn: prev, events: evt(t, "due", prev ? `Due date set back to ${prev}` : "Due date cleared") }), () => setTaskDue(id, prev)); } });
+    },
+    assign: (id, ids) => {
+      const prev = tasks.find((t) => t.id === id)?.assignees ?? [];
+      const name = (list: string[]) => list.map((i) => data.staff.find((s) => s.id === i)?.name).filter(Boolean).join(", ") || "nobody";
+      void apply(id, (t) => ({ assignees: ids, events: evt(t, "assigned", `Assigned to ${name(ids)}`) }), () => setTaskAssignees(id, ids));
+      flash(`Assigned to ${name(ids)}`, { undo: () => { void apply(id, (t) => ({ assignees: prev, events: evt(t, "assigned", `Assigned to ${name(prev)}`) }), () => setTaskAssignees(id, prev)); } });
+    },
     step: (id, i) => apply(id, (t) => ({ stepsDone: t.stepsDone.includes(i) ? t.stepsDone.filter((x) => x !== i) : [...t.stepsDone, i] }), () => toggleTaskStep(id, i)),
     comment: (id, text) => apply(id, (t) => ({ events: evt(t, "comment", text) }), () => addTaskComment(id, text)),
     contacted: (id, n) => apply(id, () => ({ contactedCount: n }), async () => ({})),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [apply, setStatus, data.staff, meName]);
+  }), [apply, setStatus, data.staff, meName, tasks, flash]);
 
   const visible = useMemo(() => {
     const q = f.q.trim().toLowerCase();
@@ -172,10 +181,16 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
   });
   const bulk = (patch: Parameters<typeof bulkUpdateTasks>[1], label: string) => {
     const ids = [...picked];
+    // Remember how every task was, so the change can be undone.
+    const before = ids.map((id) => tasks.find((t) => t.id === id)).filter((t): t is TaskView => !!t && t.status !== "auto_closed")
+      .map((t) => ({ id: t.id, status: t.status as "not_started" | "pending" | "done" | "skipped", due: t.dueOn, assignees: t.assignees }));
     startBusy(async () => {
       const r = await bulkUpdateTasks(ids, patch);
-      if (r.error) flash(r.error, { tone: "error" });
-      else { flash(`${label}: ${r.count} action${r.count === 1 ? "" : "s"}`); setPicked(new Set()); router.refresh(); }
+      if (r.error) { flash(r.error, { tone: "error" }); return; }
+      flash(`${label}: ${r.count} action${r.count === 1 ? "" : "s"}`, {
+        undo: () => { void restoreTasks(before).then((u) => { if (u.error) flash(u.error, { tone: "error" }); else { flash(`Undone: ${u.count} action${u.count === 1 ? "" : "s"} put back`); router.refresh(); } }); },
+      });
+      setPicked(new Set()); router.refresh();
     });
   };
   const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -305,8 +320,8 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                     const due = dueInfo(t.dueOn, data.today, isOpen(t));
                     return (
                       <li key={t.id}>
-                        <button onClick={() => setOpenId(t.id)} className={cn("w-full rounded-xl border bg-surface p-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-md", openId === t.id ? "border-brand" : "border-line")}>
-                          <p className="mb-1 text-[12px] font-medium text-ink-3">{t.productName}</p>
+                        <button onClick={() => setOpenId(t.id)} style={{ borderTop: `3px solid ${productColor(t.productKey)}` }} className={cn("w-full rounded-xl border bg-surface p-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-md", openId === t.id ? "border-brand" : "border-line")}>
+                          <p className="mb-1.5"><ProductChip k={t.productKey} name={t.productName} /></p>
                           <p className="text-[14.5px] leading-snug font-semibold text-ink">{t.title}</p>
                           {t.creatorCount > 0 && <p className="mt-1 text-[12.5px] text-ink-3">{t.contactedCount} of {t.creatorCount} creators contacted</p>}
                           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5"><CategoryChip c={t.category} /><PriorityFlag p={t.priority} /><span className={cn("text-[12.5px]", due.tone)}>{due.text}</span><span className="ml-auto"><PersonStack ids={t.assignees} staff={data.staff} size={22} /></span></div>
@@ -332,11 +347,12 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
             const allPicked = ids.length > 0 && ids.every((i) => picked.has(i));
             return (
               <section key={g.key} data-testid="group" data-group={g.key}>
-                <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface-2/40 px-4 py-2.5 hover:bg-surface-2">
+                <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface-2/40 px-4 py-2.5 hover:bg-surface-2" style={g.product ? { background: productTint(g.product.key, 11), boxShadow: `inset 5px 0 0 ${productColor(g.product.key)}` } : undefined}>
                   {canManage && <input type="checkbox" aria-label={`Select all in ${g.label}`} checked={allPicked} onChange={() => setPicked((p) => { const n = new Set(p); for (const i of ids) { if (allPicked) n.delete(i); else n.add(i); } return n; })} className="size-4 accent-[var(--brand)]" />}
                   <button onClick={() => setCollapsed((c) => { const n = new Set(c); if (n.has(g.key)) n.delete(g.key); else n.add(g.key); return n; })} aria-expanded={!isCol} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-left">
                     {isCol ? <ChevronRight className="size-4 text-ink-3" /> : <ChevronDown className="size-4 text-ink-3" />}
-                    <span className={cn("text-[15px] font-semibold text-ink", g.tone)}>{g.label}</span>
+                    {g.product && <ProductTile k={g.product.key} size={30} />}
+                    <span className={cn("text-[15.5px] font-semibold text-ink", g.tone)}>{g.label}</span>
                     {g.product && <TagBadge tag={g.product.tag as Tag} />}
                     {g.product && g.product.changePct != null && <span className={cn("tnum text-[12.5px] font-semibold", g.product.change >= 0 ? "text-good" : "text-critical")}>{g.product.change >= 0 ? "▲" : "▼"} {Math.abs(Math.round(g.product.changePct))}%</span>}
                     <span className="tnum text-[13px] text-ink-3">{g.tasks.length} action{g.tasks.length === 1 ? "" : "s"}</span>
@@ -356,6 +372,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                       return (
                         <li key={t.id} data-testid="task-row" data-status={t.status} data-kind={t.kind}
                           className={cn("group/row grid cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 gap-y-1.5 border-b border-line px-4 py-3 last:border-b-0 hover:bg-brand-soft/40 lg:items-center", COLS_CLASS, canManage && "grid-cols-[28px_28px_minmax(0,1fr)]", openId === t.id && "bg-brand-soft/60", picked.has(t.id) && "bg-brand-soft/60")}
+                          style={{ boxShadow: `inset 5px 0 0 ${productColor(t.productKey)}`, background: picked.has(t.id) || openId === t.id ? undefined : productTint(t.productKey, 3) }}
                           onClick={() => setOpenId(t.id)}>
                           {canManage && <input type="checkbox" data-testid="pick" aria-label={`Select ${t.title}`} checked={picked.has(t.id)} onClick={(e) => e.stopPropagation()} onChange={() => togglePick(t.id)} className="mt-1 size-4 accent-[var(--brand)] lg:mt-0" />}
                           <button aria-label={`Status: ${STATUS_META[t.status].label}. Click to change`} title={`${STATUS_META[t.status].label} · click to change`} disabled={isClosed(t)} onClick={(e) => { e.stopPropagation(); cycle(t); }} className="mt-0.5 rounded-full lg:mt-0"><StatusIcon status={t.status} size={22} /></button>
@@ -369,7 +386,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                             )}
                           </div>
                           <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 lg:contents", canManage ? "col-start-3" : "col-start-2")}>
-                            {group !== "product" && <span className="max-w-full truncate text-[13px] text-ink-2">{t.productName}</span>}
+                            {group !== "product" && <ProductChip k={t.productKey} name={t.productName} />}
                             <CategoryChip c={t.category} />
                             <PriorityFlag p={t.priority} />
                             {canManage && isOpen(t)

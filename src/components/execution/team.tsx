@@ -8,7 +8,7 @@ import type { PlanData, TaskView } from "@/lib/execution/plan";
 import type { Tag } from "@/lib/products/diagnose";
 import { daysBetweenISO } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
-import { CATEGORY_COLOR, PeoplePicker, Person, PersonStack, Popover } from "./ui";
+import { CATEGORY_COLOR, PeoplePicker, Person, PersonStack, Popover, ProductTile, productColor } from "./ui";
 
 type Row = { id: string; name: string; role: string; open: number; notStarted: number; pending: number; done: number; overdue: number; rate: number; days: number | null; stake: number; won: number };
 
@@ -93,7 +93,7 @@ export function TeamView({ tasks, data, canManage, today, onPick, onLeads }: {
             const ids = leads[p.key] ?? [];
             const openN = real.filter((t) => t.productKey === p.key && (t.status === "not_started" || t.status === "pending")).length;
             return (
-              <li key={p.key} className="flex items-center gap-3 rounded-xl border border-line p-3">
+              <li key={p.key} className="flex items-center gap-3 rounded-xl border border-line p-3" style={{ borderLeft: `4px solid ${productColor(p.key)}` }}><ProductTile k={p.key} size={32} />
                 <div className="min-w-0 flex-1"><p className="truncate text-[14px] font-semibold text-ink">{p.name}</p><p className="mt-1 flex items-center gap-2"><TagBadge tag={p.tag as Tag} /><span className="text-[12.5px] text-ink-3">{openN} open</span></p></div>
                 {canManage ? (
                   <Popover align="right" testId={`lead-${p.key}`} trigger={<span className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-2 py-1.5 hover:bg-surface-2">{ids.length ? <PersonStack ids={ids} staff={data.staff} size={24} /> : <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-2"><UserPlus className="size-4" />Assign</span>}</span>}>

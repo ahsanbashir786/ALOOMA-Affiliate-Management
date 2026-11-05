@@ -8,7 +8,7 @@ import type { PlanData, Staff, Status, TaskView } from "@/lib/execution/plan";
 import { fmtDateTimeKL } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
 import { CreatorList } from "./creator-list";
-import { CategoryChip, dueInfo, PeoplePicker, PersonStack, Popover, PriorityFlag, StatusIcon, STATUS_META } from "./ui";
+import { CategoryChip, dueInfo, PeoplePicker, PersonStack, Popover, PriorityFlag, ProductTile, productColor, productTint, StatusIcon, STATUS_META } from "./ui";
 
 export type Mutate = {
   status: (id: string, s: Status, note?: string) => void;
@@ -65,10 +65,10 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
     <>
       <button aria-label="Close panel" onClick={onClose} className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] lg:bg-black/10" />
       <aside data-testid="task-panel" role="dialog" aria-label={task.title} className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[560px] flex-col border-l border-line-strong bg-surface shadow-2xl">
-        <header className="border-b border-line px-5 pt-4 pb-4">
+        <header className="border-b border-line px-5 pt-4 pb-4" style={{ background: productTint(task.productKey, 7), boxShadow: `inset 0 4px 0 ${productColor(task.productKey)}` }}>
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <Link href={`/products/${task.productKey}`} className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand-strong hover:underline">{task.productName}<ArrowUpRight className="size-3.5" /></Link>
+              <Link href={`/products/${task.productKey}`} className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-ink hover:underline"><ProductTile k={task.productKey} size={26} />{task.productName}<ArrowUpRight className="size-3.5 text-ink-3" /></Link>
               <CategoryChip c={task.category} />
               <PriorityFlag p={task.priority} label />
             </div>
