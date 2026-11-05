@@ -22,9 +22,10 @@ async function main() {
   if (!reqs.length) console.log("  → none. TikTok did not return any sample request for this creator.");
 
   const sold = await q(sql`
-    select a.product_id, left(max(k.product_title), 50) as product, count(distinct a.order_id)::int as orders, round(sum(coalesce(a.price,0) * coalesce(a.quantity,1)))::int as gmv,
+    select a.product_id, (select left(max(k.product_title), 50) from tt_skus k where k.product_id = a.product_id) as product, count(distinct a.order_id)::int as orders,
+      round(sum(coalesce(a.price,0) * coalesce(a.quantity,1)))::int as gmv, count(*)::int as lines,
       array_agg(distinct a.seller_sku) filter (where a.seller_sku is not null) as skus
-    from tt_affiliate_order_lines a left join tt_skus k on k.product_id = a.product_id where a.creator = ${username} group by a.product_id order by gmv desc`);
+    from tt_affiliate_order_lines a where a.creator = ${username} group by a.product_id order by gmv desc`);
   console.log(`\nProducts she sold (from affiliate orders): ${sold.length}`);
   for (const s of sold) {
     const has = reqs.some((r) => r.product_id === s.product_id);
