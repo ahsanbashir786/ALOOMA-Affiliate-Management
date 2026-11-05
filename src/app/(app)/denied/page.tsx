@@ -9,6 +9,6 @@ export const metadata: Metadata = { title: "Permission Denied" };
 export default async function DeniedPage({ searchParams }: { searchParams: Promise<SP> }) {
   const need = one((await searchParams).need) as PermissionKey | undefined;
   const perm = PERMISSIONS.find((p) => p.key === need);
-  const { denied } = await gate(perm?.key ?? "users.manage", perm?.group ?? "this");
+  const { denied } = await gate(perm?.key ?? "users", perm?.group ?? "this");
   return denied ?? <p className="py-20 text-center text-ink-2">Your role allows this.</p>;
 }

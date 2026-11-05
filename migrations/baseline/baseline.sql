@@ -741,7 +741,6 @@ CREATE TABLE public.users (
     name text NOT NULL,
     password_hash text NOT NULL,
     active boolean DEFAULT true NOT NULL,
-    can_edit_contacts boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     role_id uuid NOT NULL
 );
@@ -1434,19 +1433,11 @@ ALTER TABLE ONLY public.users
 
 
 
--- Starting roles and their permissions (data, not structure).
 SET search_path TO public;
 
+-- The only built-in role: Admin, with every screen. All other roles are created in the app.
 insert into roles (key, name, description, is_admin) values
-  ('admin', 'Admin', 'The owner. Can do everything, always.', true),
-  ('manager', 'Affiliate Manager', 'Runs the programme day to day: assigns work, syncs data.', false),
-  ('viewer', 'Viewer', 'Looks, and works on the actions assigned to them.', false)
-on conflict (key) do nothing;
+  ('admin', 'Admin', 'The owner. Can open every screen, always.', true);
 
 insert into role_permissions (role_id, permission)
-select r.id, p.permission from roles r join (values
-  ('admin','execution.view'),('admin','execution.work'),('admin','execution.assign'),('admin','affiliates.view'),('admin','affiliates.work'),('admin','affiliates.export'),('admin','contacts.edit'),('admin','products.view'),('admin','sync.view'),('admin','sync.run'),('admin','tiktok.manage'),('admin','users.manage'),
-  ('manager','execution.view'),('manager','execution.work'),('manager','execution.assign'),('manager','affiliates.view'),('manager','affiliates.work'),('manager','affiliates.export'),('manager','contacts.edit'),('manager','products.view'),('manager','sync.view'),('manager','sync.run'),
-  ('viewer','execution.view'),('viewer','execution.work'),('viewer','affiliates.view'),('viewer','products.view')
-) as p(role_key, permission) on p.role_key = r.key
-on conflict do nothing;
+select r.id, p from roles r, unnest(array['execution','creators','products','sync','users','settings']) p where r.is_admin;

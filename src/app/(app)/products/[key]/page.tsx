@@ -108,7 +108,7 @@ function FunnelView({ f, o }: { f: Funnel; o: Funnel }) {
 }
 
 export default async function ProductPage({ params, searchParams }: PageProps<"/products/[key]">) {
-  const { denied } = await gate("products.view", "Product Analysis");
+  const { denied } = await gate("products", "Product Analysis");
   if (denied) return denied;
   const { key } = await params;
   const sp = (await searchParams) as SP;

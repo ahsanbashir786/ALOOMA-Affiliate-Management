@@ -9,7 +9,7 @@ import { one, type SP } from "@/lib/url";
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
-  const { denied } = await gate("tiktok.manage", "Settings");
+  const { denied } = await gate("settings", "Settings");
   if (denied) return denied;
   const sp = (await searchParams) as SP;
   const cfg = tiktokConfig();

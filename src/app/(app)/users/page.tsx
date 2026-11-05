@@ -11,10 +11,10 @@ export const metadata: Metadata = { title: "Users & Roles" };
 export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
-  const { user: me, denied } = await gate("users.manage", "Users & Roles");
+  const { user: me, denied } = await gate("users", "Users & Roles");
   if (denied) return denied;
   const [people, roleRows, perms, counts] = await Promise.all([
-    db.select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, active: users.active, canEditContacts: users.canEditContacts }).from(users).orderBy(asc(users.name)),
+    db.select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, active: users.active }).from(users).orderBy(asc(users.name)),
     db.select().from(roles).orderBy(asc(roles.isAdmin), asc(roles.createdAt)),
     db.select().from(rolePermissions),
     db.select({ roleId: users.roleId, n: sql<number>`count(*)::int` }).from(users).where(eq(users.active, true)).groupBy(users.roleId),

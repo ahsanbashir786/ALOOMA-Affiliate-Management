@@ -44,7 +44,7 @@ async function applyOwners(names: string[], userId: string | null, by: string): 
 
 /** Who looks after this creator. Managers and owners only; the latest assignment wins; null clears it. */
 export async function assignOwner(username: string, userId: string | null): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const p = z.object({ u: Name, id: Id }).safeParse({ u: username, id: userId });
   if (!p.success) return { error: "Choose a team member." };
   const bad = await activeStaff(p.data.id);
@@ -55,7 +55,7 @@ export async function assignOwner(username: string, userId: string | null): Prom
 
 /** The selected creators go to one team member. The caller must confirm exactly how many. */
 export async function assignOwners(usernames: string[], userId: string | null, confirmCount: number): Promise<Bulk> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const p = z.object({ names: z.array(Name).min(1).max(MAX_BULK), id: Id }).safeParse({ names: usernames, id: userId });
   if (!p.success) return { error: "Choose creators and a team member." };
   const names = [...new Set(p.data.names)];
@@ -68,7 +68,7 @@ export async function assignOwners(usernames: string[], userId: string | null, c
 
 /** Every creator the current filters match (not just the visible page) goes to one team member. */
 export async function assignOwnersByFilter(params: Record<string, string>, userId: string | null, confirmCount: number): Promise<Bulk> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const id = Id.safeParse(userId);
   if (!id.success) return { error: "Choose a team member." };
   const bad = await activeStaff(id.data);
@@ -84,7 +84,7 @@ export async function assignOwnersByFilter(params: Record<string, string>, userI
 
 /** Puts the owners back as they were (the answer of an assign call). */
 export async function restoreOwners(previous: OwnerBefore[]): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const p = z.array(z.object({ u: Name, id: Id })).max(MAX_BULK).safeParse(previous);
   if (!p.success) return { error: "Nothing to undo." };
   const none = p.data.filter((x) => x.id === null).map((x) => x.u);

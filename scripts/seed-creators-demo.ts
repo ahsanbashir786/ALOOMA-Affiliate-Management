@@ -100,6 +100,10 @@ async function main() {
   // Demo sign-ins for the browser tests: owner@, manager@ and viewer@test.local (password Passw0rd!test).
   const bcrypt = (await import("bcryptjs")).default;
   const hash = await bcrypt.hash("Passw0rd!test", 10);
+  // Roles are made in the app; the tests need two ordinary ones.
+  await q(sql`insert into roles (key, name) values ('manager', 'Affiliate Manager'), ('viewer', 'Viewer') on conflict (key) do nothing`);
+  await q(sql`insert into role_permissions (role_id, permission) select r.id, p from roles r, unnest(array['execution','creators','products','sync']) p where r.key = 'manager' on conflict do nothing`);
+  await q(sql`insert into role_permissions (role_id, permission) select r.id, p from roles r, unnest(array['execution','creators','products']) p where r.key = 'viewer' on conflict do nothing`);
   for (const [name, email, role] of [["Test Owner", "owner@test.local", "admin"], ["Test Manager", "manager@test.local", "manager"], ["Test Viewer", "viewer@test.local", "viewer"]]) {
     await q(sql`insert into users (name, email, password_hash, role_id, active) values (${name}, ${email}, ${hash}, (select id from roles where key = ${role}), true) on conflict (email) do nothing`);
   }

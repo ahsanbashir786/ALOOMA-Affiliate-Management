@@ -43,7 +43,6 @@ export type SessionUser = {
   role: string; roleName: string; isAdmin: boolean;
   permissions: PermissionKey[];
   /** An extra, per-person permission to edit WhatsApp numbers (on top of the role). */
-  canEditContacts: boolean;
 };
 
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
@@ -51,7 +50,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const [row] = await db
-    .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, canEditContacts: users.canEditContacts, role: roles.key, roleName: roles.name, isAdmin: roles.isAdmin })
+    .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, role: roles.key, roleName: roles.name, isAdmin: roles.isAdmin })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(roles, eq(roles.id, users.roleId))
@@ -90,4 +89,4 @@ export function firstAllowedScreen(user: Pick<SessionUser, "isAdmin" | "permissi
 }
 
 /** WhatsApp numbers are personal data: only roles with the permission, and people ticked individually, may edit or upload them. */
-export const mayEditContacts = (user: Pick<SessionUser, "isAdmin" | "permissions" | "canEditContacts">) => can(user, "contacts.edit") || user.canEditContacts;
+export const mayEditContacts = (user: Pick<SessionUser, "isAdmin" | "permissions">) => can(user, "creators");

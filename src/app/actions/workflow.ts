@@ -31,7 +31,7 @@ const Context = z
 export async function markContacted(usernames: string[], confirmCount?: number, context?: ActionContext): Promise<R> {
   const ctx = Context.safeParse(context);
   if (!ctx.success) return { error: "Check the action details." };
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const names = [...new Set(z.array(Name).min(1).max(200).parse(usernames))];
   // Bulk safety: the caller must confirm exactly how many records it is about to change.
   if (names.length > 1 && confirmCount !== names.length) return { error: `Please confirm the ${names.length} selected creators first.` };
@@ -57,7 +57,7 @@ export type PromiseOptions = z.input<typeof Deliverable>;
  * (Free text "details" is kept for reading and is never interpreted as a quantity or product.)
  */
 export async function markPromised(username: string, promisedOn: string, opts?: PromiseOptions): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const u = Name.parse(username);
   const p = Day.safeParse(promisedOn);
   if (!p.success) return { error: p.error.issues[0].message };
@@ -80,7 +80,7 @@ export async function markPromised(username: string, promisedOn: string, opts?: 
  * only the current deadline drives reminders, and Progress does not count it as another promise secured.
  */
 export async function rescheduleCommitmentAction(commitmentId: number, toOn: string): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const p = Day.safeParse(toOn);
   if (!p.success) return { error: p.error.issues[0].message };
   const [c] = await db.select().from(commitments).where(eq(commitments.id, commitmentId));
@@ -96,7 +96,7 @@ export async function rescheduleCommitmentAction(commitmentId: number, toOn: str
 }
 
 export async function markNeedsHelp(username: string, reason: string, nextOn: string | null): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const u = Name.parse(username);
   const r = z.string().trim().min(2).max(200).safeParse(reason);
   if (!r.success) return { error: "Choose a reason." };
@@ -107,7 +107,7 @@ export async function markNeedsHelp(username: string, reason: string, nextOn: st
 }
 
 export async function pauseCreator(username: string, reason: string, resumeOn?: string | null): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const u = Name.parse(username);
   const r = z.string().trim().min(2, "Give a short reason.").max(200).safeParse(reason);
   if (!r.success) return { error: r.error.issues[0].message };
@@ -119,7 +119,7 @@ export async function pauseCreator(username: string, reason: string, resumeOn?: 
 }
 
 export async function resumeCreator(username: string): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const eventId = await addEvent({ username: Name.parse(username), kind: "resumed", userId: user.id });
   done();
   return { ok: true, eventId };
@@ -127,7 +127,7 @@ export async function resumeCreator(username: string): Promise<R> {
 
 /** Undo one action, or a whole bulk batch. The history keeps who did it, when, and who undid it; derived state is rebuilt. */
 export async function undoEvent(eventId: number): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const [ev] = await db.select({ kind: staffEvents.kind, username: staffEvents.username, batchId: staffEvents.batchId }).from(staffEvents).where(eq(staffEvents.id, eventId));
   if (!ev) return { error: "That action no longer exists." };
   if (ev.batchId) await revertBatch(ev.batchId, user.id);
@@ -143,7 +143,7 @@ export async function undoEvent(eventId: number): Promise<R> {
  * commitment already uses it. "rejected" stops it being suggested for this commitment.
  */
 export async function decideCommitmentContent(commitmentId: number, contentId: string, decision: "verified" | "rejected", shared = false): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const [c] = await db.select().from(commitments).where(eq(commitments.id, commitmentId));
   if (!c) return { error: "That promise no longer exists." };
   const cid = z.string().trim().min(1).max(200).parse(contentId);
@@ -166,7 +166,7 @@ export async function decideCommitmentContent(commitmentId: number, contentId: s
 export async function addCommitmentLink(commitmentId: number, link: string): Promise<R> {
   const l = z.string().trim().min(8, "Paste the video link.").max(500).safeParse(link);
   if (!l.success) return { error: l.error.issues[0].message };
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const [c] = await db.select().from(commitments).where(eq(commitments.id, commitmentId));
   if (!c) return { error: "That promise no longer exists." };
   const id = l.data.match(/video\/(\d+)/)?.[1] ?? `link:${l.data}`;
@@ -177,7 +177,7 @@ export async function addCommitmentLink(commitmentId: number, link: string): Pro
 }
 
 export async function undoDecision(decisionId: number): Promise<R> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   await db
     .update(contentDecisions)
     .set({ revertedAt: new Date(), revertedBy: user.id })
@@ -200,7 +200,7 @@ const NewCreator = z.object({
 
 /** Start outreach to a creator nobody has recorded yet. A sample is not needed. WhatsApp numbers keep their own permission. */
 export async function addCreatorAction(input: z.input<typeof NewCreator>): Promise<R & { username?: string; existed?: boolean }> {
-  const user = await requirePermission("affiliates.work");
+  const user = await requirePermission("creators");
   const p = NewCreator.safeParse(input);
   if (!p.success) return { error: p.error.issues[0].message };
   const { addCreator } = await import("@/lib/creators/workflow/creators");

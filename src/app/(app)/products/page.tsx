@@ -66,7 +66,7 @@ function Card13({ p, q }: { p: ProductAnalysis; q: Record<string, string> }) {
 }
 
 export default async function ProductsPage({ searchParams }: PageProps<"/products">) {
-  const { denied } = await gate("products.view", "Product Analysis");
+  const { denied } = await gate("products", "Product Analysis");
   if (denied) return denied;
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));

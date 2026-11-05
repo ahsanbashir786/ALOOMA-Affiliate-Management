@@ -6,7 +6,7 @@ import { disconnect } from "@/lib/tiktok/client";
 
 /** Forget the TikTok connection (tokens are deleted). Synced data is untouched. */
 export async function disconnectTikTok(): Promise<{ ok: true }> {
-  await requirePermission("tiktok.manage");
+  await requirePermission("settings");
   await disconnect();
   revalidatePath("/settings");
   return { ok: true };

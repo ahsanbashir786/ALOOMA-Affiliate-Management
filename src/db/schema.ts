@@ -43,7 +43,6 @@ export const users = pgTable("users", {
   roleId: uuid("role_id").notNull().references(() => roles.id),
   active: boolean("active").notNull().default(true),
   /** May edit and upload WhatsApp numbers. Admins always may. */
-  canEditContacts: boolean("can_edit_contacts").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

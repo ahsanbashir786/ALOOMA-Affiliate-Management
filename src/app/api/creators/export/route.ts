@@ -11,7 +11,7 @@ export const maxDuration = 180;
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!can(user, "affiliates.export")) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
+  if (!can(user, "creators")) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
   const opts = parseCreatorParams(Object.fromEntries(new URL(request.url).searchParams));
   const dir = await getAffiliateDirectory({ ...opts, page: 1, size: 1_000_000 });
   const file = await buildDirectoryWorkbook(dir.rows, dir.dataEnd);

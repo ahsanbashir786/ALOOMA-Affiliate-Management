@@ -9,17 +9,17 @@ export const NAV: NavGroup[] = [
   {
     label: "Affiliates",
     items: [
-      { href: "/execution", label: "Execution Plan", icon: ListChecks, perm: "execution.view" },
-      { href: "/creators", label: "Affiliate Data", icon: Users, perm: "affiliates.view" },
-      { href: "/products", label: "Product Analysis", icon: Package, perm: "products.view" },
+      { href: "/execution", label: "Execution Plan", icon: ListChecks, perm: "execution" },
+      { href: "/creators", label: "Affiliate Data", icon: Users, perm: "creators" },
+      { href: "/products", label: "Product Analysis", icon: Package, perm: "products" },
     ],
   },
   {
     label: "System",
     items: [
-      { href: "/sync", label: "Data Sync", icon: RefreshCw, perm: "sync.view" },
-      { href: "/users", label: "Users & Roles", icon: ShieldCheck, perm: "users.manage" },
-      { href: "/settings", label: "Settings", icon: Settings, perm: "tiktok.manage" },
+      { href: "/sync", label: "Data Sync", icon: RefreshCw, perm: "sync" },
+      { href: "/users", label: "Users & Roles", icon: ShieldCheck, perm: "users" },
+      { href: "/settings", label: "Settings", icon: Settings, perm: "settings" },
     ],
   },
 ];

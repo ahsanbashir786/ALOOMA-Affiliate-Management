@@ -134,10 +134,10 @@ function CreatorBlock({ r, staff, canAct }: { r: DirRow; staff: { id: string; na
 }
 
 export default async function CreatorsPage({ searchParams }: PageProps<"/creators">) {
-  const { user, denied } = await gate("affiliates.view", "Affiliate Data");
+  const { user, denied } = await gate("creators", "Affiliate Data");
   if (denied) return denied;
-  const canAct = can(user, "affiliates.work");
-  const canExport = can(user, "affiliates.export");
+  const canAct = can(user, "creators");
+  const canExport = can(user, "creators");
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));
   const opts = parseCreatorParams(raw);

@@ -8,7 +8,7 @@ import { Button, Input, Select } from "@/components/ui/primitives";
 import { PERMISSIONS, PERMISSION_GROUPS, type PermissionKey } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
-type U = { id: string; name: string; email: string; roleId: string; active: boolean; canEditContacts: boolean };
+type U = { id: string; name: string; email: string; roleId: string; active: boolean };
 type R = { id: string; key: string; name: string; isAdmin: boolean; permissions: PermissionKey[]; people: number };
 
 function Feedback({ state }: { state: Result }) {
@@ -21,7 +21,7 @@ function Feedback({ state }: { state: Result }) {
 /* ───────── people ───────── */
 function NewUserForm({ roles }: { roles: R[] }) {
   const [state, action, pending] = useActionState(createUser, undefined);
-  const def = roles.find((r) => r.key === "viewer")?.id ?? roles[roles.length - 1]?.id;
+  const def = (roles.find((r) => !r.isAdmin) ?? roles[0])?.id;
   return (
     <form action={action} className="space-y-3" key={state?.ok ?? "form"}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1.2fr_0.8fr_1fr_auto] lg:items-end">
@@ -31,7 +31,6 @@ function NewUserForm({ roles }: { roles: R[] }) {
         <label className="text-[13px] font-medium text-ink-2">Temporary password<Input name="password" type="text" required minLength={8} className="mt-1.5" /></label>
         <Button type="submit" variant="primary" disabled={pending}>{pending ? "Adding…" : "Add User"}</Button>
       </div>
-      <label className="flex items-center gap-2 text-[13px] text-ink-2"><input type="checkbox" name="canEditContacts" className="size-4 accent-[var(--brand)]" />Can edit WhatsApp numbers, on top of the role</label>
       <Feedback state={state} />
     </form>
   );
@@ -41,7 +40,6 @@ function UserRow({ u, roles, isMe }: { u: U; roles: R[]; isMe: boolean }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<Result>();
   const [pw, pwAction, pwPending] = useActionState(resetPassword, undefined);
-  const role = roles.find((r) => r.id === u.roleId);
   return (
     <li data-testid="user-row" className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4", !u.active && "bg-surface-2/50")}>
       <Person name={u.name} size={38} />
@@ -53,9 +51,6 @@ function UserRow({ u, roles, isMe }: { u: U; roles: R[]; isMe: boolean }) {
         <Select aria-label={`Role of ${u.name}`} value={u.roleId} disabled={pending} onChange={(e) => start(async () => setMsg(await updateUser(u.id, { roleId: e.target.value })))} className="h-9 text-[14px] text-ink">
           {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </Select>
-      </label>
-      <label className="flex items-center gap-2 text-[13px] text-ink-2" title={role?.permissions.includes("contacts.edit") ? "Already allowed by the role" : "Extra permission for this person only"}>
-        <input type="checkbox" className="size-4 accent-[var(--brand)]" checked={!!role?.isAdmin || role?.permissions.includes("contacts.edit") || u.canEditContacts} disabled={pending || !!role?.isAdmin || !!role?.permissions.includes("contacts.edit")} onChange={(e) => start(async () => setMsg(await updateUser(u.id, { canEditContacts: e.target.checked })))} />Edit WhatsApp
       </label>
       <Popover align="right" trigger={<span className="inline-flex h-9 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2">Reset Password</span>}>
         <form action={pwAction} className="w-64 space-y-2 p-2">
@@ -130,7 +125,7 @@ function RolesTab({ roles }: { roles: R[] }) {
   return (
     <div className="space-y-4" data-testid="roles-tab">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-[14px] text-ink-2">Tick what each role may do. Everyone still sees the whole menu; a screen their role cannot open shows a Permission Denied page. <b className="font-semibold text-ink">Admin</b> always has everything.</p>
+        <p className="max-w-2xl text-[14px] text-ink-2">Choose which screens each role can open. Everyone still sees the whole menu; a screen their role cannot open shows a Permission Denied page. <b className="font-semibold text-ink">Admin</b> always has everything.</p>
         {!adding && <Button variant="primary" data-testid="new-role" onClick={() => setAdding(true)}><Plus className="size-4" />New Role</Button>}
       </div>
       {adding && (
@@ -146,7 +141,7 @@ function RolesTab({ roles }: { roles: R[] }) {
         <table className="w-full min-w-[720px] border-collapse text-[14px]">
           <thead>
             <tr className="border-b border-line bg-surface-2/50">
-              <th scope="col" className="sticky left-0 z-10 min-w-72 bg-surface-2/90 px-5 py-3 text-left text-[12px] font-semibold tracking-wide text-ink-3 uppercase">Permission{pending && <Loader2 className="ml-2 inline size-3.5 animate-spin" />}</th>
+              <th scope="col" className="sticky left-0 z-10 min-w-72 bg-surface-2/90 px-5 py-3 text-left text-[12px] font-semibold tracking-wide text-ink-3 uppercase">Screen{pending && <Loader2 className="ml-2 inline size-3.5 animate-spin" />}</th>
               {roles.map((r) => <RoleHeader key={r.id} r={r} roles={roles} />)}
             </tr>
           </thead>

@@ -14,8 +14,8 @@ const STATUS = z.enum(["not_started", "pending", "done", "skipped"]);
 
 /** Managers and owners may change any task; other team members only the tasks assigned to them. */
 async function mayEdit(user: SessionUser, taskId: string): Promise<boolean> {
-  if (can(user, "execution.assign")) return true;
-  if (!can(user, "execution.work")) return false;
+  if (can(user, "execution")) return true;
+  if (!can(user, "execution")) return false;
   const [r] = await q(sql`select 1 as x from ep_task_assignees where task_id = ${taskId}::uuid and user_id = ${user.id}::uuid`);
   return !!r;
 }
@@ -47,7 +47,7 @@ export async function setTaskStatus(taskId: string, status: string, note?: strin
 }
 
 export async function setTaskDue(taskId: string, due: string | null): Promise<R> {
-  const user = await requirePermission("execution.assign");
+  const user = await requirePermission("execution");
   const p = z.object({ id: Id, d: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable() }).safeParse({ id: taskId, d: due });
   if (!p.success) return { error: "Choose a valid date." };
   await q(sql`update ep_tasks set due_on = ${p.data.d}::date, updated_at = now() where id = ${p.data.id}::uuid`);
@@ -58,7 +58,7 @@ export async function setTaskDue(taskId: string, due: string | null): Promise<R>
 
 /** Replaces who handles a task. Several people may share one task. */
 export async function setTaskAssignees(taskId: string, userIds: string[]): Promise<R> {
-  const user = await requirePermission("execution.assign");
+  const user = await requirePermission("execution");
   const p = z.object({ id: Id, u: z.array(Id).max(12) }).safeParse({ id: taskId, u: userIds });
   if (!p.success) return { error: "Choose team members." };
   const ids = [...new Set(p.data.u)];
@@ -102,7 +102,7 @@ export async function addTaskComment(taskId: string, text: string): Promise<R> {
 
 /** Writes the plan again from the latest numbers. */
 export async function refreshPlan(): Promise<R & { created?: number; closed?: number }> {
-  await requirePermission("execution.assign");
+  await requirePermission("execution");
   const r = await syncPlan(true);
   refresh();
   return { ok: true, created: r.created, closed: r.closed };
@@ -110,7 +110,7 @@ export async function refreshPlan(): Promise<R & { created?: number; closed?: nu
 
 /** One page of the creators an action is about. Anyone signed in may look. */
 export async function getTaskCreators(taskId: string, offset: number, q: string, filter: "all" | "todo" | "done"): Promise<{ items: CreatorItem[]; total: number; contacted: number } | { error: string }> {
-  await requirePermission("execution.view");
+  await requirePermission("execution");
   const p = z.object({ id: Id, o: z.number().int().min(0).max(5000), q: z.string().trim().max(60), f: z.enum(["all", "todo", "done"]) }).safeParse({ id: taskId, o: offset, q, f: filter });
   if (!p.success) return { error: "Something is wrong with that request." };
   return listTaskCreators(p.data.id, { offset: p.data.o, limit: 50, q: p.data.q, filter: p.data.f });
@@ -135,7 +135,7 @@ export async function setCreatorsContacted(taskId: string, usernames: string[], 
 
 /** Every creator of an action as a CSV (for sharing with the team or a WhatsApp broadcast tool). */
 export async function exportTaskCreators(taskId: string): Promise<{ csv: string; name: string } | { error: string }> {
-  await requirePermission("execution.view");
+  await requirePermission("execution");
   const p = Id.safeParse(taskId);
   if (!p.success) return { error: "Something is wrong with that request." };
   const [t] = await q(sql`select title, product_key from ep_tasks where id = ${p.data}::uuid`);
@@ -150,7 +150,7 @@ export async function exportTaskCreators(taskId: string): Promise<{ csv: string;
 
 /** Several tasks at once (managers and owners): add people, set a status, set a due date. */
 export async function bulkUpdateTasks(ids: string[], patch: { status?: string; addAssignees?: string[]; due?: string | null }): Promise<R & { count?: number }> {
-  const user = await requirePermission("execution.assign");
+  const user = await requirePermission("execution");
   const p = z.object({
     ids: z.array(Id).min(1).max(200),
     patch: z.object({ status: STATUS.optional(), addAssignees: z.array(Id).max(12).optional(), due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() }),
@@ -182,7 +182,7 @@ export async function bulkUpdateTasks(ids: string[], patch: { status?: string; a
 
 /** Puts tasks back exactly as they were (status, people, due date). Used by Undo after a bulk change. */
 export async function restoreTasks(items: { id: string; status: string; due: string | null; assignees: string[] }[]): Promise<R & { count?: number }> {
-  const user = await requirePermission("execution.assign");
+  const user = await requirePermission("execution");
   const p = z.array(z.object({ id: Id, status: STATUS, due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), assignees: z.array(Id).max(12) })).min(1).max(200).safeParse(items);
   if (!p.success) return { error: "Nothing to undo." };
   let count = 0;
@@ -214,7 +214,7 @@ export async function contactCreatorEverywhere(username: string, on: boolean): P
   const user = await requireUser();
   const p = z.string().min(1).max(80).safeParse(username);
   if (!p.success) return { error: "Choose a creator." };
-  const mine = can(user, "execution.assign") ? sql`` : sql`and exists (select 1 from ep_task_assignees x where x.task_id = t.id and x.user_id = ${user.id}::uuid)`;
+  const mine = can(user, "execution") ? sql`` : sql`and exists (select 1 from ep_task_assignees x where x.task_id = t.id and x.user_id = ${user.id}::uuid)`;
   const hit = await q(on
     ? sql`update ep_task_creators tc set contacted_at = now(), contacted_by = ${user.id}::uuid from ep_tasks t where t.id = tc.task_id and tc.username = ${p.data} and tc.contacted_at is null and t.status in ('not_started', 'pending') ${mine} returning tc.task_id::text as id`
     : sql`update ep_task_creators tc set contacted_at = null, contacted_by = null from ep_tasks t where t.id = tc.task_id and tc.username = ${p.data} and tc.contacted_at is not null and t.status in ('not_started', 'pending') ${mine} returning tc.task_id::text as id`);

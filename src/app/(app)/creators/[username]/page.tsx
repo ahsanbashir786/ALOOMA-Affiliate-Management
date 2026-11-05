@@ -51,9 +51,9 @@ const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }
 const Td = ({ children, right, className }: { children?: React.ReactNode; right?: boolean; className?: string }) => <td className={cn("px-3 py-2.5 align-top text-[14px] text-ink", right && "tnum text-right", className)}>{children}</td>;
 
 export default async function CreatorProfilePage({ params }: PageProps<"/creators/[username]">) {
-  const { user, denied } = await gate("affiliates.view", "Affiliate Data");
+  const { user, denied } = await gate("creators", "Affiliate Data");
   if (denied) return denied;
-  const canAct = can(user, "affiliates.work");
+  const canAct = can(user, "creators");
   const username = decodeURIComponent((await params).username);
   const [p, staff] = await Promise.all([getCreatorProfile(username), getStaff()]);
   if (!p) notFound();

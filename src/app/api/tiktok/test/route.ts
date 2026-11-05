@@ -10,7 +10,7 @@ type Check = { name: string; ok: boolean; message: string; count: number | null 
 /** Connection check: asks TikTok for the shop, one order, one product and one affiliate order, and says whether each answered. Never returns the data itself. */
 export async function POST() {
   const user = await getCurrentUser();
-  if (!user || !can(user, "tiktok.manage")) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
+  if (!user || !can(user, "settings")) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
   const run = async (name: string, path: string, o: Parameters<typeof callApi>[1], pick: (d: Record<string, unknown>) => unknown): Promise<Check> => {
     await new Promise((r) => setTimeout(r, 350)); // stay under TikTok's shared rate limit
     try {

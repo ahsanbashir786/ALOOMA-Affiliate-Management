@@ -10,10 +10,10 @@ A web app for running a TikTok Shop affiliate programme. Everything comes from t
 | **Affiliate Data** | Every creator with a line per product, status and action, owner, and contacted tracking. Creator profile and side panel. Excel export. |
 | **Product Analysis** | Is each of the 13 products growing or slipping, and why (new, recent or old content, LIVE, creators, samples, returns). |
 | **Data Sync** | Pulls orders, products, videos, LIVEs, sample requests and returns from TikTok on a schedule. Shows what is fresh and what failed. |
-| **Users & Roles** | Add people, give each a role, and choose what every role can open or do. Admin always has everything. Screens without permission stay in the menu with a lock and show a Permission Denied page. |
+| **Users & Roles** | Add people, give each a role, and choose which of the six screens every role can open. Admin always has everything. Screens without permission stay in the menu with a lock and show a Permission Denied page. |
 | **Settings** | The TikTok connection and connection test. |
 
-Roles: **admin** (everything), **affiliate manager** (assign work, sync data), **viewer** (works on the actions assigned to them). WhatsApp numbers are personal data: only admins and people ticked "Can edit WhatsApp" can edit them.
+Roles are made in the app (Users & Roles). The only built-in role is **Admin**, which always opens every screen. For any other role you choose which of the six screens it can open; that is the only permission.
 
 More: [System map](docs/SYSTEM-MAP.md) · [Execution Plan](docs/EXECUTION-PLAN.md) · [Affiliate Data](docs/CREATORS.md) · [Product Analysis](docs/PRODUCTS.md) · [TikTok connection](docs/TIKTOK-API.md) · [Deploy](docs/DEPLOY.md)
 

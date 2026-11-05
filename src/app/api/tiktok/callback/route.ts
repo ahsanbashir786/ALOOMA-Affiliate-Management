@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     return res;
   };
   const user = await getCurrentUser();
-  if (!user || !can(user, "tiktok.manage")) return NextResponse.redirect(new URL("/login", request.url));
+  if (!user || !can(user, "settings")) return NextResponse.redirect(new URL("/login", request.url));
   const sp = new URL(request.url).searchParams;
   const code = sp.get("code");
   const state = sp.get("state");

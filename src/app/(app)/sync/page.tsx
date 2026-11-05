@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Data Sync" };
 export const dynamic = "force-dynamic";
 
 export default async function SyncPage() {
-  const { user, denied } = await gate("sync.view", "Data Sync");
+  const { user, denied } = await gate("sync", "Data Sync");
   if (denied) return denied;
   const [ov, conn] = await Promise.all([syncOverview(), connectionInfo()]);
   return (
@@ -20,7 +20,7 @@ export default async function SyncPage() {
           {conn.connected && <p className="mt-0.5 text-[14px] text-ink-3">{[conn.shopName ?? conn.sellerName, conn.region].filter(Boolean).join(" · ")}</p>}
         </div>
       </div>
-      <SyncBoard initial={ov} connected={conn.connected} canAdmin={can(user, "tiktok.manage")} canRun={can(user, "sync.run")} serverNow={ov.now} />
+      <SyncBoard initial={ov} connected={conn.connected} canAdmin={can(user, "settings")} canRun={can(user, "sync")} serverNow={ov.now} />
     </div>
   );
 }
