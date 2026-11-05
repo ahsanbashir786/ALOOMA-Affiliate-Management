@@ -24,6 +24,10 @@ export type ProductAnalysis = {
   ageCurve: { band: string; sales: number; contents: number }[];
   newContent: { now: NewContent; prev: NewContent };
   creators: CreatorRow[];
+  /** Up to 60 creators who sold this product in the period or the one before (the Execution Plan names people from this). */
+  creatorsAll: CreatorRow[];
+  /** Delivered samples of this product, 14+ days old, with no video and no sale since (last 120 days). */
+  unposted: { creator: string; givenOn: string; days: number }[];
   creatorStats: { active: Pair; fresh: number; quiet: number; top1: number; top3: number; top10: number };
   samples: { now: Funnel; prev: Funnel };
   quality: { lines: Pair; reasons: { reason: string; n: number }[] };
@@ -196,6 +200,18 @@ async function compute(period: Period, ref: string | null): Promise<Analysis> {
     return { sent: list.length, delivered, posted, sold, notPosted, salesPerSample: list.length ? pay / list.length : null, medianDays: median(days) };
   };
 
+  const unposted = (pk: string) => {
+    const acc = A(pk);
+    const out: { creator: string; givenOn: string; days: number }[] = [];
+    for (const s of samplesBy.get(pk) ?? []) {
+      const days = daysBetweenISO(s.given_on, period.end);
+      if (!s.delivered || s.has_video || days < 14 || days > 120) continue;
+      if (acc.salesLines.some((x) => x.creator === s.creator && x.day >= s.given_on)) continue;
+      out.push({ creator: s.creator, givenOn: s.given_on, days });
+    }
+    return out.sort((x, y) => x.days - y.days).slice(0, 40);
+  };
+
   const keys = [...PRODUCTS.map((p) => p.key as string), ...[...accs.keys()].filter((k) => k === UNMAPPED)].sort((a, b) => productRank(a) - productRank(b));
   const reasonBy = new Map<string, { reason: string; n: number }[]>();
   for (const r of reasons) (reasonBy.get(r.pk) ?? reasonBy.set(r.pk, []).get(r.pk)!).push({ reason: r.reason, n: r.n });
@@ -237,6 +253,8 @@ async function compute(period: Period, ref: string | null): Promise<Analysis> {
       ageCurve: AGE_BANDS.map((x, i) => ({ band: x.band, sales: a.age[i].sales, contents: a.age[i].ids.size })),
       newContent: { now: nowC, prev: prevC },
       creators: creators.slice(0, 10),
+      creatorsAll: creators.slice(0, 60),
+      unposted: unposted(pk),
       creatorStats: { active: { now: a.creators.now.size, prev: a.creators.prev.size }, fresh: fresh.length, quiet: creators.filter((c) => c.prev > 0 && c.now <= c.prev * 0.2).length, top1: topShare(1), top3: topShare(3), top10: topShare(10) },
       samples: { now: funnel(pk, period.start, period.end), prev: funnel(pk, period.prevStart, period.prevEnd) },
       quality: { lines: a.bad, reasons: (reasonBy.get(pk) ?? []).sort((x, y) => y.n - x.n).slice(0, 5) },

@@ -14,7 +14,7 @@ import { CreatorPanelProvider } from "@/components/creator/creator-panel";
 const MENU_KEY = "menu-collapsed";
 const subscribeMenu = (cb: () => void) => { window.addEventListener(MENU_KEY, cb); return () => window.removeEventListener(MENU_KEY, cb); };
 const readMenu = () => { try { return localStorage.getItem(MENU_KEY) === "1"; } catch { return false; } };
-const NO_PERIOD = ["/data", "/settings", "/today", "/progress", "/sync", "/creators", "/products"];
+const NO_PERIOD = ["/data", "/settings", "/today", "/progress", "/sync", "/creators", "/products", "/execution"];
 
 export function AppShell({
   user,

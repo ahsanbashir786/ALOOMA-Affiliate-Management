@@ -6,6 +6,7 @@ import {
   Gauge,
   History,
   LayoutDashboard,
+  ListChecks,
   LineChart,
   Package,
   RefreshCw,
@@ -47,6 +48,7 @@ export const NAV: NavGroup[] = [
   {
     label: "Affiliates",
     items: [
+      { href: "/execution", label: "Execution Plan", icon: ListChecks, also: ["/execution/"] },
       { href: "/creators", label: "Creators", icon: Users, also: ["/creators/"] },
       { href: "/products", label: "Products", icon: Package, also: ["/products/"] },
       { href: "/today", label: "Daily Actions", icon: ClipboardList, badge: "actions" },

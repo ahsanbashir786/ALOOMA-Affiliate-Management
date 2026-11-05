@@ -961,3 +961,44 @@ export const productMap = pgTable("product_map", {
   productKey: text("product_key").notNull(),
   updatedAt: tz("updated_at").notNull().defaultNow(),
 });
+
+// Mirrors migrations/0014: the Execution Plan (tasks written from the product analysis)
+export const epTasks = pgTable("ep_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fingerprint: text("fingerprint").notNull(),
+  productKey: text("product_key").notNull(),
+  category: text("category").notNull(),
+  kind: text("kind").notNull(),
+  priority: integer("priority").notNull().default(2),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  steps: jsonb("steps").notNull().default(sql`'[]'::jsonb`),
+  stepsDone: jsonb("steps_done").notNull().default(sql`'[]'::jsonb`),
+  creators: jsonb("creators").notNull().default(sql`'[]'::jsonb`),
+  evidence: jsonb("evidence").notNull().default(sql`'{}'::jsonb`),
+  impactRm: numeric("impact_rm").notNull().default("0"),
+  status: text("status").notNull().default("not_started"),
+  dueOn: date("due_on", { mode: "string" }),
+  closedReason: text("closed_reason"),
+  createdAt: tz("created_at").notNull().defaultNow(),
+  updatedAt: tz("updated_at").notNull().defaultNow(),
+  completedAt: tz("completed_at"),
+}, (t) => [uniqueIndex("ep_tasks_open_fingerprint").on(t.fingerprint).where(sql`status in ('not_started', 'pending')`), index("ep_tasks_product").on(t.productKey, t.status)]);
+export const epTaskAssignees = pgTable("ep_task_assignees", {
+  taskId: uuid("task_id").notNull().references(() => epTasks.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assignedBy: uuid("assigned_by").references(() => users.id, { onDelete: "set null" }),
+  assignedAt: tz("assigned_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.taskId, t.userId] })]);
+export const epEvents = pgTable("ep_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  taskId: uuid("task_id").notNull().references(() => epTasks.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  kind: text("kind").notNull(),
+  text: text("text"),
+  createdAt: tz("created_at").notNull().defaultNow(),
+});
+export const epProductLeads = pgTable("ep_product_leads", {
+  productKey: text("product_key").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+}, (t) => [primaryKey({ columns: [t.productKey, t.userId] })]);
