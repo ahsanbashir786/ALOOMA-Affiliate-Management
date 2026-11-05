@@ -3,20 +3,23 @@ import { createHash, randomBytes } from "node:crypto";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { rolePermissions, roles, sessions, users } from "@/db/schema";
 import { PERMISSIONS, SCREEN_PERMISSION, type PermissionKey } from "@/lib/permissions";
 
 export const SESSION_COOKIE = "ams_session";
-const SESSION_DAYS = 14;
+/** A session lasts one hour after the person's last activity; after that they sign in again. */
+const SESSION_MINUTES = 60;
+const sessionEnd = () => new Date(Date.now() + SESSION_MINUTES * 60_000);
 
 
 const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
 
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
+  const expiresAt = sessionEnd();
+  await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
   await db.insert(sessions).values({ tokenHash: hashToken(token), userId, expiresAt });
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
   const jar = await cookies();
@@ -26,7 +29,7 @@ export async function createSession(userId: string) {
     // HTTPS-only cookie in production. Set COOKIE_SECURE=false only for a temporary plain-http test by IP address.
     secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : process.env.NODE_ENV === "production",
     path: "/",
-    expires: expiresAt,
+    // No fixed expiry on the cookie: the database decides, and slides forward while the person is working.
   });
 }
 
@@ -51,16 +54,18 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const [row] = await db
-    .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, role: roles.key, roleName: roles.name, isAdmin: roles.isAdmin })
+    .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, role: roles.key, roleName: roles.name, isAdmin: roles.isAdmin, expiresAt: sessions.expiresAt })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(roles, eq(roles.id, users.roleId))
     .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date()), eq(users.active, true)))
     .limit(1);
   if (!row) return null;
+  // Working keeps you signed in: push the end forward (at most once every 5 minutes).
+  if (row.expiresAt.getTime() - Date.now() < (SESSION_MINUTES - 5) * 60_000) await db.update(sessions).set({ expiresAt: sessionEnd() }).where(eq(sessions.tokenHash, hashToken(token)));
   const perms = row.isAdmin ? PERMISSIONS.map((p) => p.key) : (await db.select({ p: rolePermissions.permission }).from(rolePermissions).where(eq(rolePermissions.roleId, row.roleId))).map((x) => x.p as PermissionKey);
-  const { roleId: _roleId, ...rest } = row;
-  void _roleId;
+  const { roleId: _roleId, expiresAt: _exp, ...rest } = row;
+  void _roleId; void _exp;
   return { ...rest, permissions: perms };
 });
 
