@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { can, getCurrentUser } from "@/lib/auth";
 import { connectionInfo } from "@/lib/tiktok/client";
-import { DATASETS, runAll, runDataset, syncOverview, trustCheck, type DatasetKey } from "@/lib/tiktok/sync";
+import { DATASETS, runAll, runDataset, syncOverview, type DatasetKey } from "@/lib/tiktok/sync";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -10,8 +10,7 @@ export const maxDuration = 300;
 export async function GET() {
   const user = await getCurrentUser();
   if (!user || !can(user, "manager")) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
-  const [ov, trust] = await Promise.all([syncOverview(), trustCheck()]);
-  return NextResponse.json({ ...ov, trust }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json(await syncOverview(), { headers: { "cache-control": "no-store" } });
 }
 
 /** "Sync now": starts the sync in the background and answers at once; the screen follows progress through GET. */

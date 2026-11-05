@@ -60,3 +60,7 @@ Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).
 | Affiliate Sample Requests | Creators' requests for free samples (status, creator, product, SKU) |
 | Return Orders / Cancelled Orders | Return and refund requests / cancellations |
 | Shop Performance | Shop totals, one row per day (sales, orders, buyers, units, refunds, page views) |
+
+## Data Sync screen: history and health
+- **Sync history** groups the runs: one line per sync (Full sync, or the one dataset a card's button synced), who started it (Automatic or a name), when, how long it took, and the result (records updated, skipped, failed). Open a line to see every dataset in it.
+- **Data health** replaces the old "Trust check" (which compared the API with uploaded files; uploads are no longer part of the plan). It says whether any dataset failed or is over a day old, how far the order data reaches, whether TikTok skipped records, and whether auto-sync is on.
