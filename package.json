@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test:tiktok": "tsx --conditions=react-server scripts/test-tiktok.ts",
     "test:sync": "tsx --conditions=react-server scripts/test-sync.ts",
-    "test:creators": "tsx --conditions=react-server scripts/test-creators.ts"
+    "test:creators": "tsx --conditions=react-server scripts/test-creators.ts",
+    "diag:creator": "tsx --env-file=.env --conditions=react-server scripts/diag-creator.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
