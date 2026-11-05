@@ -5,6 +5,7 @@ import { dayKL, fmtDayLabel, addDaysISO, daysBetweenISO, weekStartISO } from "@/
 import type { DirRow } from "@/lib/workflow/directory";
 import { loadCreatorRows, POST_WINDOW_DAYS, productName } from "./load";
 import { kd, TL } from "./sql";
+import { isOverdueStatus, isShippedStatus } from "./sample-status";
 
 export type SampleResult = "posted" | "waiting" | "not_posted" | "pending" | "closed";
 export type ProfileSample = {
@@ -99,10 +100,10 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
   const nowDay = dayKL(Date.now());
   const sampleList: ProfileSample[] = samples.map((s) => {
     const st = (s.status ?? "").toUpperCase();
-    const dead = /(REJECT|EXPIRE|CANCEL)/.test(st) || (s.ostatus ?? "").toUpperCase() === "CANCELLED";
+    const dead = !isShippedStatus(st) || (s.ostatus ?? "").toUpperCase() === "CANCELLED";
     const postBy = s.dlv ? addDaysISO(s.dlv, POST_WINDOW_DAYS) : null;
-    const result: SampleResult = dead ? "closed" : !s.order_id ? "pending" : s.has_post ? "posted" : postBy && postBy < nowDay ? "not_posted" : "waiting";
-    const stage = dead ? (/REJECT/.test(st) ? "Declined" : /EXPIRE/.test(st) ? "Request expired" : "Cancelled") : !s.order_id ? (s.approvable ? "Waiting for your decision" : "Requested") : s.dlv ? "Delivered" : "On the way";
+    const result: SampleResult = dead ? "closed" : !s.order_id ? "pending" : s.has_post ? "posted" : s.dlv && (isOverdueStatus(st) || (postBy && postBy < nowDay)) ? "not_posted" : "waiting";
+    const stage = dead ? (/REJECT/.test(st) ? "Declined" : /EXPIRE/.test(st) ? "Request expired" : "Cancelled") : !s.order_id ? (s.approvable ? "Waiting for your decision" : "Requested") : s.dlv ? (isOverdueStatus(st) ? "Delivered · overdue on TikTok" : "Delivered") : "On the way";
     return { id: s.id, product: productName(s.title), sku: s.sku, requestedOn: s.req, shippedOn: s.ship, deliveredOn: s.dlv, postByOn: postBy, result, stage, daysToPost: result === "posted" && s.first_post && s.dlv ? Math.max(0, daysBetweenISO(s.dlv, s.first_post)) : null };
   });
 

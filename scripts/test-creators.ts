@@ -26,6 +26,12 @@ async function main() {
   check("score: posting counts – no posts earns 0, 4 posts half, 8+ full", creatorScore({ ...base, posts28: 0 }).parts.posting === 0 && creatorScore({ ...base, posts28: 4 }).parts.posting === 13 && creatorScore({ ...base, posts28: 20 }).parts.posting === 25);
   check("score: explains itself", /Sales \d+\/35 · Posting \d+\/25 · Reliability \d+\/15 · Consistency \d+\/15 · Reach \d+\/10/.test(top.why));
 
+  // ── sample status (pure) ──
+  const { isShippedStatus, isOverdueStatus } = await import("../src/lib/creators/sample-status");
+  check("status: COMPLETED and UNFULFILL_CANCELLED (Overdue) were shipped; rejected, expired and cancelled were not",
+    isShippedStatus("COMPLETED") && isShippedStatus("UNFULFILL_CANCELLED") && isShippedStatus("APPROVED") && !isShippedStatus("REJECTED") && !isShippedStatus("EXPIRED") && !isShippedStatus("CANCELLED") && !isShippedStatus("CANCELED"));
+  check("status: only UNFULFILL_* is TikTok's Overdue", isOverdueStatus("UNFULFILL_CANCELLED") && !isOverdueStatus("COMPLETED") && !isOverdueStatus("CANCELLED"));
+
   // ── params ──
   const pp = parseCreatorParams({ from: "2026-01-05", to: "2026-02-10", owner: "none", tier: "Gold", sort: "score", samples: "with", status: "Winner", action: "todo", bogus: "x" });
   check("params: parsed", pp.source === "synced" && pp.owner === "none" && pp.tier === "Gold" && pp.sort === "score" && pp.samples === "with" && pp.range?.start === "2026-01-05" && pp.range?.end === "2026-02-10" && pp.from === "2026-01-05", JSON.stringify(pp));
@@ -68,6 +74,12 @@ async function main() {
   await q(sql`insert into tt_videos (video_id, creator, title, posted_at, views, gmv, units_sold, products) values ('V1', 'zz_c_posted', 'Selimut review', ${ago(20)}, 5000, 0, 0, ${JSON.stringify([{ id: "2222222", name: "Selimut" }])}::jsonb)`);
   await req("R4", "zz_c_req", "2222222", "PENDING", null, 300);
   await req("R5", "zz_c_rej", "2222222", "REJECTED", null, 300);
+  // Overdue on TikTok (UNFULFILL_CANCELLED): shipped and delivered, decided by OUR evidence
+  await req("R6", "zz_c_over", "2222222", "UNFULFILL_CANCELLED", "SO6", 900); await sampleOrder("SO6", 40);
+  await req("R7", "zz_c_over_new", "2222222", "UNFULFILL_CANCELLED", "SO7", 900); await sampleOrder("SO7", 3);
+  await req("R8", "zz_c_over_sold", "2222222", "UNFULFILL_CANCELLED", "SO8", 900); await sampleOrder("SO8", 40);
+  await line("zz_c_over_sold", 10, "2222222", 69, 2);
+  await req("R9", "zz_c_cancelled", "2222222", "CANCELLED", "SO9", 900); await sampleOrder("SO9", 40);
   await q(sql`insert into tt_videos (video_id, creator, title, posted_at, products) values ('V2', 'zz_c_new', 'hello', ${ago(10)}, '[]'::jsonb)`);
   await q(sql`insert into tt_lives (live_id, creator, title, started_at, ended_at, gmv, items_sold, viewers) values ('L1', 'zz_c_star', 'Live!', ${ago(4)}, ${ago(4, 14)}, 400, 5, 900)`);
 
@@ -92,6 +104,11 @@ async function main() {
   check("samples: a video of the product after delivery → Posted / Coach", ps.status === "Posted" && ps.action === "Coach" && ps.videos === 1, `${ps.status}/${ps.action}/${ps.videos}`);
   check("samples: a pending request is counted, not turned into a line", by("zz_c_req")!.extra!.requestsOpen === 1 && by("zz_c_req")!.lines.every((l) => !l.sampled));
   check("samples: a declined request is not a sample", by("zz_c_rej")!.lines.every((l) => !l.sampled) && by("zz_c_rej")!.extra!.requestsOpen === 0);
+  const ov1 = line1("zz_c_over", "2222222")!, ov2 = line1("zz_c_over_new", "2222222")!, ov3 = line1("zz_c_over_sold", "2222222")!;
+  check("overdue on TikTok (UNFULFILL_CANCELLED), delivered, nothing found → a shipped sample, Silent / Chase", ov1?.sampled === true && ov1.status === "Silent" && ov1.action === "Chase", `${ov1?.sampled}/${ov1?.status}/${ov1?.action}`);
+  check("overdue on TikTok even inside 14 days is still not posted without evidence", ov2?.sampled === true && ov2.status === "Silent", `${ov2?.status}`);
+  check("overdue on TikTok but she sold the product after delivery → posted, not Silent", ov3?.sampled === true && ov3.status !== "Silent" && ov3.orders === 1, `${ov3?.status}/${ov3?.orders}`);
+  check("a cancelled request is not a sample", by("zz_c_cancelled")!.lines.every((l) => !l.sampled));
   check("creator with only a video is New / Approach", by("zz_c_new")!.lines[0].status === "New" && by("zz_c_new")!.lines[0].action === "Approach");
   check("followers and TikTok creator GMV come from sample requests", by("zz_c_silent")!.extra!.followers === 12000 && by("zz_c_silent")!.extra!.creatorGmv === 9000);
   check("lines: product names are short listing names", line1("zz_c_star", "1111111")!.name === "Mattress Protector · Waterproof", line1("zz_c_star", "1111111")!.name);
@@ -148,6 +165,9 @@ async function main() {
   // ── profile ──
   const pr = (await getCreatorProfile("zz_c_silent"))!;
   check("profile: samples with stage and result", pr.samples.length === 1 && pr.samples[0].result === "not_posted" && pr.samples[0].stage === "Delivered" && pr.samples[0].postByOn !== null, JSON.stringify(pr.samples));
+  const pov = (await getCreatorProfile("zz_c_over"))!;
+  check("profile: overdue sample says so and is Not posted", pov.samples[0].result === "not_posted" && pov.samples[0].stage === "Delivered · overdue on TikTok", JSON.stringify(pov.samples[0]));
+  check("profile: overdue sample with sales after delivery is Posted", (await getCreatorProfile("zz_c_over_sold"))!.samples[0].result === "posted");
   check("profile: pending and declined requests are shown too", (await getCreatorProfile("zz_c_req"))!.samples[0].result === "pending" && (await getCreatorProfile("zz_c_rej"))!.samples[0].result === "closed");
   const ps2 = (await getCreatorProfile("zz_c_posted"))!;
   check("profile: posted sample knows days to post", ps2.samples[0].result === "posted" && ps2.samples[0].daysToPost !== null && ps2.videos.length === 1);

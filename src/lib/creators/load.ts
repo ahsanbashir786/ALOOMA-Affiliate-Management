@@ -9,6 +9,7 @@ import { getCommitments } from "@/lib/workflow/commitments";
 import type { DirLine, DirRow } from "@/lib/workflow/directory";
 import { creatorScore } from "./score";
 import { kd, TL } from "./sql";
+import { SAMPLE_OVERDUE_SQL, SAMPLE_SHIPPED_SQL } from "./sample-status";
 
 /** A sample is "late" this many days after it was delivered with nothing posted. */
 export const POST_WINDOW_DAYS = 14;
@@ -111,9 +112,9 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
         (count(*) filter (where x.res = 'not_posted'))::int as not_posted,
         (count(*) filter (where x.res = 'posted'))::int as posted
       from (
-        select y.*, case when y.has_post then 'posted' when y.dlv is not null and y.dlv + interval '${sql.raw(String(POST_WINDOW_DAYS))} days' < now() then 'not_posted' else 'waiting' end as res
+        select y.*, case when y.has_post then 'posted' when y.dlv is not null and (y.overdue or y.dlv + interval '${sql.raw(String(POST_WINDOW_DAYS))} days' < now()) then 'not_posted' else 'waiting' end as res
         from (
-          select r.creator, r.product_id, r.product_title, r.sku_name, k.seller_sku,
+          select r.creator, r.product_id, r.product_title, r.sku_name, k.seller_sku, ${sql.raw(SAMPLE_OVERDUE_SQL)} as overdue,
             coalesce(o.delivered_at, case when o.status in ('DELIVERED', 'COMPLETED') then o.updated_at end) as dlv,
             (exists (select 1 from tt_videos v where v.creator = r.creator and v.posted_at >= coalesce(o.delivered_at, o.created_at, r.first_seen_at) - interval '1 day'
                      and v.products @> jsonb_build_array(jsonb_build_object('id', r.product_id)))
@@ -122,7 +123,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
           from tt_sample_requests r
           left join tt_orders o on o.order_id = r.order_id
           left join tt_skus k on k.sku_id = r.sku_id
-          where r.creator is not null and r.order_id is not null and coalesce(upper(r.status), '') !~ '(REJECT|EXPIRE|CANCEL)' and coalesce(upper(o.status), '') <> 'CANCELLED'
+          where r.creator is not null and r.order_id is not null and ${sql.raw(SAMPLE_SHIPPED_SQL)} and coalesce(upper(o.status), '') <> 'CANCELLED'
         ) y
       ) x group by x.creator, x.product_id`),
     rows<{ creator: string; nickname: string | null; followers: number | null; gmv: number | null; fulfil: number | null; open: number }>(sql`
