@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronRight, UserPlus } from "lucide-react";
-import { TagBadge } from "@/components/products/ui";
+import { ChevronRight } from "lucide-react";
 import { CATEGORIES } from "@/lib/execution/rules";
 import type { PlanData, TaskView } from "@/lib/execution/plan";
-import type { Tag } from "@/lib/products/diagnose";
 import { daysBetweenISO } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
-import { CATEGORY_COLOR, PeoplePicker, Person, PersonStack, Popover, ProductTile, productColor } from "./ui";
+import { CATEGORY_COLOR, Person } from "./ui";
 
 type Row = { id: string; name: string; role: string; open: number; notStarted: number; pending: number; done: number; overdue: number; rate: number; days: number | null; stake: number; won: number };
 
@@ -25,10 +22,9 @@ function stats(list: TaskView[], today: string) {
   };
 }
 
-export function TeamView({ tasks, data, canManage, today, onPick, onLeads }: {
-  tasks: TaskView[]; data: PlanData; canManage: boolean; today: string; onPick: (id: string) => void; onLeads: (productKey: string, ids: string[]) => void;
+export function TeamView({ tasks, data, today, onPick }: {
+  tasks: TaskView[]; data: PlanData; today: string; onPick: (id: string) => void;
 }) {
-  const [leads, setLeads] = useState<Record<string, string[]>>(data.leads);
   const real = tasks.filter((t) => t.status !== "skipped" && t.status !== "auto_closed");
   const rows: Row[] = [
     ...data.staff.map((s) => ({ id: s.id, name: s.name, role: s.role, ...stats(real.filter((t) => t.assignees.includes(s.id)), today) })),
@@ -83,27 +79,6 @@ export function TeamView({ tasks, data, canManage, today, onPick, onLeads }: {
             );
           })}
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-        <h2 className="text-[16px] font-semibold text-ink">Who Handles Which Product</h2>
-        <p className="mt-0.5 text-[13px] text-ink-3">{canManage ? "Choose one or more people for each product. New actions for the product go to them automatically." : "The people who look after each product."}</p>
-        <ul className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3" data-testid="leads">
-          {data.products.map((p) => {
-            const ids = leads[p.key] ?? [];
-            const openN = real.filter((t) => t.productKey === p.key && (t.status === "not_started" || t.status === "pending")).length;
-            return (
-              <li key={p.key} className="flex items-center gap-3 rounded-xl border border-line p-3" style={{ borderLeft: `4px solid ${productColor(p.key)}` }}><ProductTile k={p.key} size={32} />
-                <div className="min-w-0 flex-1"><p className="truncate text-[14px] font-semibold text-ink">{p.name}</p><p className="mt-1 flex items-center gap-2"><TagBadge tag={p.tag as Tag} /><span className="text-[12.5px] text-ink-3">{openN} open</span></p></div>
-                {canManage ? (
-                  <Popover align="right" testId={`lead-${p.key}`} trigger={<span className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-2 py-1.5 hover:bg-surface-2">{ids.length ? <PersonStack ids={ids} staff={data.staff} size={24} /> : <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-2"><UserPlus className="size-4" />Assign</span>}</span>}>
-                    <PeoplePicker staff={data.staff} value={ids} onChange={(next) => { setLeads((l) => ({ ...l, [p.key]: next })); onLeads(p.key, next); }} />
-                  </Popover>
-                ) : <PersonStack ids={ids} staff={data.staff} size={24} />}
-              </li>
-            );
-          })}
-        </ul>
       </section>
     </div>
   );

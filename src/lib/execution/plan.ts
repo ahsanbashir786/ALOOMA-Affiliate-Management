@@ -24,7 +24,7 @@ export type TaskView = {
 };
 export type ProductBrief = { key: string; name: string; tag: string; sales: number; change: number; changePct: number | null; fragile: boolean | null };
 export type Staff = { id: string; name: string; role: string };
-export type PlanData = { tasks: TaskView[]; products: ProductBrief[]; staff: Staff[]; leads: Record<string, string[]>; today: string; generatedAt: string | null };
+export type PlanData = { tasks: TaskView[]; products: ProductBrief[]; staff: Staff[]; today: string; generatedAt: string | null };
 
 const preview = (list: CreatorLine[]) => list.slice(0, 5).map((c) => ({ name: c.name, note: c.note }));
 
@@ -69,8 +69,6 @@ export async function syncPlan(force = false): Promise<{ created: number; update
       const limit = r.status === "skipped" ? COOLDOWN_SKIPPED : COOLDOWN_DONE;
       if (days < limit) cool.set(r.fingerprint as string, 1);
     }
-    const leads = new Map<string, string[]>();
-    for (const r of await q(sql`select product_key, user_id::text as uid from ep_product_leads`)) (leads.get(r.product_key as string) ?? leads.set(r.product_key as string, []).get(r.product_key as string)!).push(r.uid as string);
     const owners = new Map((await q(sql`select username, user_id::text as uid from creator_owners where user_id is not null`)).map((r) => [r.username as string, r.uid as string]));
 
     for (const d of drafts) {
@@ -92,8 +90,8 @@ export async function syncPlan(force = false): Promise<{ created: number; update
       created++;
       const tid = row.id as string;
       await saveCreators(q, tid, d.creators);
-      // Who handles it: the product's leads; otherwise the person who owns most of the creators named in it.
-      let who = leads.get(d.productKey) ?? [];
+      // Who handles it: the person who owns most of the creators named in it (a manager can change it).
+      let who: string[] = [];
       if (!who.length && d.creators.length) {
         const count = new Map<string, number>();
         for (const c of d.creators.slice(0, 200)) { const o = owners.get(c.name); if (o) count.set(o, (count.get(o) ?? 0) + 1); }
@@ -116,7 +114,7 @@ export async function syncPlan(force = false): Promise<{ created: number; update
 }
 
 export async function loadPlan(): Promise<PlanData> {
-  const [tasks, assignees, events, users, leads, counts, a, stamp] = await Promise.all([
+  const [tasks, assignees, events, users, counts, a, stamp] = await Promise.all([
     rows<{ id: string; product_key: string; category: string; kind: string; priority: number; title: string; summary: string; steps: string[]; steps_done: number[]; creators: { name: string; note: string }[]; evidence: Record<string, number | string>; impact: number; status: Status; due_on: string | null; closed_reason: string | null; created_at: string; updated_at: string; completed_at: string | null }>(sql`
       select id::text, product_key, category, kind, priority::int, title, summary, steps, steps_done, creators, evidence, impact_rm::float8 as impact, status,
         to_char(due_on, 'YYYY-MM-DD') as due_on, closed_reason, created_at::text, updated_at::text, completed_at::text
@@ -125,7 +123,6 @@ export async function loadPlan(): Promise<PlanData> {
     rows<{ id: number; task_id: string; user: string | null; kind: string; text: string | null; at: string }>(sql`
       select e.id::int, e.task_id::text, u.name as user, e.kind, e.text, e.created_at::text as at from ep_events e left join users u on u.id = e.user_id order by e.created_at, e.id`),
     rows<Staff>(sql`select id::text, name, role::text from users where active order by name`),
-    rows<{ product_key: string; user_id: string }>(sql`select product_key, user_id::text from ep_product_leads`),
     rows<{ task_id: string; n: number; c: number }>(sql`select task_id::text, count(*)::int as n, count(contacted_at)::int as c from ep_task_creators group by 1`),
     analyseProducts(),
     rows<{ value: unknown }>(sql`select updated_at::text as value from ep_tasks order by updated_at desc limit 1`),
@@ -135,8 +132,6 @@ export async function loadPlan(): Promise<PlanData> {
   const ev = new Map<string, TaskView["events"]>();
   for (const e of events) (ev.get(e.task_id) ?? ev.set(e.task_id, []).get(e.task_id)!).push({ id: e.id, user: e.user, kind: e.kind, text: e.text, at: e.at });
   const countOf = new Map(counts.map((c) => [c.task_id, c]));
-  const leadMap: Record<string, string[]> = {};
-  for (const l of leads) (leadMap[l.product_key] ??= []).push(l.user_id);
   const products: ProductBrief[] = PRODUCTS.map((p) => {
     const x = a.products.find((y) => y.key === p.key);
     return { key: p.key, name: p.name, tag: x?.diagnosis.tag ?? "No Sales", sales: x?.metrics.sales.now ?? 0, change: x?.diagnosis.change ?? 0, changePct: x?.diagnosis.changePct ?? null, fragile: x?.diagnosis.fragile ?? null };
@@ -147,7 +142,7 @@ export async function loadPlan(): Promise<PlanData> {
       steps: t.steps, stepsDone: t.steps_done, creators: t.creators, creatorCount: countOf.get(t.id)?.n ?? t.creators.length, contactedCount: countOf.get(t.id)?.c ?? 0, evidence: t.evidence, impactRm: t.impact, status: t.status,
       dueOn: t.due_on, closedReason: t.closed_reason, createdAt: t.created_at, updatedAt: t.updated_at, completedAt: t.completed_at, assignees: who.get(t.id) ?? [], events: ev.get(t.id) ?? [],
     })),
-    products, staff: users, leads: leadMap, today: todayKL(), generatedAt: (stamp[0]?.value as string | undefined) ?? null,
+    products, staff: users, today: todayKL(), generatedAt: (stamp[0]?.value as string | undefined) ?? null,
   };
 }
 

@@ -30,7 +30,7 @@ export function StatusPill({ status }: { status: Status }) {
   return <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12.5px] font-semibold whitespace-nowrap", m.cls)}><StatusIcon status={status} size={14} />{m.label}</span>;
 }
 
-const PRI = { 1: { l: "High", c: "text-critical" }, 2: { l: "Medium", c: "text-warn" }, 3: { l: "Low", c: "text-ink-3" } } as const;
+const PRI = { 1: { l: "High", c: "text-critical" }, 2: { l: "Medium", c: "text-warn" }, 3: { l: "Normal", c: "text-ink-3" } } as const;
 export function PriorityFlag({ p, label = false }: { p: 1 | 2 | 3; label?: boolean }) {
   return <span className={cn("inline-flex items-center gap-1 text-[12.5px] font-medium", PRI[p].c)} title={`${PRI[p].l} priority`}><Flag className="size-3.5" fill="currentColor" />{label && PRI[p].l}</span>;
 }
@@ -110,36 +110,7 @@ export function PeoplePicker({ staff, value, onChange, disabled }: { staff: Staf
   );
 }
 
-/** Each of the 13 products has its own colour and short code, so a product is recognised at a glance everywhere in the Execution Plan. */
-export const PRODUCT_STYLE: Record<string, { color: string; code: string }> = {
-  mp_nwp: { color: "#2563eb", code: "MP" },
-  mp_wp: { color: "#0891b2", code: "MPW" },
-  quilt: { color: "#7c3aed", code: "QC" },
-  pillows: { color: "#db2777", code: "PL" },
-  bs_nwp: { color: "#16a34a", code: "BS" },
-  bs_wp: { color: "#0d9488", code: "BSW" },
-  bs_nwp_set: { color: "#ca8a04", code: "BSS" },
-  bs_wp_set: { color: "#ea580c", code: "BWS" },
-  towel_cotton: { color: "#65a30d", code: "CT" },
-  towel_coral: { color: "#e11d48", code: "CF" },
-  mp_nwp_x: { color: "#4f46e5", code: "MPX" },
-  mp_wp_x: { color: "#0284c7", code: "MWX" },
-  pillow_protectors: { color: "#c026d3", code: "PP" },
-};
-export const productColor = (key: string) => PRODUCT_STYLE[key]?.color ?? "var(--ink-3)";
-/** A tinted background in the product's colour (works in light and dark). */
-export const productTint = (key: string, pct = 9) => `color-mix(in srgb, ${productColor(key)} ${pct}%, transparent)`;
-
-export function ProductTile({ k, size = 32 }: { k: string; size?: number }) {
-  const s = PRODUCT_STYLE[k];
-  return <span aria-hidden className="inline-flex shrink-0 items-center justify-center rounded-lg font-bold tracking-tight text-white select-none" style={{ width: size, height: size, background: productColor(k), fontSize: Math.round(size * (s && s.code.length > 2 ? 0.3 : 0.38)) }}>{s?.code ?? "?"}</span>;
-}
-/** The product's name with its colour dot, for rows that are not grouped by product. */
-export function ProductChip({ k, name, className }: { k: string; name: string; className?: string }) {
-  return (
-    <span className={cn("inline-flex max-w-full items-center gap-1.5 rounded-md py-0.5 pr-2 pl-1 text-[12.5px] font-medium text-ink", className)} style={{ background: productTint(k, 12) }} title={name}>
-      <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-0.5 text-[9px] font-bold text-white" style={{ background: productColor(k) }}>{PRODUCT_STYLE[k]?.code ?? "?"}</span>
-      <span className="truncate">{name}</span>
-    </span>
-  );
+/** The product's name as a plain chip, for rows that are not grouped by product. */
+export function ProductChip({ name, className }: { name: string; className?: string }) {
+  return <span className={cn("inline-flex max-w-full items-center rounded-md border border-line-strong bg-surface px-2 py-0.5 text-[12.5px] font-medium text-ink-2", className)} title={name}><span className="truncate">{name}</span></span>;
 }

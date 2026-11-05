@@ -33,17 +33,17 @@ Every creator an action is about is stored (not only a few). Open the action to 
 
 History used: all sales ever (not only the last two periods), so a creator who sold well months ago but went quiet is found.
 
-Priority = how much money is at stake compared with the product's sales (10%+ High, 3%+ Medium, else Low). Due: High 3 days, Medium 7, Low 14.
+Priority = how much money is at stake compared with the product's sales (10%+ High, 3%+ Medium, else Normal). Due: High 3 days, Medium 7, Low 14.
 
 ## Life of a task
 - One open task per problem (`ep_tasks_open_fingerprint`). While open, the system only refreshes its numbers, never makes a copy.
 - Status: Not Started (default), Pending, Done. Also Not Needed (with a reason) and Solved (the system closed it because the numbers improved).
 - A finished task is not written again for 14 days; a Not Needed one for 30 days.
-- Who handles it: the product's leads (set in Team view); else the owner of most of the creators named; else nobody. Several people can share one task.
+- Who handles it: the owner of most of the creators named, else nobody until a manager assigns it. Several people can share one task.
 - The plan is refreshed when the numbers change (checked on page open) and with Update Plan.
 
 ## Screen
-Progress strip and numbers · List (group by Product, Category, Status, Person, Due Date, Priority) · Board · Team (performance per person, progress by category, who handles which product) · right-side panel with why, checklist, creators with ready Malay/English messages, notes and history · filters, search, keyboard (arrows, Esc).
+Progress strip and numbers · List (group by Product, Category, Status, Person, Due Date, Priority) · Board · Team (performance per person, progress by category). Each product is its own card with a dark header. · right-side panel with why, checklist, creators with ready Malay/English messages, notes and history · filters, search, keyboard (arrows, Esc).
 
 ## Permissions
 Owner and manager: everything. Other team members: only tasks assigned to them (status, checklist, notes).
@@ -53,7 +53,7 @@ Owner and manager: everything. Other team members: only tasks assigned to them (
 Migrations: `0014_execution_plan.sql`, `0015_execution_creators.sql` (run `npm run db:migrate`).
 
 ## Working in it
-- Team members start on **My Work** (their open actions, grouped by due date). Owners and managers start on **All Work**, with a **Needs Attention** strip (actions with nobody, overdue, products with no lead).
-- Quick views: My Work, All Work, Unassigned, Overdue, High Priority. Filters, search, group by.
-- Managers: tick several actions and assign, set status or due date at once; click the assigned people in a row to change them; choose each product's lead in its group header.
+- Team members start on **My Work** (their open actions, grouped by due date). Owners and managers start on **All Work**, with a **Needs Attention** strip (actions with nobody, overdue).
+- Quick views: My Work, All Work, Unassigned, Overdue. Priority filter: All, High, Medium, Normal, each with its number. Filters, search, group by.
+- Managers: tick several actions and assign, set status or due date at once; click the assigned people in a row to change them.
 - Marking Done or Not Needed shows an Undo for a few seconds.

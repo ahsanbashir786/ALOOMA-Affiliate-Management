@@ -80,11 +80,21 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   ok(await p.getByTestId("board").getByText("Not Started").first().isVisible(), "board: three status columns");
   await p.getByTestId("view-team").click(); await p.waitForSelector("[data-testid=team-view]");
   ok((await p.getByTestId("team-row").count()) >= 3, "team: a row for each person");
-  await p.getByTestId("lead-mp_wp").locator("button").first().click(); await p.getByRole("button", { name: /Siti Nur/ }).click(); await p.waitForTimeout(700);
-  ok(await p.getByTestId("lead-mp_wp").locator("span", { hasText: "SN" }).count() > 0, "team: a product can be given to a person");
   await p.keyboard.press("Escape");
   await p.getByTestId("team-row").filter({ hasText: "Siti Nur" }).first().click(); await p.waitForSelector("[data-testid=task-row], [data-testid=task-list]");
   ok(await p.getByTestId("filter-person").inputValue() !== "all", "team: clicking a person filters the list");
+  // priorities: High, Medium, Normal with their numbers
+  await p.getByTestId("view-list").click().catch(() => {}); await p.getByTestId("scope-all").click(); await p.waitForTimeout(300);
+  const pn = async (k) => Number((await p.getByTestId(`prio-${k}`).innerText()).replace(/\D+/g, ""));
+  const pAll = await pn("all"), pH = await pn("1"), pM = await pn("2"), pL = await pn("3");
+  ok(pH + pM + pL === pAll && pAll > 0, `priority: High ${pH} + Medium ${pM} + Normal ${pL} = All ${pAll}`);
+  ok((await p.getByTestId("prio-3").innerText()).includes("Normal"), "priority: the third level is called Normal");
+  await p.getByTestId("prio-1").click(); await p.waitForTimeout(400);
+  ok((await p.locator("[data-testid=task-row]").count()) === pH, "priority: High shows exactly the High actions");
+  await p.getByTestId("prio-2").click(); await p.waitForTimeout(400);
+  ok((await p.locator("[data-testid=task-row]").count()) === pM, "priority: Medium shows exactly the Medium actions");
+  await p.getByTestId("prio-all").click(); await p.waitForTimeout(300);
+  ok((await p.getByText(/^Lead$/).count()) === 0, "products: no Lead picker any more");
   // creators inside an action: full list, search, tick, video, message
   await p.getByTestId("view-list").click().catch(() => {}); await p.getByTestId("scope-all").click(); await p.getByTestId("group-by").selectOption("product"); await p.waitForTimeout(300);
   await p.locator("[data-testid=task-row][data-kind=lapsed_stars]").first().click(); await p.waitForSelector("[data-testid=creator-list]");
@@ -123,7 +133,7 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   await p.waitForTimeout(500);
   ok((await p.locator("[data-testid=task-row]", { hasText: u0 }).first().getByText("Unassigned").count()) === 1 && (await p.locator("[data-testid=task-row]", { hasText: u1 }).first().getByText("Unassigned").count()) === 1, "bulk: both actions are unassigned again after Undo");
   // product colours
-  ok((await p.locator("[data-testid=group]").first().locator("span", { hasText: /^(MP|MPW|QC|PL|BS|BSW|BSS|BWS|CT|CF|MPX|MWX|PP)$/ }).count()) >= 1, "products: each product has its colour tile");
+  ok((await p.locator("[data-testid=group]").count()) >= 3, "products: each product is its own card");
   await p.getByTestId("group-by").selectOption("category"); await p.waitForTimeout(300);
   ok((await p.locator("[data-testid=task-row]").first().locator("span[title]").filter({ hasText: /\w/ }).count()) >= 1, "products: rows grouped by something else still show a product chip");
   await p.getByTestId("group-by").selectOption("product");

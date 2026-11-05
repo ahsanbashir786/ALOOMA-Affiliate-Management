@@ -99,26 +99,6 @@ export async function addTaskComment(taskId: string, text: string): Promise<R> {
   return { ok: true };
 }
 
-/** Who handles a product. New tasks for the product go to these people; open tasks with nobody on them are given to them too. */
-export async function setProductLeads(productKey: string, userIds: string[]): Promise<R> {
-  const user = await requireUser("manager");
-  const p = z.object({ k: z.string().min(1).max(40), u: z.array(Id).max(12) }).safeParse({ k: productKey, u: userIds });
-  if (!p.success) return { error: "Choose team members." };
-  const ids = [...new Set(p.data.u)];
-  await q(sql`delete from ep_product_leads where product_key = ${p.data.k}`);
-  for (const u of ids) await q(sql`insert into ep_product_leads (product_key, user_id) values (${p.data.k}, ${u}::uuid)`);
-  if (ids.length) {
-    const open = await q(sql`select t.id::text as id from ep_tasks t where t.product_key = ${p.data.k} and t.status in ('not_started', 'pending')
-      and not exists (select 1 from ep_task_assignees a where a.task_id = t.id)`);
-    for (const t of open) {
-      for (const u of ids) await q(sql`insert into ep_task_assignees (task_id, user_id, assigned_by) values (${t.id as string}::uuid, ${u}::uuid, ${user.id}::uuid) on conflict do nothing`);
-      await log(t.id as string, user.id, "assigned", "Assigned to the product lead");
-    }
-  }
-  refresh();
-  return { ok: true };
-}
-
 /** Writes the plan again from the latest numbers. */
 export async function refreshPlan(): Promise<R & { created?: number; closed?: number }> {
   await requireUser("manager");

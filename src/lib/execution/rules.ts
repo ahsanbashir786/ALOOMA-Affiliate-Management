@@ -15,7 +15,7 @@ export const CATEGORIES: { key: Category; label: string; hint: string }[] = [
 export const CATEGORY_LABEL = (c: string) => CATEGORIES.find((x) => x.key === c)?.label ?? c;
 
 export type Priority = 1 | 2 | 3;
-export const PRIORITY_LABEL: Record<Priority, string> = { 1: "High", 2: "Medium", 3: "Low" };
+export const PRIORITY_LABEL: Record<Priority, string> = { 1: "High", 2: "Medium", 3: "Normal" };
 
 /** What staff see about one creator inside an action. */
 export type LineData = {

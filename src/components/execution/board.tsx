@@ -3,8 +3,8 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight, Columns3, LayoutList, Loader2, RefreshCw, Search, SlidersHorizontal, UserX, Users, X } from "lucide-react";
-import { addTaskComment, bulkUpdateTasks, refreshPlan, restoreTasks, setProductLeads, setTaskAssignees, setTaskDue, setTaskStatus, toggleTaskStep } from "@/app/actions/execution";
+import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight, Columns3, Flag, LayoutList, Loader2, RefreshCw, Search, SlidersHorizontal, UserX, Users, X } from "lucide-react";
+import { addTaskComment, bulkUpdateTasks, refreshPlan, restoreTasks, setTaskAssignees, setTaskDue, setTaskStatus, toggleTaskStep } from "@/app/actions/execution";
 import { Select } from "@/components/ui/primitives";
 import { TagBadge } from "@/components/products/ui";
 import { CATEGORIES, PRIORITY_LABEL } from "@/lib/execution/rules";
@@ -14,7 +14,7 @@ import { daysBetweenISO } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
 import { TaskPanel, type Mutate } from "./task-panel";
 import { TeamView } from "./team";
-import { CategoryChip, dueInfo, NEXT_STATUS, PeoplePicker, PersonStack, Popover, PriorityFlag, ProductChip, ProductTile, productColor, productTint, StatusIcon, STATUS_META } from "./ui";
+import { CategoryChip, dueInfo, NEXT_STATUS, PeoplePicker, PersonStack, Popover, PriorityFlag, ProductChip, StatusIcon, STATUS_META } from "./ui";
 
 type View = "list" | "board" | "team";
 type GroupBy = "product" | "category" | "status" | "person" | "due" | "priority";
@@ -96,9 +96,9 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [apply, setStatus, data.staff, meName, tasks, flash]);
 
-  const visible = useMemo(() => {
+  const matches = useCallback((t: TaskView, f: Filters) => {
     const q = f.q.trim().toLowerCase();
-    return tasks.filter((t) => {
+    {
       if (f.status === "open" && !isOpen(t)) return false;
       if (f.status === "closed" && !isClosed(t)) return false;
       if (f.status === "all" && isClosed(t)) return false;
@@ -115,8 +115,14 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
       }
       if (q && !`${t.title} ${t.summary} ${t.productName} ${t.creators.map((c) => c.name).join(" ")}`.toLowerCase().includes(q)) return false;
       return true;
-    }).sort(sortTasks);
-  }, [tasks, f, me, data.today]);
+    }
+  }, [me, data.today]);
+  const visible = useMemo(() => tasks.filter((t) => matches(t, f)).sort(sortTasks), [tasks, f, matches]);
+  // How many actions are High, Medium and Normal under the other filters (so the numbers always match the list).
+  const prio = useMemo(() => {
+    const base = tasks.filter((t) => matches(t, { ...f, priority: "all" }));
+    return { all: base.length, 1: base.filter((t) => t.priority === 1).length, 2: base.filter((t) => t.priority === 2).length, 3: base.filter((t) => t.priority === 3).length };
+  }, [tasks, f, matches]);
 
   const open = tasks.filter(isOpen);
   const overdueOf = (list: TaskView[]) => list.filter((t) => t.dueOn && daysBetweenISO(data.today, t.dueOn) < 0);
@@ -133,14 +139,11 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
   const active = Object.entries(f).some(([k, v]) => v !== (NO_FILTER as Record<string, string>)[k]);
   const mine = open.filter((t) => t.assignees.includes(me));
   const unassigned = open.filter((t) => !t.assignees.length);
-  const high = open.filter((t) => t.priority === 1);
-  const noLead = data.products.filter((p) => open.some((t) => t.productKey === p.key) && !(data.leads[p.key] ?? []).length);
   const scopes: { key: string; label: string; n: number; f: Partial<Filters>; show: boolean; tone?: string }[] = [
     { key: "mine", label: "My Work", n: mine.length, f: { person: "me", status: "open" }, show: true },
     { key: "all", label: "All Work", n: counted, f: {}, show: true },
     { key: "unassigned", label: "Unassigned", n: unassigned.length, f: { person: "none", status: "open" }, show: canManage, tone: unassigned.length ? "text-warn" : undefined },
     { key: "overdue", label: "Overdue", n: kpi.overdue, f: { status: "open", due: "overdue" }, show: true, tone: kpi.overdue ? "text-critical" : undefined },
-    { key: "high", label: "High Priority", n: high.length, f: { status: "open", priority: "1" }, show: true },
   ];
 
   const groups = useMemo(() => {
@@ -216,12 +219,11 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
   return (
     <div className="space-y-4" data-testid="execution">
       {/* Needs attention: for owners and managers */}
-      {canManage && (unassigned.length > 0 || kpi.overdue > 0 || noLead.length > 0) && (
+      {canManage && (unassigned.length > 0 || kpi.overdue > 0) && (
         <section aria-label="Needs attention" data-testid="attention" className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-warn/30 bg-warn-soft/60 px-4 py-3">
           <span className="inline-flex items-center gap-2 text-[14px] font-semibold text-ink"><AlertTriangle className="size-4 text-warn" />Needs Attention</span>
           {unassigned.length > 0 && <button onClick={() => { setView("list"); setF({ ...NO_FILTER, person: "none", status: "open" }); }} className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink hover:underline"><UserX className="size-4 text-warn" /><b className="tnum font-semibold text-ink">{unassigned.length}</b> actions have nobody ({unassigned.filter((t) => t.priority === 1).length} high priority)</button>}
           {kpi.overdue > 0 && <button onClick={() => { setView("list"); setF({ ...NO_FILTER, status: "open", due: "overdue" }); setGroup("person"); }} className="text-[13.5px] text-ink-2 hover:text-ink hover:underline"><b className="tnum font-semibold text-critical">{kpi.overdue}</b> overdue</button>}
-          {noLead.length > 0 && <button onClick={() => setView("team")} className="text-[13.5px] text-ink-2 hover:text-ink hover:underline"><b className="tnum font-semibold text-ink">{noLead.length}</b> product{noLead.length === 1 ? "" : "s"} with no lead</button>}
         </section>
       )}
 
@@ -289,13 +291,25 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
               })}
               <button onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium text-ink-2 hover:bg-surface-2 sm:hidden"><SlidersHorizontal className="size-4" />Filters</button>
             </div>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Priority" data-testid="priorities">
+              <span className="mr-1 text-[13px] font-semibold text-ink-3">Priority</span>
+              {([["all", "All", prio.all, ""], ["1", "High", prio[1], "text-critical"], ["2", "Medium", prio[2], "text-warn"], ["3", "Normal", prio[3], "text-ink-3"]] as const).map(([k, label, n, tone]) => {
+                const on = f.priority === k;
+                return (
+                  <button key={k} data-testid={`prio-${k}`} aria-pressed={on} onClick={() => set({ priority: k })}
+                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-[14px] font-medium transition-colors", on ? "border-ink bg-ink text-surface" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>
+                    {k !== "all" && <Flag className={cn("size-4", on ? "text-surface" : tone)} fill="currentColor" />}{label}
+                    <span className={cn("tnum rounded-full px-2 text-[13px] font-semibold", on ? "bg-surface/20 text-surface" : cn("bg-surface-2", tone || "text-ink-3"))}>{n}</span>
+                  </button>
+                );
+              })}
+            </div>
             <div className={cn("flex-wrap items-center gap-2", showFilters ? "flex" : "hidden sm:flex")}>
               <div className="flex flex-wrap gap-1.5">{chip("all", "All")}{chip("open", "Open")}{chip("not_started", "Not Started")}{chip("pending", "Pending")}{chip("done", "Done")}{chip("closed", "Closed")}</div>
               <span className="hidden h-5 w-px bg-line-strong sm:block" />
               <Select aria-label="Category" value={f.category} onChange={(e) => set({ category: e.target.value })} className="h-8 text-[13.5px]"><option value="all">All Categories</option>{CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</Select>
               <Select aria-label="Product" value={f.product} onChange={(e) => set({ product: e.target.value })} className="h-8 max-w-52 text-[13.5px]"><option value="all">All Products</option>{data.products.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}</Select>
               <Select aria-label="Assigned To" data-testid="filter-person" value={f.person} onChange={(e) => set({ person: e.target.value })} className="h-8 text-[13.5px]"><option value="all">Everyone</option><option value="me">Assigned To Me</option><option value="none">Unassigned</option>{data.staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>
-              <Select aria-label="Priority" value={f.priority} onChange={(e) => set({ priority: e.target.value })} className="h-8 text-[13.5px]"><option value="all">Any Priority</option><option value="1">High</option><option value="2">Medium</option><option value="3">Low</option></Select>
               <Select aria-label="Due" value={f.due} onChange={(e) => set({ due: e.target.value })} className="h-8 text-[13.5px]"><option value="any">Any Due Date</option><option value="overdue">Overdue</option><option value="today">Due Today Or Earlier</option><option value="week">Next 7 Days</option><option value="none">No Date</option></Select>
               {active && <button onClick={() => setF(NO_FILTER)} className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13.5px] font-medium text-brand-strong hover:bg-brand-soft"><X className="size-4" />Clear</button>}
             </div>
@@ -305,9 +319,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
 
       {/* Views */}
       {view === "team" ? (
-        <TeamView tasks={tasks} data={data} canManage={canManage} today={data.today}
-          onPick={(id) => { setF({ ...NO_FILTER, person: id }); setView("list"); setGroup("product"); }}
-          onLeads={(key, ids) => { void setProductLeads(key, ids).then((r) => { if (r.error) flash(r.error, { tone: "error" }); else router.refresh(); }); }} />
+        <TeamView tasks={tasks} data={data} today={data.today} onPick={(id) => { setF({ ...NO_FILTER, person: id }); setView("list"); setGroup("product"); }} />
       ) : view === "board" ? (
         <div className="grid gap-4 lg:grid-cols-3" data-testid="board">
           {(["not_started", "pending", "done"] as Status[]).map((s) => {
@@ -320,8 +332,8 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                     const due = dueInfo(t.dueOn, data.today, isOpen(t));
                     return (
                       <li key={t.id}>
-                        <button onClick={() => setOpenId(t.id)} style={{ borderTop: `3px solid ${productColor(t.productKey)}` }} className={cn("w-full rounded-xl border bg-surface p-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-md", openId === t.id ? "border-brand" : "border-line")}>
-                          <p className="mb-1.5"><ProductChip k={t.productKey} name={t.productName} /></p>
+                        <button onClick={() => setOpenId(t.id)} className={cn("w-full rounded-xl border bg-surface p-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-md", openId === t.id ? "border-brand" : "border-line")}>
+                          <p className="mb-1.5"><ProductChip name={t.productName} /></p>
                           <p className="text-[14.5px] leading-snug font-semibold text-ink">{t.title}</p>
                           {t.creatorCount > 0 && <p className="mt-1 text-[12.5px] text-ink-3">{t.contactedCount} of {t.creatorCount} creators contacted</p>}
                           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5"><CategoryChip c={t.category} /><PriorityFlag p={t.priority} /><span className={cn("text-[12.5px]", due.tone)}>{due.text}</span><span className="ml-auto"><PersonStack ids={t.assignees} staff={data.staff} size={22} /></span></div>
@@ -336,8 +348,8 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
           })}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card" data-testid="task-list">
-          <div className={cn("hidden items-center gap-3 border-b border-line bg-surface-2/60 px-4 py-2 text-[12px] font-semibold tracking-wide text-ink-3 uppercase lg:grid", COLS_CLASS)}>
+        <div className="space-y-4" data-testid="task-list">
+          <div className={cn("hidden items-center gap-3 px-4 text-[12px] font-semibold tracking-wide text-ink-3 uppercase lg:grid", COLS_CLASS)}>
             {canManage && <span />}<span /><span>Action</span>{group !== "product" && <span>Product</span>}<span>Category</span><span>Priority</span><span>Assigned</span><span>Complete By</span><span className="text-right">At Stake</span>
           </div>
           {groups.map((g) => {
@@ -346,23 +358,17 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
             const ids = g.tasks.map((t) => t.id);
             const allPicked = ids.length > 0 && ids.every((i) => picked.has(i));
             return (
-              <section key={g.key} data-testid="group" data-group={g.key}>
-                <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface-2/40 px-4 py-2.5 hover:bg-surface-2" style={g.product ? { background: productTint(g.product.key, 11), boxShadow: `inset 5px 0 0 ${productColor(g.product.key)}` } : undefined}>
+              <section key={g.key} data-testid="group" data-group={g.key} className="overflow-hidden rounded-2xl border border-line-strong bg-surface shadow-card">
+                <div className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4", g.product ? "bg-ink py-3.5 text-surface" : "border-b border-line bg-surface-2/40 py-2.5 hover:bg-surface-2")}>
                   {canManage && <input type="checkbox" aria-label={`Select all in ${g.label}`} checked={allPicked} onChange={() => setPicked((p) => { const n = new Set(p); for (const i of ids) { if (allPicked) n.delete(i); else n.add(i); } return n; })} className="size-4 accent-[var(--brand)]" />}
                   <button onClick={() => setCollapsed((c) => { const n = new Set(c); if (n.has(g.key)) n.delete(g.key); else n.add(g.key); return n; })} aria-expanded={!isCol} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-left">
-                    {isCol ? <ChevronRight className="size-4 text-ink-3" /> : <ChevronDown className="size-4 text-ink-3" />}
-                    {g.product && <ProductTile k={g.product.key} size={30} />}
-                    <span className={cn("text-[15.5px] font-semibold text-ink", g.tone)}>{g.label}</span>
+                    {isCol ? <ChevronRight className={cn("size-4", g.product ? "text-surface/70" : "text-ink-3")} /> : <ChevronDown className={cn("size-4", g.product ? "text-surface/70" : "text-ink-3")} />}
+                    <span className={cn("font-semibold", g.product ? "text-[17px] tracking-tight text-surface" : "text-[15px] text-ink", g.tone)}>{g.label}</span>
                     {g.product && <TagBadge tag={g.product.tag as Tag} />}
-                    {g.product && g.product.changePct != null && <span className={cn("tnum text-[12.5px] font-semibold", g.product.change >= 0 ? "text-good" : "text-critical")}>{g.product.change >= 0 ? "▲" : "▼"} {Math.abs(Math.round(g.product.changePct))}%</span>}
-                    <span className="tnum text-[13px] text-ink-3">{g.tasks.length} action{g.tasks.length === 1 ? "" : "s"}</span>
+                    {g.product && g.product.changePct != null && <span className="tnum text-[12.5px] font-semibold text-surface/90">{g.product.change >= 0 ? "▲" : "▼"} {Math.abs(Math.round(g.product.changePct))}%</span>}
+                    <span className={cn("tnum text-[13px]", g.product ? "text-surface/70" : "text-ink-3")}>{g.tasks.length} action{g.tasks.length === 1 ? "" : "s"}</span>
                   </button>
-                  {g.product && (canManage
-                    ? <Popover testId={`glead-${g.product.key}`} trigger={<span className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[12.5px] text-ink-3 hover:bg-surface"><span>Lead</span>{(data.leads[g.product.key] ?? []).length ? <PersonStack ids={data.leads[g.product.key]} staff={data.staff} size={20} /> : <span className="font-medium text-brand-strong">Choose</span>}</span>}>
-                        <PeoplePicker staff={data.staff} value={data.leads[g.product.key] ?? []} onChange={(next) => { const k = g.product!.key; void setProductLeads(k, next).then((r) => { if (r.error) flash(r.error, { tone: "error" }); else router.refresh(); }); }} />
-                      </Popover>
-                    : (data.leads[g.product.key] ?? []).length > 0 && <span className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-3">Lead <PersonStack ids={data.leads[g.product.key]} staff={data.staff} size={20} /></span>)}
-                  <span className="ml-auto flex items-center gap-2"><span className="tnum text-[12.5px] text-ink-3">{done}/{cnt} done</span><span className="h-1.5 w-20 overflow-hidden rounded-full bg-line"><span className="block h-full rounded-full bg-good" style={{ width: `${cnt ? (done / cnt) * 100 : 0}%` }} /></span></span>
+                  <span className="ml-auto flex items-center gap-2"><span className={cn("tnum text-[12.5px]", g.product ? "text-surface/70" : "text-ink-3")}>{done}/{cnt} done</span><span className={cn("h-1.5 w-20 overflow-hidden rounded-full", g.product ? "bg-surface/25" : "bg-line")}><span className={cn("block h-full rounded-full", g.product ? "bg-surface" : "bg-good")} style={{ width: `${cnt ? (done / cnt) * 100 : 0}%` }} /></span></span>
                 </div>
                 {!isCol && (
                   <ul>
@@ -372,7 +378,6 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                       return (
                         <li key={t.id} data-testid="task-row" data-status={t.status} data-kind={t.kind}
                           className={cn("group/row grid cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 gap-y-1.5 border-b border-line px-4 py-3 last:border-b-0 hover:bg-brand-soft/40 lg:items-center", COLS_CLASS, canManage && "grid-cols-[28px_28px_minmax(0,1fr)]", openId === t.id && "bg-brand-soft/60", picked.has(t.id) && "bg-brand-soft/60")}
-                          style={{ boxShadow: `inset 5px 0 0 ${productColor(t.productKey)}`, background: picked.has(t.id) || openId === t.id ? undefined : productTint(t.productKey, 3) }}
                           onClick={() => setOpenId(t.id)}>
                           {canManage && <input type="checkbox" data-testid="pick" aria-label={`Select ${t.title}`} checked={picked.has(t.id)} onClick={(e) => e.stopPropagation()} onChange={() => togglePick(t.id)} className="mt-1 size-4 accent-[var(--brand)] lg:mt-0" />}
                           <button aria-label={`Status: ${STATUS_META[t.status].label}. Click to change`} title={`${STATUS_META[t.status].label} · click to change`} disabled={isClosed(t)} onClick={(e) => { e.stopPropagation(); cycle(t); }} className="mt-0.5 rounded-full lg:mt-0"><StatusIcon status={t.status} size={22} /></button>
@@ -386,7 +391,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                             )}
                           </div>
                           <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 lg:contents", canManage ? "col-start-3" : "col-start-2")}>
-                            {group !== "product" && <ProductChip k={t.productKey} name={t.productName} />}
+                            {group !== "product" && <ProductChip name={t.productName} />}
                             <CategoryChip c={t.category} />
                             <PriorityFlag p={t.priority} />
                             {canManage && isOpen(t)
@@ -404,7 +409,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
             );
           })}
           {!groups.length && (
-            <div className="px-6 py-12 text-center text-[14px] text-ink-3">
+            <div className="rounded-2xl border border-line bg-surface px-6 py-12 text-center text-[14px] text-ink-3">
               {f.person === "me" && !active ? "" : f.person === "me" ? <><p className="text-[15px] font-medium text-ink-2">Nothing is assigned to you here.</p><p className="mt-1">Ask a manager to give you actions, or look at <button className="font-medium text-brand-strong hover:underline" onClick={() => setF(NO_FILTER)}>All Work</button>.</p></> : <>No actions match these filters.{active && <> <button className="font-medium text-brand-strong hover:underline" onClick={() => setF(NO_FILTER)}>Clear filters</button></>}</>}
             </div>
           )}

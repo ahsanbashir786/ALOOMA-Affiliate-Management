@@ -13,7 +13,7 @@ const check = (name: string, ok: boolean, extra = "") => { ok ? pass++ : fail++;
 const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
 
 (async () => {
-  await q(sql`delete from ep_tasks`); await q(sql`delete from ep_product_leads`); await q(sql`delete from settings where key = 'ep_stamp'`);
+  await q(sql`delete from ep_tasks`); await q(sql`delete from settings where key = 'ep_stamp'`);
   const a = await analyseProducts();
   const history = await loadHistory(a);
   const ctx = { history, today: todayKL(), periodStart: a.period.start, prevStart: a.period.prevStart };
@@ -55,16 +55,6 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   const [ev] = await q(sql`select count(*)::int as c from ep_events e join ep_tasks t on t.id = e.task_id where t.fingerprint = 'mp_wp:gone' and e.kind = 'auto_closed'`);
   check("sync: the closing is written in the history", (ev.c as number) === 1);
 
-  // Product leads get new tasks; creator owners get creator tasks.
-  const users = await q(sql`select id::text from users where active order by email limit 2`);
-  if (users.length) {
-    await q(sql`delete from ep_tasks`); await q(sql`delete from settings where key = 'ep_stamp'`);
-    await q(sql`insert into ep_product_leads (product_key, user_id) values ('mp_nwp', ${users[0].id as string}::uuid)`);
-    await syncPlan(true);
-    const [lead] = await q(sql`select count(*)::int as c, count(a.user_id)::int as a from ep_tasks t left join ep_task_assignees a on a.task_id = t.id where t.product_key = 'mp_nwp'`);
-    check("assign: new tasks of a product go to its lead", (lead.c as number) > 0 && (lead.a as number) >= (lead.c as number), JSON.stringify(lead));
-  } else check("assign: needs test users", false, "no users");
-
   // Full lists, personal video details, and ticks that survive a refresh.
   const biggest = drafts.reduce((m, d) => (d.creators.length > m.creators.length ? d : m), drafts[0]);
   const [stored] = await q(sql`select count(*)::int as n from ep_task_creators tc join ep_tasks t on t.id = tc.task_id where t.fingerprint = ${biggest.fingerprint}`);
@@ -85,6 +75,8 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   check("load: tasks come with product names, creators and history", plan.tasks.length > 0 && plan.tasks.every((x) => x.productName && Array.isArray(x.creators) && x.events.length >= 1));
   check("load: all 13 products listed, even with no actions", plan.products.length === 13);
 
+  // Leave a clean plan behind (the browser test starts from it).
+  await q(sql`delete from ep_tasks`); await q(sql`delete from settings where key = 'ep_stamp'`); await syncPlan(true);
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
