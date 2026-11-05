@@ -178,3 +178,36 @@ body {
     animation: none;
   }
 }
+
+@keyframes pal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pal-glow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+.pal-pop {
+  animation: pal-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.pal-glow {
+  background-size: 200% 100%;
+  animation: pal-glow 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pal-pop,
+  .pal-glow {
+    animation: none;
+  }
+}
