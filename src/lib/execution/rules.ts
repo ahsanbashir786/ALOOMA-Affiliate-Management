@@ -240,7 +240,7 @@ export function buildDrafts(p: ProductAnalysis): Draft[] {
         "Ask for a second video this week and share what worked in the best videos.",
         "Offer another sample if the first one sold.",
       ],
-      creators: fresh1.slice(0, 8).map((c) => ({ name: c.name, note: `${rm(c.now)} first period` })),
+      creators: fresh1.slice(0, 8).map((c) => ({ name: c.name, note: `First sale of it is new, ${rm(c.now)} sold so far` })),
       impactRm: m.newCreators.sales, evidence: { creators: fresh1.length, sales: Math.round(m.newCreators.sales) }, priority: 2,
     });
   }
