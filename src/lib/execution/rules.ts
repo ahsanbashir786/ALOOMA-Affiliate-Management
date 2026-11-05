@@ -125,12 +125,12 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
     const best = [...H.life.get(key) ?? []].map(([, l]) => l).filter((l) => l.tops[0]?.kind === "video").sort((x, y) => (y.tops[0]?.sales ?? 0) - (x.tops[0]?.sales ?? 0)).slice(0, 10);
     add({
       category: "content", kind: "fix_conversion",
-      title: "New videos are not selling it, fix the hook",
-      summary: `${m.hit.now.converting} of ${m.hit.now.matured} new videos got 3+ orders in 14 days (${pc(hn)}${hp != null ? `, was ${pc(hp)}` : ""}). Views come, orders do not, so the video or the offer is the problem. The best videos ever are listed so the team can learn from them.`,
+      title: "New videos get views but few orders, brief creators on what works",
+      summary: `${m.hit.now.converting} of ${m.hit.now.matured} new videos got 3+ orders in 14 days (${pc(hn)}${hp != null ? `, was ${pc(hp)}` : ""}). Views come, orders do not, so the way the product is shown or the offer is the problem. Videos already posted cannot be edited, so this is about the NEXT videos: show creators what the best videos do. The best videos ever are listed below to learn from.`,
       steps: [
         "Open the 3 best videos in the list and watch them.",
-        "Write down what they share: first 3 seconds, proof shot, price shown, call to buy.",
-        "Send that as a short brief to every creator posting this product.",
+        "Write down what they share: the first 3 seconds (the hook), a proof shot, the price shown, a call to buy.",
+        "Send that as a short brief to every creator who will post this product next. Existing videos stay as they are.",
         "Check the offer: price, voucher, free gift, delivery time. Test one change for 7 days.",
       ],
       creators: best.map((l) => line({ name: l.creator }, videoText(l.tops[0]), l.tops[0].sales, { lifetime: l.total, lastSale: l.lastDay, videos: l.tops.slice(0, 2) })),

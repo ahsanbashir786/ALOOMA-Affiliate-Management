@@ -9,7 +9,7 @@ Every product is read after each sync. A rule fires when its numbers say so, and
 | Category | Action | Fires when | Creators listed |
 |---|---|---|---|
 | Content | Ask for new videos | Few or fewer new videos, or under 30% of video/LIVE sales from new content | Every creator who sold it lately and made no new video, with their last video |
-| Content | Fix the hook | Under 8% of new videos get 3+ orders in 14 days, or 10+ points worse | The 10 best videos ever, to learn from |
+| Content | Brief creators on what works | Under 8% of new videos get 3+ orders in 14 days, or 10+ points worse | The 10 best videos ever, to learn from |
 | Content | Refresh old videos | 60%+ of video/LIVE sales come from videos over 30 days old | Every creator who depends on old videos, with the exact old video and its link |
 | Content | Promote best videos | 3+ videos sold RM 150+ | The creators of the 15 best videos (ask for the ad code) |
 | Content | LIVE push | LIVE sales fell 25%+, or LIVE is under 10% of sales | Creators who sell through LIVE |
