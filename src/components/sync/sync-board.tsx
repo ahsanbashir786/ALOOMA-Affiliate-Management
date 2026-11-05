@@ -53,7 +53,7 @@ function groupRuns(runs: RunView[], total: number): RunGroup[] {
     const failed = items.filter((r) => r.status === "failed").length;
     return {
       items: [...items].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt)),
-      title: items.length >= Math.max(6, total - 2) ? "Full sync" : items.length === 1 ? items[0].label : `${items.length} datasets`,
+      title: items.length >= Math.max(6, total - 2) ? "Full Sync" : items.length === 1 ? items[0].label : `${items.length} Datasets`,
       who: first.trigger === "schedule" ? "Automatic" : `By ${first.by ?? "a team member"}`,
       startedAt: first.startedAt,
       durationSec: running || ends.some((e) => e == null) ? null : (Math.max(...(ends as number[])) - Date.parse(first.startedAt)) / 1000,
@@ -125,16 +125,16 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
   const newest = ov.datasets.find((d) => d.key === "affiliate_orders")?.newest ?? ov.datasets.find((d) => d.key === "orders")?.newest ?? null;
   const health: { title: string; text: string; tone: "good" | "warn" | "bad" }[] = [
     failed.length
-      ? { title: `${failed.length} dataset${failed.length === 1 ? "" : "s"} failed`, text: failed.map((d) => d.label).join(", "), tone: "bad" }
-      : never ? { title: "Nothing synced yet", text: "Press Sync now to load your data.", tone: "warn" } : { title: `All ${ov.datasets.length} datasets synced`, text: "No errors in the latest syncs.", tone: "good" },
+      ? { title: `${failed.length} Dataset${failed.length === 1 ? "" : "s"} Failed`, text: failed.map((d) => d.label).join(", "), tone: "bad" }
+      : never ? { title: "Nothing Synced Yet", text: "Press Sync now to load your data.", tone: "warn" } : { title: `All ${ov.datasets.length} Datasets Synced`, text: "No errors in the latest syncs.", tone: "good" },
     stale.length
-      ? { title: "Out of date", text: `${stale.map((d) => d.label).join(", ")} not synced for over a day.`, tone: "warn" }
-      : { title: "Up to date", text: ov.lastFullAt ? `Last full sync ${ago(ov.lastFullAt, now).toLowerCase()}.` : "Waiting for the first sync.", tone: ov.lastFullAt ? "good" : "warn" },
-    { title: "Latest order data", text: newest ? `Orders up to ${dmy(newest)}.` : "No orders yet.", tone: newest ? "good" : "warn" },
+      ? { title: "Out Of Date", text: `${stale.map((d) => d.label).join(", ")} not synced for over a day.`, tone: "warn" }
+      : { title: "Up To Date", text: ov.lastFullAt ? `Last full sync ${ago(ov.lastFullAt, now).toLowerCase()}.` : "Waiting for the first sync.", tone: ov.lastFullAt ? "good" : "warn" },
+    { title: "Latest Order Data", text: newest ? `Orders up to ${dmy(newest)}.` : "No orders yet.", tone: newest ? "good" : "warn" },
     skippedNotes.length
-      ? { title: "Some records skipped", text: `${skippedNotes.map((d) => d.label).join(", ")}: TikTok would not return a few records. They are tried again on the next sync.`, tone: "warn" }
-      : { title: "Nothing skipped", text: "TikTok returned every record we asked for.", tone: "good" },
-    { title: ov.settings.enabled ? "Auto-sync is on" : "Auto-sync is off", text: ov.settings.enabled ? `Runs by itself every ${ov.settings.everyMinutes >= 60 ? `${ov.settings.everyMinutes / 60} h` : `${ov.settings.everyMinutes} min`}.` : "Data only updates when you press Sync now.", tone: ov.settings.enabled ? "good" : "warn" },
+      ? { title: "Some Records Skipped", text: `${skippedNotes.map((d) => d.label).join(", ")}: TikTok would not return a few records. They are tried again on the next sync.`, tone: "warn" }
+      : { title: "Nothing Skipped", text: "TikTok returned every record we asked for.", tone: "good" },
+    { title: ov.settings.enabled ? "Auto-Sync Is On" : "Auto-Sync Is Off", text: ov.settings.enabled ? `Runs by itself every ${ov.settings.everyMinutes >= 60 ? `${ov.settings.everyMinutes / 60} h` : `${ov.settings.everyMinutes} min`}.` : "Data only updates when you press Sync now.", tone: ov.settings.enabled ? "good" : "warn" },
   ];
 
   if (!connected)
@@ -143,7 +143,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
         <span className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-brand"><RefreshCw className="size-7" /></span>
         <h2 className="mt-5 text-[22px] font-semibold text-ink">Connect TikTok Shop</h2>
         <p className="mt-1 text-[14.5px] text-ink-3">One click, and your data syncs by itself.</p>
-        <Link href="/settings" className="mt-6 inline-flex h-10 items-center rounded-lg bg-brand px-5 text-[14.5px] font-medium text-white hover:opacity-90">Open connection</Link>
+        <Link href="/settings" className="mt-6 inline-flex h-10 items-center rounded-lg bg-brand px-5 text-[14.5px] font-medium text-white hover:opacity-90">Open Connection</Link>
       </div>
     );
 
@@ -158,7 +158,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
               {busy ? <Loader2 className="size-7 animate-spin" /> : state === "warn" ? <AlertTriangle className="size-7 text-amber-200" /> : <CheckCircle2 className="size-7" />}
             </span>
             <div>
-              <h2 className="text-[24px] leading-tight font-semibold">{busy ? `Syncing${runningNow ? ` ${runningNow}` : ""}…` : state === "warn" ? "Needs attention" : state === "new" ? "Ready for the first sync" : "Everything is up to date"}</h2>
+              <h2 className="text-[24px] leading-tight font-semibold">{busy ? `Syncing${runningNow ? ` ${runningNow}` : ""}…` : state === "warn" ? "Needs Attention" : state === "new" ? "Ready For The First Sync" : "Everything Is Up To Date"}</h2>
               <p className="mt-0.5 text-[14px] text-white/75">
                 {busy ? (ov.datasets.some((d) => d.progress) ? `${ov.datasets.reduce((a, d) => a + (d.progress ?? 0), 0).toLocaleString("en-MY")} records so far · you can keep working` : "You can keep working") : state === "warn" ? `${failed.length} of ${ov.datasets.length} failed` : `Last sync ${ago(ov.lastFullAt, now).toLowerCase()}`}
                 {!busy && ov.settings.enabled && ov.nextAt ? ` · next in ${inMin(ov.nextAt, now)}` : !busy && !ov.settings.enabled ? " · auto-sync off" : ""}
@@ -189,7 +189,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
               </button>
             )}
             <button data-testid="sync-now" disabled={busy} onClick={() => run()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-5 text-[14.5px] font-semibold text-brand hover:bg-white/90 disabled:opacity-60">
-              <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Sync now
+              <RefreshCw className={cn("size-4", busy && "animate-spin")} /> Sync Now
             </button>
           </div>
         </div>
@@ -228,7 +228,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
         {/* history */}
         <section className="min-w-0 rounded-2xl border border-line bg-surface" aria-label="Sync history">
           <div className="px-5 pt-4 pb-2">
-            <h3 className="text-[15px] font-semibold text-ink">Sync history</h3>
+            <h3 className="text-[15px] font-semibold text-ink">Sync History</h3>
             <p className="text-[12.5px] text-ink-3">Each line is one sync. Open it to see every dataset.</p>
           </div>
           {groups.length === 0 ? (
@@ -247,9 +247,9 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
                       <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-[12.5px]">
                         {g.state === "running" ? <span className="rounded-full bg-brand-soft px-2.5 py-0.5 font-medium text-brand">Running…</span> : (
                           <>
-                            {g.failed > 0 && <span className="rounded-full bg-critical-soft px-2.5 py-0.5 font-medium text-critical">{g.failed} failed</span>}
-                            {g.skipped > 0 && <span className="rounded-full bg-warn-soft px-2.5 py-0.5 font-medium text-warn">{g.skipped} skipped</span>}
-                            <span className="tnum rounded-full bg-surface-2 px-2.5 py-0.5 font-medium text-ink-2">{g.changed > 0 ? `${g.changed.toLocaleString("en-MY")} updated` : "Nothing new"}</span>
+                            {g.failed > 0 && <span className="rounded-full bg-critical-soft px-2.5 py-0.5 font-medium text-critical">{g.failed} Failed</span>}
+                            {g.skipped > 0 && <span className="rounded-full bg-warn-soft px-2.5 py-0.5 font-medium text-warn">{g.skipped} Skipped</span>}
+                            <span className="tnum rounded-full bg-surface-2 px-2.5 py-0.5 font-medium text-ink-2">{g.changed > 0 ? `${g.changed.toLocaleString("en-MY")} Updated` : "Nothing New"}</span>
                           </>
                         )}
                       </span>
@@ -261,7 +261,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
                           <span className={cn("size-1.5 shrink-0 rounded-full", r.status === "ok" ? "bg-good" : r.status === "failed" ? "bg-critical" : "animate-pulse bg-brand")} />
                           <span className="w-52 shrink-0 truncate text-ink">{r.label}</span>
                           <span className="min-w-0 flex-1 truncate text-ink-3" title={r.error ?? undefined}>
-                            {r.status === "failed" ? <span className="text-critical">{r.error}</span> : r.status === "running" ? "Running…" : <>{r.changed > 0 ? `${r.changed.toLocaleString("en-MY")} updated` : "Nothing new"}{r.error && <span className="ml-2 text-warn">{r.error}</span>}</>}
+                            {r.status === "failed" ? <span className="text-critical">{r.error}</span> : r.status === "running" ? "Running…" : <>{r.changed > 0 ? `${r.changed.toLocaleString("en-MY")} Updated` : "Nothing New"}{r.error && <span className="ml-2 text-warn">{r.error}</span>}</>}
                           </span>
                           <span className="tnum w-20 shrink-0 text-right text-[12.5px] whitespace-nowrap text-ink-3">{r.durationSec != null ? dur(r.durationSec) : ""}</span>
                         </li>
@@ -276,7 +276,7 @@ export function SyncBoard({ initial, connected, canAdmin, serverNow }: { initial
 
         {/* health */}
         <section className="min-w-0 rounded-2xl border border-line bg-surface p-5" aria-label="Data health" data-testid="health">
-          <h3 className="text-[15px] font-semibold text-ink">Data health</h3>
+          <h3 className="text-[15px] font-semibold text-ink">Data Health</h3>
           <p className="text-[12.5px] text-ink-3">Is everything arriving from TikTok?</p>
           <ul className="mt-4 space-y-3.5">
             {health.map((h) => (

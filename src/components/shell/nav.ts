@@ -87,7 +87,7 @@ export const NAV: NavGroup[] = [
     label: "System",
     items: [
       { href: "/sync", label: "Data Sync", icon: RefreshCw, min: "manager" },
-      { href: "/product-mapping", label: "Product mapping", icon: Tags, min: "manager" },
+      { href: "/product-mapping", label: "Product Mapping", icon: Tags, min: "manager" },
       { href: "/data", label: "Data hub", icon: Database, min: "manager" },
       { href: "/settings", label: "Settings", icon: Settings, min: "admin" },
     ],

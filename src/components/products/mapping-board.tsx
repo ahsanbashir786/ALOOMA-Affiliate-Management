@@ -17,7 +17,7 @@ function ProductSelect({ value, onChange, disabled, label, followLabel }: { valu
     <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className="h-9 w-full min-w-[210px] rounded-lg border border-line-strong bg-surface px-2 text-[13.5px] text-ink disabled:opacity-60">
       {followLabel ? <option value="">{followLabel}</option> : <option value={UNMAPPED}>Unmapped</option>}
       {PRODUCTS.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-      <option value={EXCLUDED}>Excluded (not sold any more)</option>
+      <option value={EXCLUDED}>Excluded (Not Sold Any More)</option>
     </select>
   );
 }
@@ -39,12 +39,12 @@ export function MappingBoard({ listings, addons, log, unconfirmed }: { listings:
             <p className="text-[13.5px] text-ink-3">One row per TikTok listing (product ID). Choose which of your 13 products it is. “Suggested” is only my first guess from the title and what the listing sells.</p>
           </div>
           <button type="button" disabled={pending || unconfirmed === 0} onClick={() => run(() => confirmSuggested())} data-testid="confirm-all" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[14px] font-medium text-white hover:opacity-90 disabled:opacity-40">
-            <Check className="size-4" /> Confirm all suggested ({unconfirmed})
+            <Check className="size-4" /> Confirm All Suggested ({unconfirmed})
           </button>
         </div>
         <div className="-mx-2 overflow-x-auto">
           <table className="w-full min-w-[980px]" data-testid="listings-table">
-            <thead><tr className="border-b border-line text-left text-[12.5px] font-medium text-ink-3"><th className="px-2 py-2">Listing</th><th className="px-2 py-2 text-right">Orders</th><th className="px-2 py-2">What it sells</th><th className="px-2 py-2">Your product</th><th className="px-2 py-2">Status</th></tr></thead>
+            <thead><tr className="border-b border-line text-left text-[12.5px] font-medium text-ink-3"><th className="px-2 py-2">Listing</th><th className="px-2 py-2 text-right">Orders</th><th className="px-2 py-2">What It Sells</th><th className="px-2 py-2">Your Product</th><th className="px-2 py-2">Status</th></tr></thead>
             <tbody className="divide-y divide-line">
               {listings.map((l) => (
                 <tr key={l.productId} data-testid={`listing-${l.productId}`} className="align-top">
@@ -72,15 +72,15 @@ export function MappingBoard({ listings, addons, log, unconfirmed }: { listings:
         {addons.length === 0 ? <p className="text-[14px] text-ink-3">No add-on SKUs found.</p> : (
           <div className="-mx-2 overflow-x-auto">
             <table className="w-full min-w-[900px]" data-testid="addons-table">
-              <thead><tr className="border-b border-line text-left text-[12.5px] font-medium text-ink-3"><th className="px-2 py-2">SKU</th><th className="px-2 py-2">Sold inside listing</th><th className="px-2 py-2 text-right">Lines</th><th className="px-2 py-2">Counts as</th><th className="px-2 py-2" /></tr></thead>
+              <thead><tr className="border-b border-line text-left text-[12.5px] font-medium text-ink-3"><th className="px-2 py-2">SKU</th><th className="px-2 py-2">Sold Inside Listing</th><th className="px-2 py-2 text-right">Lines</th><th className="px-2 py-2">Counts As</th><th className="px-2 py-2" /></tr></thead>
               <tbody className="divide-y divide-line">
                 {addons.map((a) => (
                   <tr key={a.skuId} data-testid={`addon-${a.skuId}`} className="align-top">
                     <td className="px-2 py-3"><p className="text-[14px] font-medium text-ink">{a.sellerSku}</p><p className="text-[12px] text-ink-3">{a.variation ?? "–"} · SKU ID …{a.skuId.slice(-6)}</p></td>
                     <td className="max-w-[300px] px-2 py-3 text-[13px] text-ink-2">{a.listingTitle}<p className="text-[12px] text-ink-3">{nm(a.listingKey)}{a.sharePct ? ` · only ${a.sharePct}% of its lines` : ""}</p></td>
                     <td className="tnum px-2 py-3 text-right text-[14px] font-semibold">{a.lines.toLocaleString("en-MY")}</td>
-                    <td className="px-2 py-3"><ProductSelect label={`Product of SKU ${a.skuId}`} value={a.overrideKey ?? ""} followLabel={`Follows its listing (${nm(a.listingKey)})`} disabled={pending} onChange={(v) => run(() => setSkuProduct(a.skuId, a.productId, v || null))} /></td>
-                    <td className="px-2 py-3">{a.overrideKey === null && a.homeTitle && <button type="button" disabled={pending} onClick={() => run(() => setSkuProduct(a.skuId, a.productId, a.suggestedKey))} data-testid={`addon-use-${a.skuId}`} className={cn("text-[13px] font-medium text-brand hover:underline")}>Use suggested: {nm(a.suggestedKey)}</button>}</td>
+                    <td className="px-2 py-3"><ProductSelect label={`Product of SKU ${a.skuId}`} value={a.overrideKey ?? ""} followLabel={`Follows Its Listing (${nm(a.listingKey)})`} disabled={pending} onChange={(v) => run(() => setSkuProduct(a.skuId, a.productId, v || null))} /></td>
+                    <td className="px-2 py-3">{a.overrideKey === null && a.homeTitle && <button type="button" disabled={pending} onClick={() => run(() => setSkuProduct(a.skuId, a.productId, a.suggestedKey))} data-testid={`addon-use-${a.skuId}`} className={cn("text-[13px] font-medium text-brand hover:underline")}>Use Suggested: {nm(a.suggestedKey)}</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -91,7 +91,7 @@ export function MappingBoard({ listings, addons, log, unconfirmed }: { listings:
 
       {log.length > 0 && (
         <section className="rounded-2xl border border-line bg-surface p-5">
-          <h2 className="mb-2 text-[17px] font-semibold text-ink">Recent changes</h2>
+          <h2 className="mb-2 text-[17px] font-semibold text-ink">Recent Changes</h2>
           <ul className="divide-y divide-line text-[13.5px]" data-testid="map-log">
             {log.map((l) => (
               <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
