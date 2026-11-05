@@ -32,14 +32,14 @@ async function main() {
 
   // ── Products module rules (pure) ──
   const { bucketOfAge, tagOf, diagnose, oldShare } = await import("../src/lib/products/diagnose");
-  const zero = { new: 0, recent: 0, old: 0, live: 0, other: 0 };
+  const zero = { new: 0, recent: 0, old: 0, veryold: 0, live: 0, other: 0 };
   const M = (now: number, prev: number, over: Record<string, unknown> = {}) => ({
     sales: { now, prev }, creators: { now: 5, prev: 5 }, newCreators: { count: 0, sales: 0 },
     buckets: { now: { ...zero, new: now * 0.5, old: now * 0.5 }, prev: { ...zero, new: prev * 0.5, old: prev * 0.5 } },
     videosPosted: { now: 10, prev: 10 }, hit: { now: { matured: 10, converting: 5 }, prev: { matured: 10, converting: 5 } },
     salesPerNewVideo: { now: 100, prev: 100 }, returnRate: { now: 5, prev: 5 }, quietCreator: null, ...over,
   });
-  check("content age: 0–14 days new, 15–30 recent, over 30 old", bucketOfAge(0) === "new" && bucketOfAge(14) === "new" && bucketOfAge(15) === "recent" && bucketOfAge(30) === "recent" && bucketOfAge(31) === "old" && bucketOfAge(400) === "old");
+  check("content age: 0–14 new, 15–30 recent, 31–60 old, over 60 very old", bucketOfAge(0) === "new" && bucketOfAge(14) === "new" && bucketOfAge(15) === "recent" && bucketOfAge(30) === "recent" && bucketOfAge(31) === "old" && bucketOfAge(60) === "old" && bucketOfAge(61) === "veryold" && bucketOfAge(400) === "veryold");
   check("tag: +15% or more is Growing, −15% or worse is Slipping, in between Steady", tagOf(M(115, 100)) === "Growing" && tagOf(M(114, 100)) === "Steady" && tagOf(M(86, 100)) === "Steady" && tagOf(M(85, 100)) === "Slipping" && tagOf(M(100, 100)) === "Steady");
   check("tag: −50% or worse is Dying; no new video with falling sales is Dying", tagOf(M(50, 100)) === "Dying" && tagOf(M(49, 100)) === "Dying" && tagOf(M(80, 100, { videosPosted: { now: 0, prev: 8 } })) === "Dying" && tagOf(M(95, 100, { videosPosted: { now: 0, prev: 8 } })) === "Steady");
   check("tag: an unknown video count (period before the video list) never makes Dying by itself", tagOf(M(80, 100, { videosPosted: { now: null, prev: null } })) === "Slipping");

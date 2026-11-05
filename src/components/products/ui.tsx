@@ -3,7 +3,7 @@ import { BUCKETS, type Bucket, type Tag } from "@/lib/products/diagnose";
 import { cn, fmtRM } from "@/lib/utils";
 
 /** One colour per kind of sale, used by every Products chart so the screen reads as one system. */
-export const BUCKET_COLOR: Record<Bucket, string> = { new: "var(--brand)", recent: "var(--s1)", old: "var(--s4)", live: "var(--s3)", other: "var(--line-strong)" };
+export const BUCKET_COLOR: Record<Bucket, string> = { new: "var(--brand)", recent: "var(--s1)", old: "var(--s4)", veryold: "var(--s2)", live: "var(--s3)", other: "var(--line-strong)" };
 export const bucketLabel = (b: Bucket) => BUCKETS.find((x) => x.key === b)!.label;
 export const bucketHint = (b: Bucket) => BUCKETS.find((x) => x.key === b)!.hint;
 
@@ -43,7 +43,7 @@ export function Delta({ now, prev, money = true, goodWhenUp = true, className }:
 
 /** One stacked bar showing where the sales came from. */
 export function MixBar({ b, height = 10, className }: { b: Record<Bucket, number>; height?: number; className?: string }) {
-  const total = b.new + b.recent + b.old + b.live + b.other;
+  const total = b.new + b.recent + b.old + b.veryold + b.live + b.other;
   return (
     <div className={cn("flex w-full overflow-hidden rounded-full bg-surface-2", className)} style={{ height }} role="img" aria-label="Where the sales came from">
       {total > 0 && (Object.keys(BUCKET_COLOR) as Bucket[]).map((k) => (b[k] > 0 ? <span key={k} title={`${bucketLabel(k)}: ${fmtRM(b[k])} (${Math.round((b[k] / total) * 100)}%)`} style={{ width: `${(b[k] / total) * 100}%`, background: BUCKET_COLOR[k] }} /> : null))}
@@ -51,7 +51,7 @@ export function MixBar({ b, height = 10, className }: { b: Record<Bucket, number
   );
 }
 
-export function Legend({ keys = ["new", "recent", "old", "live", "other"] as Bucket[], className }: { keys?: Bucket[]; className?: string }) {
+export function Legend({ keys = ["new", "recent", "old", "veryold", "live", "other"] as Bucket[], className }: { keys?: Bucket[]; className?: string }) {
   return (
     <ul className={cn("flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-ink-3", className)}>
       {keys.map((k) => <li key={k} className="inline-flex items-center gap-1.5" title={bucketHint(k)}><span className="size-2.5 rounded-sm" style={{ background: BUCKET_COLOR[k] }} />{bucketLabel(k)}</li>)}

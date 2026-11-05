@@ -31,7 +31,7 @@ export type ProductAnalysis = {
 };
 export type Analysis = { period: Period; ref: string | null; videoCoverFrom: string | null; estimatedSharePct: number | null; products: ProductAnalysis[] };
 
-const emptyB = (): Record<Bucket, number> => ({ new: 0, recent: 0, old: 0, live: 0, other: 0 });
+const emptyB = (): Record<Bucket, number> => ({ new: 0, recent: 0, old: 0, veryold: 0, live: 0, other: 0 });
 const AGE_BANDS = [{ band: "0–7 days", max: 7 }, { band: "8–14 days", max: 14 }, { band: "15–30 days", max: 30 }, { band: "31–60 days", max: 60 }, { band: "61–90 days", max: 90 }, { band: "Over 90 days", max: 99999 }];
 const WEEKS = 12;
 const SAMPLE_WINDOW = 45;

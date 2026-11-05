@@ -7,7 +7,7 @@ Built only on synced TikTok data (`tt_affiliate_order_lines`, `tt_videos`, `tt_v
 Default: last 28 days against the 28 days before. Same date picker as Creators (`?from=&to=`).
 
 ## Content age (when the sale happened vs when the video was posted)
-New video: 14 days or less. Recent: 15–30. Old: 31+. Also LIVE and Product Cards.
+New video: 14 days or less. Recent: 15–30. Old: 31–60. Very old: 61 or more. Also LIVE and Product Cards.
 Posting date comes from the TikTok video list; where the video list does not reach back, the first sale of that content is used and shown as "est.".
 
 ## Tags (`src/lib/products/diagnose.ts`)

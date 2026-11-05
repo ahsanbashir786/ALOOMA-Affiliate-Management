@@ -27,7 +27,7 @@ const pct = (p: ProductAnalysis) => p.diagnosis.changePct ?? (p.metrics.sales.no
 
 function Card13({ p, q }: { p: ProductAnalysis; q: Record<string, string> }) {
   const m = p.metrics;
-  const spark = p.weekly.map((w) => w.b.new + w.b.recent + w.b.old + w.b.live + w.b.other);
+  const spark = p.weekly.map((w) => w.b.new + w.b.recent + w.b.old + w.b.veryold + w.b.live + w.b.other);
   const tone = p.diagnosis.tag === "Growing" ? "good" : p.diagnosis.tag === "Steady" ? "brand" : p.diagnosis.tag === "Slipping" ? "warn" : p.diagnosis.tag === "Dying" ? "critical" : "brand";
   const r = p.diagnosis.reasons[0];
   const hit = p.newContent.now.rate;

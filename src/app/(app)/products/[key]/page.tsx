@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps<"/products/[key]">)
   return { title: productName(key) || "Product" };
 }
 
-const ORDER: Bucket[] = ["new", "recent", "old", "live", "other"];
+const ORDER: Bucket[] = ["new", "recent", "old", "veryold", "live", "other"];
 const pct = (n: number | null) => (n == null ? "–" : `${Math.round(n)}%`);
 
 function Tile({ label, value, sub, hint }: { label: string; value: React.ReactNode; sub?: React.ReactNode; hint?: string }) {
@@ -124,8 +124,8 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
   const noSales = d.tag === "No Sales";
   const weekly = p.weekly.map((w) => ({ label: fmtDayLabel(w.start), ...w.b }));
   const cs = p.creatorStats;
-  const split = { video: m.buckets.now.new + m.buckets.now.recent + m.buckets.now.old, live: m.buckets.now.live, other: m.buckets.now.other };
-  const splitPrev = { video: m.buckets.prev.new + m.buckets.prev.recent + m.buckets.prev.old, live: m.buckets.prev.live, other: m.buckets.prev.other };
+  const split = { video: m.buckets.now.new + m.buckets.now.recent + m.buckets.now.old + m.buckets.now.veryold, live: m.buckets.now.live, other: m.buckets.now.other };
+  const splitPrev = { video: m.buckets.prev.new + m.buckets.prev.recent + m.buckets.prev.old + m.buckets.prev.veryold, live: m.buckets.prev.live, other: m.buckets.prev.other };
   const total = split.video + split.live + split.other;
   const fresh = d.oldShare != null ? (1 - d.oldShare) * 100 : null;
 

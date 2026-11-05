@@ -7,7 +7,7 @@ import type { Bucket } from "@/lib/products/diagnose";
 const AXIS = { fontSize: 12, fill: "var(--ink-3)" } as const;
 const TIP = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, fontSize: 13 } as const;
 const k = (v: number) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v));
-const ORDER: Bucket[] = ["new", "recent", "old", "live", "other"];
+const ORDER: Bucket[] = ["new", "recent", "old", "veryold", "live", "other"];
 
 export type WeekPoint = { label: string } & Record<Bucket, number>;
 
