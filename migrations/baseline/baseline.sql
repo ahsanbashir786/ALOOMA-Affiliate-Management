@@ -741,6 +741,7 @@ CREATE TABLE public.users (
     name text NOT NULL,
     password_hash text NOT NULL,
     active boolean DEFAULT true NOT NULL,
+    last_login_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     role_id uuid NOT NULL
 );

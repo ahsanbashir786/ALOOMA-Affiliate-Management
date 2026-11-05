@@ -42,7 +42,7 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   roleId: uuid("role_id").notNull().references(() => roles.id),
   active: boolean("active").notNull().default(true),
-  /** May edit and upload WhatsApp numbers. Admins always may. */
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

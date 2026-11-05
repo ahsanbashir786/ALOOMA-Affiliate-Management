@@ -60,8 +60,9 @@ const run = Date.now().toString(36);
   // a role in use cannot be deleted; an empty one can
   await o.getByTestId("tab-users").click();
   const row = o.getByTestId("user-row").filter({ hasText: email });
-  await row.getByRole("button", { name: "Deactivate" }).click(); await o.waitForTimeout(800);
-  ok(await o.getByTestId("user-row").filter({ hasText: email }).getByText("Inactive").isVisible(), "users: a person can be deactivated");
+  await row.getByTestId("user-toggle").click(); await o.waitForTimeout(800);
+  ok(await o.getByTestId("user-row").filter({ hasText: email }).getByTestId("user-status").innerText().then((t) => /Inactive/.test(t)), "users: a person can be deactivated (status turns Inactive)");
+  ok(/Never signed in|Today|\d{4}/.test(await o.getByTestId("last-login").first().innerText()), "users: last login is shown");
   // Settings: the TikTok card only
   await o.goto(BASE + "/settings"); await o.waitForSelector("[data-testid=tiktok-card]");
   const st = await o.locator("main").innerText();

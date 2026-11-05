@@ -18,6 +18,7 @@ export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
   await db.insert(sessions).values({ tokenHash: hashToken(token), userId, expiresAt });
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,

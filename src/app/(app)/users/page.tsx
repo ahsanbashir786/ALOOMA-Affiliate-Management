@@ -14,7 +14,7 @@ export default async function UsersPage() {
   const { user: me, denied } = await gate("users", "Users & Roles");
   if (denied) return denied;
   const [people, roleRows, perms, counts] = await Promise.all([
-    db.select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, active: users.active }).from(users).orderBy(asc(users.name)),
+    db.select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, active: users.active, lastLoginAt: users.lastLoginAt }).from(users).orderBy(asc(users.name)),
     db.select().from(roles).orderBy(asc(roles.isAdmin), asc(roles.createdAt)),
     db.select().from(rolePermissions),
     db.select({ roleId: users.roleId, n: sql<number>`count(*)::int` }).from(users).where(eq(users.active, true)).groupBy(users.roleId),
@@ -28,7 +28,7 @@ export default async function UsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Users & Roles" description="Who can use the system, and which screens each role may open. Changes apply on the person's next click." />
-      <UsersScreen users={people} roles={list} meId={me.id} />
+      <UsersScreen users={people.map((u) => ({ ...u, lastLoginAt: u.lastLoginAt ? `${u.lastLoginAt.toISOString()}` : null }))} roles={list} meId={me.id} />
     </div>
   );
 }

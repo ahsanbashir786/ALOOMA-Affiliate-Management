@@ -8,7 +8,7 @@ import { Button, Input, Select } from "@/components/ui/primitives";
 import { PERMISSIONS, PERMISSION_GROUPS, type PermissionKey } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
-type U = { id: string; name: string; email: string; roleId: string; active: boolean };
+type U = { id: string; name: string; email: string; roleId: string; active: boolean; lastLoginAt: string | null };
 type R = { id: string; key: string; name: string; isAdmin: boolean; permissions: PermissionKey[]; people: number };
 
 function Feedback({ state }: { state: Result }) {
@@ -36,16 +36,33 @@ function NewUserForm({ roles }: { roles: R[] }) {
   );
 }
 
+const KL = "Asia/Kuala_Lumpur";
+function lastLogin(iso: string | null) {
+  if (!iso) return { text: "Never signed in", sub: "" };
+  const d = new Date(iso);
+  const day = (x: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: KL }).format(x);
+  const rel = day(d) === day(new Date()) ? "Today" : day(d) === day(new Date(Date.now() - 86_400_000)) ? "Yesterday" : "";
+  const date = new Intl.DateTimeFormat("en-GB", { timeZone: KL, day: "numeric", month: "short", year: "numeric" }).format(d);
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: KL, hour: "numeric", minute: "2-digit", hour12: true }).format(d);
+  return { text: rel || date, sub: `${rel ? date + ", " : ""}${time}` };
+}
+
 function UserRow({ u, roles, isMe }: { u: U; roles: R[]; isMe: boolean }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<Result>();
   const [pw, pwAction, pwPending] = useActionState(resetPassword, undefined);
+  const login = lastLogin(u.lastLoginAt);
   return (
     <li data-testid="user-row" className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4", !u.active && "bg-surface-2/50")}>
       <Person name={u.name} size={38} />
       <div className="min-w-0 flex-1 basis-48">
-        <p className="flex items-center gap-2 text-[15px] font-semibold text-ink">{u.name}{isMe && <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11.5px] font-semibold text-brand-strong">You</span>}{!u.active && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11.5px] text-ink-3">Inactive</span>}</p>
+        <p className="flex items-center gap-2 text-[15px] font-semibold text-ink">{u.name}{isMe && <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11.5px] font-semibold text-brand-strong">You</span>}</p>
         <p className="truncate text-[13px] text-ink-3">{u.email}</p>
+      </div>
+      <div className="w-36 shrink-0 text-[13px]" data-testid="last-login">
+        <p className="text-[11.5px] font-semibold tracking-wide text-ink-3 uppercase">Last Login</p>
+        <p className={cn("font-medium", login.sub ? "text-ink" : "text-ink-3")}>{login.text}</p>
+        {login.sub && <p className="text-[12px] text-ink-3">{login.sub}</p>}
       </div>
       <label className="flex items-center gap-2 text-[13px] text-ink-3">Role
         <Select aria-label={`Role of ${u.name}`} value={u.roleId} disabled={pending} onChange={(e) => start(async () => setMsg(await updateUser(u.id, { roleId: e.target.value })))} className="h-9 text-[14px] text-ink">
@@ -60,7 +77,12 @@ function UserRow({ u, roles, isMe }: { u: U; roles: R[]; isMe: boolean }) {
           <Feedback state={pw} />
         </form>
       </Popover>
-      <Button variant="danger" size="sm" disabled={pending || isMe} title={isMe ? "You can't deactivate yourself" : undefined} onClick={() => start(async () => setMsg(await updateUser(u.id, { active: !u.active })))}>{u.active ? "Deactivate" : "Reactivate"}</Button>
+      <div className="flex items-center gap-2.5" title={isMe ? "You can't deactivate yourself" : u.active ? "Switch off to stop this person signing in" : "Switch on to let this person sign in"}>
+        <span data-testid="user-status" className={cn("inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-semibold", u.active ? "bg-good-soft text-good" : "bg-surface-2 text-ink-3")}>
+          <span className={cn("size-1.5 rounded-full", u.active ? "bg-good" : "bg-ink-3")} />{u.active ? "Active" : "Inactive"}
+        </span>
+        <Switch on={u.active} disabled={pending || isMe} label={`${u.active ? "Deactivate" : "Reactivate"} ${u.name}`} testId="user-toggle" onChange={() => start(async () => setMsg(await updateUser(u.id, { active: !u.active })))} />
+      </div>
       {msg && <div className="basis-full"><Feedback state={msg} /></div>}
     </li>
   );
