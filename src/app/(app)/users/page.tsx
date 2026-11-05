@@ -27,7 +27,7 @@ export default async function UsersPage() {
   })).sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin));
   return (
     <div className="space-y-6">
-      <PageHeader title="Users & Roles" description="Who can use the system, and exactly what each role may open and do. Changes apply on the person's next click." />
+      <PageHeader title="Users & Roles" description="Who can use the system, and which screens each role may open. Changes apply on the person's next click." />
       <UsersScreen users={people} roles={list} meId={me.id} />
     </div>
   );

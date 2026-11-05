@@ -191,7 +191,7 @@ export function UsersScreen({ users, roles, meId }: { users: U[]; roles: R[]; me
             <h2 className="mb-3 flex items-center gap-2 text-[16px] font-semibold text-ink"><UserPlus className="size-5 text-ink-3" />Add A Team Member</h2>
             <NewUserForm roles={roles} />
           </section>
-          <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+          <section className="rounded-2xl border border-line bg-surface shadow-card">
             <ul className="divide-y divide-line">{users.map((u) => <UserRow key={u.id} u={u} roles={roles} isMe={u.id === meId} />)}</ul>
           </section>
         </div>
