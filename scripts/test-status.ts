@@ -1,7 +1,6 @@
 // Unit tests for the one-word status/action rules. Run: npx tsx scripts/test-status.ts
-import { listingName } from "../src/lib/affiliates/product-name";
-import { lineMessage, overviewMessage, type LineStats } from "../src/lib/affiliates/action-messages";
-import { creatorStatus, explainStatus, winnerThreshold, type StatusInput } from "../src/lib/affiliates/status";
+import { lineMessage, overviewMessage, type LineStats } from "../src/lib/creators/action-messages";
+import { creatorStatus, explainStatus, winnerThreshold, type StatusInput } from "../src/lib/creators/status";
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, detail = "") => { if (ok) pass++; else fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? `  → ${detail}` : ""}`); };
@@ -27,8 +26,6 @@ check("exactly the winner level counts as Winner", r({ gmv28: 1000, videos28: 3 
 check("a prior of zero is never 'Slipping' or a fake 'Rising' base", r({ gmv28: 100, prev28: 0, videos28: 0 }) === "Rising/Push");
 check("winner threshold is a high percentile of sellers only", winnerThreshold([0, 0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000], 0.9) === 1000 && winnerThreshold([0, 0]) === Infinity);
 check("explanations quote the numbers used; a rise from nothing never says 'up from RM 0'", explainStatus({ paused: false, gmv28: 100, prev28: 0, gmvAll: 100, videos28: 0, winnerGmv: 9999, samples: { sent: 0, waiting: 0, notPosted: 0, posted: 0 } }, "Rising") === "RM 100 lately, none before · 0 videos lately" && explainStatus({ paused: false, gmv28: 50, prev28: 100, gmvAll: 300, videos28: 1, winnerGmv: 9999, samples: { sent: 0, waiting: 0, notPosted: 0, posted: 0 } }, "Slipping") === "RM 50 lately, down from RM 100 · 1 video lately");
-const LN = listingName;
-check("listing names are short and tell listings apart", LN("Washable Quilted THICK Mattress Protector · Non-waterproof · Exclusive", "x") === "Mattress Protector · Non-Waterproof (Exclusive)" && LN("Washable Quilted THICK Mattress Protector · Waterproof", "x") === "Mattress Protector · Waterproof" && LN("Set Waterproof Plain Premium Fitted Bedsheet", "") === "Bedsheet · Waterproof (Set)" && LN("Plain Premium Fitted Bedsheet", "ALOOMA Plain Premium Fitted Bedsheet") === "Bedsheet · Non-Waterproof (Single Item)" && LN("Washable Quilted THICK Pillow Protector", "Anti-Dust Mite & Waterproof") === "Pillow Protector");
 const ls: LineStats = { name: "Bedsheet · Waterproof (Single Item)", orders: 14, gmv: 460, gmvVideo: 460, gmvLive: 0, videos: 4, videos28: 3, lastVideoLabel: "19 Oct", action: "Push", status: "Rising" };
 const lm = lineMessage("Push", "amy", ls.name, ls, "1 Sep – 29 Oct")!;
 check("line message: orders, GMV by video only (no LIVE when none), videos, last date, then the request", /14 orders, RM 460 \(video RM 460\)/.test(lm.en) && !/LIVE/.test(lm.en) && /4 videos, last on 19 Oct/.test(lm.en) && /post 2 more videos/.test(lm.en) && /Great momentum/.test(lm.en) && /1 Sep – 29 Oct/.test(lm.en) && lm.en.split("\n").length === 4);

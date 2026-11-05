@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
 import { analyseProducts } from "@/lib/products/analysis";
 import { PRODUCTS, productName } from "@/lib/products/catalog";
 import { addDaysISO, todayKL } from "@/lib/time";

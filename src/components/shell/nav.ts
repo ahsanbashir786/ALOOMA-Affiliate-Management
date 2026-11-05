@@ -1,24 +1,4 @@
-import {
-  Beaker,
-  ClipboardList,
-  Contact,
-  Database,
-  Gauge,
-  History,
-  LayoutDashboard,
-  ListChecks,
-  LineChart,
-  Package,
-  RefreshCw,
-  Settings,
-  ShoppingCart,
-  Target,
-  TrendingUp,
-  Truck,
-  Users,
-  Video,
-  type LucideIcon,
-} from "lucide-react";
+import { ListChecks, Package, RefreshCw, Settings, Users, type LucideIcon } from "lucide-react";
 import type { Role } from "@/lib/auth";
 
 export type NavItem = {
@@ -26,69 +6,25 @@ export type NavItem = {
   label: string;
   icon: LucideIcon;
   min?: Role;
-  badge?: "actions";
-  usesPeriod?: boolean;
-  /** Highlight only on this exact path (not on sub-pages). */
-  exact?: boolean;
   /** Also highlight on these path prefixes. */
   also?: string[];
 };
-/** `collapsible` groups are closed unless the current page is inside them. */
-export type NavGroup = { label: string; items: NavItem[]; collapsible?: boolean; icon?: LucideIcon };
+export type NavGroup = { label: string; items: NavItem[] };
 
-/**
- * One section per kind of work, in the order people use them. Modules rebuilt on the TikTok sync sit at the top;
- * the screens still built on uploaded files wait in "Earlier version" until their module is rebuilt.
- */
+/** The whole menu: the five screens of the system. */
 export const NAV: NavGroup[] = [
-  {
-    label: "Overview",
-    items: [{ href: "/command", label: "Command centre", icon: Gauge, min: "admin" }],
-  },
   {
     label: "Affiliates",
     items: [
-      { href: "/execution", label: "Execution Plan", icon: ListChecks, also: ["/execution/"] },
-      { href: "/creators", label: "Creators", icon: Users, also: ["/creators/"] },
-      { href: "/products", label: "Products", icon: Package, also: ["/products/"] },
-      { href: "/today", label: "Daily Actions", icon: ClipboardList, badge: "actions" },
-      { href: "/progress", label: "Progress", icon: LineChart, min: "admin" },
-    ],
-  },
-  {
-    label: "Shop operations",
-    collapsible: true,
-    items: [
-      { href: "/order-health", label: "Order health", icon: Truck },
-      { href: "/demand", label: "Demand planning", icon: TrendingUp },
-    ],
-  },
-  {
-    label: "Reports",
-    collapsible: true,
-    items: [
-      { href: "/", label: "Sales overview", icon: LayoutDashboard, usesPeriod: true, exact: true },
-      { href: "/content", label: "Content", icon: Video, usesPeriod: true },
-      { href: "/orders", label: "Shop orders", icon: ShoppingCart, usesPeriod: true },
-    ],
-  },
-  {
-    label: "Earlier version",
-    icon: History,
-    collapsible: true,
-    items: [
-      { href: "/affiliates", label: "Affiliate Data (old)", icon: Contact, usesPeriod: true, exact: true },
-      { href: "/affiliates/analysis", label: "Affiliate analysis", icon: Contact, usesPeriod: true },
-      { href: "/samples/products", label: "Sample products", icon: Beaker, usesPeriod: true },
-      { href: "/samples/report", label: "Sample report", icon: Beaker, usesPeriod: true },
-      { href: "/opportunities", label: "Segments & scenarios", icon: Target, usesPeriod: true },
+      { href: "/execution", label: "Execution Plan", icon: ListChecks },
+      { href: "/creators", label: "Affiliate Data", icon: Users },
+      { href: "/products", label: "Product Analysis", icon: Package },
     ],
   },
   {
     label: "System",
     items: [
       { href: "/sync", label: "Data Sync", icon: RefreshCw, min: "manager" },
-      { href: "/data", label: "Data hub", icon: Database, min: "manager" },
       { href: "/settings", label: "Settings", icon: Settings, min: "admin" },
     ],
   },

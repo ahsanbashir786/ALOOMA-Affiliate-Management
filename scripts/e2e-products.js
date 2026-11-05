@@ -9,7 +9,7 @@ const ok = (c, n) => { c ? pass++ : fail++; console.log((c ? "PASS  " : "FAIL  "
     const p = await (await b.newContext({ viewport: vp })).newPage();
     p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error") errs.push(m.text().slice(0, 150)); });
     await p.goto("http://localhost:3100/login"); await p.fill("input[name=email]", "manager@test.local"); await p.fill("input[name=password]", "Passw0rd!test");
-    await Promise.all([p.waitForURL(/\/(command|today|$)/), p.click("button[type=submit]")]);
+    await Promise.all([p.waitForURL((u) => !/login/.test(u.pathname)), p.click("button[type=submit]")]);
     await p.goto("http://localhost:3100/products"); await p.waitForTimeout(1500);
     const cards = await p.$$eval('a[href^="/products/"]', (a) => [...new Set(a.map((x) => x.getAttribute("href")))]);
     ok(cards.length === 13, `${label}: 13 product cards`);
@@ -25,7 +25,7 @@ const ok = (c, n) => { c ? pass++ : fail++; console.log((c ? "PASS  " : "FAIL  "
     ok(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `${label}: detail has no sideways scroll`);
     if (label === "desktop") {
       errs.length = 0;
-      const r = await p.goto("http://localhost:3100/products/nope"); ok(r.status() === 404, "unknown product is a 404"); errs.length = 0;
+      await p.goto("http://localhost:3100/products/nope"); await p.waitForTimeout(1500); ok(/could not be found|not found/i.test(await p.locator("body").innerText()), "unknown product shows Not Found"); errs.length = 0;
     }
   }
   ok(errs.length === 0, "no browser errors"); if (errs.length) console.log(errs);

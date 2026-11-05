@@ -4,7 +4,7 @@ let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, detail = "") => { if (ok) pass++; else fail++; console.log((ok ? "PASS  " : "FAIL  ") + name + (!ok && detail ? " → " + detail.slice(0, 300) : "")); };
 
 async function main() {
-  const { runDataset, runAll, isDue, syncOverview, trustCheck, upsertRows, DATASETS } = await import("../src/lib/tiktok/sync");
+  const { runDataset, runAll, isDue, syncOverview, upsertRows, DATASETS } = await import("../src/lib/tiktok/sync");
   const M = await import("../src/lib/tiktok/map");
   const { db } = await import("../src/db");
   const { settings } = await import("../src/db/schema");
@@ -103,13 +103,11 @@ async function main() {
   check("16 a dataset that is already running is not started twice", blocked.status === "skipped");
   await q(sql`delete from tt_sync_runs where status = 'running'`);
 
-  // ── overview, schedule, trust ──
+  // ── overview, schedule ──
   const ov = await syncOverview();
   check("17 the overview lists all datasets with record counts, recent runs with who and how, and the next scheduled time", ov.datasets.length === 11 && ov.datasets.find((d) => d.key === "affiliate_orders")!.records === 7 && ov.runs.length > 8 && ov.runs[0].trigger === "manual" && ov.nextAt !== null, JSON.stringify({ n: ov.runs.length, rec: ov.datasets.find((d) => d.key === "affiliate_orders")!.records, t: ov.runs[0]?.trigger, next: ov.nextAt, set: ov.settings }));
   const s = { enabled: true, everyMinutes: 60 };
   check("18 the schedule is due when never run or the interval has passed, and never when switched off", isDue(1e12, null, s) && isDue(1e12, 1e12 - 61 * 60000, s) && !isDue(1e12, 1e12 - 59 * 60000, s) && !isDue(1e12, null, { ...s, enabled: false }));
-  const tc = await trustCheck();
-  check("19 the trust check sums the API's affiliate sales for the latest 28 days (and says when there are no uploads to compare)", !!tc && tc.api.orders > 0 && tc.api.gmv > 0 && (tc.upload === null || typeof tc.diffPct === "number"));
   check("20 the upsert never writes a half-keyed row", (await upsertRows({ name: "tt_shop_daily", pk: ["day"], cols: { day: "date", gmv: "numeric" } }, [{ day: null, gmv: 1 }])) === 0);
 
   // ── filter modes: fast path, ignored filter, rejected filter ──

@@ -74,6 +74,5 @@ Free uptime monitors (UptimeRobot etc.) can watch that address and email you if 
 
 * Only ports 22, 80 and 443 are open. The database is **not** reachable from the internet.
 * Logins use secure cookies, so use the **https** address. For a short test by IP address only, set `COOKIE_SECURE=false` in `.env` and run `docker compose up -d`; switch it back afterwards.
-* Large Excel uploads (up to 120 MB) are allowed by Caddy.
 * Several people can use it at the same time.
 * Not yet verified by me: the Docker image itself could not be built in my environment (no Docker engine there). I did verify the equivalent steps: the production build without a database, the standalone server, installing a fresh empty database with the migration script, first-run setup, and every screen on an empty database. If `docker compose up --build` shows an error, send me the last 30 lines.

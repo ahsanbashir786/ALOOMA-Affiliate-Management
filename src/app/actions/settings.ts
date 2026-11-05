@@ -7,7 +7,6 @@ import * as z from "zod";
 import { db } from "@/db";
 import { sessions, settings, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { DEFAULT_THRESHOLDS } from "@/lib/analytics/settings";
 
 export type Result = { ok?: string; error?: string } | undefined;
 const Role = z.enum(["admin", "manager", "viewer"]);
@@ -66,54 +65,6 @@ export async function resetPassword(_: Result, fd: FormData): Promise<Result> {
   await db.update(users).set({ passwordHash: await bcrypt.hash(password, 12) }).where(eq(users.id, id));
   await db.delete(sessions).where(eq(sessions.userId, id));
   return { ok: "Password updated. They'll need to sign in again." };
-}
-
-const Thresholds = z.object({
-  targetVideosPerWeek: z.coerce.number().min(0.25).max(21),
-  minSellerGmv: z.coerce.number().min(0).max(1_000_000),
-  starTopShare: z.coerce.number().min(1).max(50).transform((n) => n / 100),
-  strongPercentile: z.coerce.number().min(30).max(95).transform((n) => n / 100),
-  declineThreshold: z.coerce.number().min(10).max(90).transform((n) => n / 100),
-  growthThreshold: z.coerce.number().min(10).max(500).transform((n) => n / 100),
-  upliftHaircut: z.coerce.number().min(10).max(100).transform((n) => n / 100),
-  upliftWeeks: z.coerce.number().int().min(1).max(26),
-  lowConversionMinViews: z.coerce.number().min(0),
-  untappedMinFollowers: z.coerce.number().min(0),
-  highCancelRate: z.coerce.number().min(5).max(90).transform((n) => n / 100),
-  samplePostDays: z.coerce.number().int().min(1).max(60),
-  sampleMoreMinGmv: z.coerce.number().min(0).max(1_000_000),
-  oldContentDays: z.coerce.number().int().min(7).max(365),
-});
-
-export async function saveThresholds(_: Result, fd: FormData): Promise<Result> {
-  await requireUser("admin");
-  if (fd.get("reset")) {
-    await db.delete(settings).where(eq(settings.key, "thresholds"));
-    revalidatePath("/settings");
-    return { ok: "Restored the defaults." };
-  }
-  const p = Thresholds.safeParse(Object.fromEntries(fd));
-  if (!p.success) return { error: `Check “${String(p.error.issues[0].path[0])}”: ${p.error.issues[0].message}` };
-  await db
-    .insert(settings)
-    .values({ key: "thresholds", value: { ...DEFAULT_THRESHOLDS, ...p.data } })
-    .onConflictDoUpdate({ target: settings.key, set: { value: { ...DEFAULT_THRESHOLDS, ...p.data }, updatedAt: new Date() } });
-  revalidatePath("/", "layout");
-  return { ok: "Saved. Segments and recommendations use these rules from now on – refresh recommendations in the Action centre to apply them." };
-}
-
-export async function saveOwnAccounts(_: Result, fd: FormData): Promise<Result> {
-  await requireUser("admin");
-  const list = String(fd.get("accounts") ?? "")
-    .split(/[\s,]+/)
-    .map((s) => s.replace(/^@/, "").trim())
-    .filter(Boolean);
-  await db
-    .insert(settings)
-    .values({ key: "own_accounts", value: list })
-    .onConflictDoUpdate({ target: settings.key, set: { value: list, updatedAt: new Date() } });
-  revalidatePath("/", "layout");
-  return { ok: list.length ? `Saved ${list.length} account${list.length === 1 ? "" : "s"}.` : "Cleared – brand accounts will be detected automatically." };
 }
 
 const Workflow = z.object({

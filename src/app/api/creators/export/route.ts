@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { parseCreatorParams } from "@/lib/creators/params";
-import { getAffiliateDirectory } from "@/lib/workflow/directory";
-import { buildDirectoryWorkbook } from "@/lib/affiliates/directory-export";
+import { getAffiliateDirectory } from "@/lib/creators/workflow/directory";
+import { buildDirectoryWorkbook } from "@/lib/creators/directory-export";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;

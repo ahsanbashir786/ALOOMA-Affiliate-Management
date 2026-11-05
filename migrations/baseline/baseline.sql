@@ -6,19 +6,16 @@
 -- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 
-
---
--- Name: action_status; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.action_status AS ENUM (
-    'open',
-    'in_progress',
-    'sent',
-    'done',
-    'dismissed'
-);
-
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
 
 --
 -- Name: role; Type: TYPE; Schema: public; Owner: -
@@ -31,71 +28,9 @@ CREATE TYPE public.role AS ENUM (
 );
 
 
---
--- Name: upload_kind; Type: TYPE; Schema: public; Owner: -
---
+SET default_tablespace = '';
 
-CREATE TYPE public.upload_kind AS ENUM (
-    'affiliate_orders',
-    'all_orders',
-    'creator_list',
-    'creator_transactions',
-    'video_list',
-    'sample_analysis',
-    'product_list',
-    'sku_catalog',
-    'staff_sheet',
-    'contact_list'
-);
-
-
-
-
---
--- Name: actions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.actions (
-    id integer NOT NULL,
-    username text NOT NULL,
-    type text NOT NULL,
-    priority integer DEFAULT 50 NOT NULL,
-    title text NOT NULL,
-    reason text NOT NULL,
-    instruction text NOT NULL,
-    instruction_ms text,
-    expected_uplift double precision DEFAULT 0 NOT NULL,
-    baseline_gmv double precision DEFAULT 0 NOT NULL,
-    period_start date NOT NULL,
-    period_end date NOT NULL,
-    status public.action_status DEFAULT 'open'::public.action_status NOT NULL,
-    assignee_id uuid,
-    note text,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    completed_at timestamp without time zone
-);
-
-
---
--- Name: actions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.actions_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: actions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.actions_id_seq OWNED BY public.actions.id;
-
+SET default_table_access_method = heap;
 
 --
 -- Name: commitment_changes; Type: TABLE; Schema: public; Owner: -
@@ -161,7 +96,6 @@ CREATE TABLE public.commitments (
     details text,
     content_type text,
     quantity integer,
-    sample_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
     product_id text,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -194,7 +128,6 @@ ALTER SEQUENCE public.commitments_id_seq OWNED BY public.commitments.id;
 CREATE TABLE public.content_decisions (
     id integer NOT NULL,
     username text NOT NULL,
-    sample_id integer,
     commitment_id integer,
     content_id text,
     link text,
@@ -230,80 +163,124 @@ ALTER SEQUENCE public.content_decisions_id_seq OWNED BY public.content_decisions
 
 
 --
--- Name: content_items; Type: TABLE; Schema: public; Owner: -
+-- Name: product_map; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.content_items (
-    content_id text NOT NULL,
-    creator text NOT NULL,
-    kind text NOT NULL,
-    product_ids text[] DEFAULT '{}'::text[] NOT NULL,
-    posted_at timestamp without time zone,
-    first_observed_on date,
-    link text,
-    views integer DEFAULT 0 NOT NULL,
-    source text NOT NULL
+CREATE TABLE public.product_map (
+    product_id text NOT NULL,
+    product_key text NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
 --
--- Name: creator_list_snapshots; Type: TABLE; Schema: public; Owner: -
+-- Name: tt_lives; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.creator_list_snapshots (
-    upload_id integer NOT NULL,
-    username text NOT NULL,
-    gmv double precision DEFAULT 0 NOT NULL,
-    live_gmv double precision DEFAULT 0 NOT NULL,
-    video_gmv double precision DEFAULT 0 NOT NULL,
-    card_gmv double precision DEFAULT 0 NOT NULL,
-    products_sold integer DEFAULT 0 NOT NULL,
-    items_sold integer DEFAULT 0 NOT NULL,
-    commission double precision DEFAULT 0 NOT NULL,
-    aov double precision DEFAULT 0 NOT NULL,
-    orders integer DEFAULT 0 NOT NULL,
-    ctr double precision,
-    impressions integer DEFAULT 0 NOT NULL,
-    customers double precision DEFAULT 0 NOT NULL,
-    live_streams integer DEFAULT 0 NOT NULL,
-    videos integer DEFAULT 0 NOT NULL,
-    target_gmv double precision DEFAULT 0 NOT NULL,
-    target_commission double precision DEFAULT 0 NOT NULL,
-    open_gmv double precision DEFAULT 0 NOT NULL,
-    open_commission double precision DEFAULT 0 NOT NULL,
-    refunded_gmv double precision DEFAULT 0 NOT NULL,
-    items_refunded integer DEFAULT 0 NOT NULL,
-    followers integer DEFAULT 0 NOT NULL
+CREATE TABLE public.tt_lives (
+    live_id text NOT NULL,
+    creator text,
+    title text,
+    started_at timestamp with time zone,
+    ended_at timestamp with time zone,
+    gmv numeric(14,2),
+    items_sold integer,
+    sku_orders integer,
+    customers integer,
+    viewers bigint,
+    views bigint,
+    avg_viewing_seconds numeric(12,2),
+    new_followers integer,
+    likes integer,
+    comments integer,
+    shares integer,
+    product_clicks integer,
+    click_through_rate numeric(12,6),
+    click_to_order_rate numeric(12,6),
+    h text,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
 --
--- Name: creator_txn_snapshots; Type: TABLE; Schema: public; Owner: -
+-- Name: tt_videos; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.creator_txn_snapshots (
-    upload_id integer NOT NULL,
+CREATE TABLE public.tt_videos (
+    video_id text NOT NULL,
+    creator text,
+    title text,
+    posted_at timestamp with time zone,
+    views bigint,
+    gmv numeric(14,2),
+    units_sold integer,
+    click_through_rate numeric(12,6),
+    products jsonb,
+    window_start date,
+    window_end date,
+    h text,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: content_items; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.content_items AS
+ SELECT v.video_id AS content_id,
+    v.creator,
+    'video'::text AS kind,
+    COALESCE(( SELECT array_agg(DISTINCT pm.product_key) AS array_agg
+           FROM (jsonb_array_elements(COALESCE(v.products, '[]'::jsonb)) p(value)
+             JOIN public.product_map pm ON ((pm.product_id = (p.value ->> 'id'::text))))
+          WHERE (pm.product_key <> 'excluded'::text)), '{}'::text[]) AS product_ids,
+    (v.posted_at AT TIME ZONE 'Asia/Kuala_Lumpur'::text) AS posted_at,
+    ((COALESCE(v.posted_at, v.first_seen_at) AT TIME ZONE 'Asia/Kuala_Lumpur'::text))::date AS first_observed_on,
+    ((('https://www.tiktok.com/@'::text || v.creator) || '/video/'::text) || v.video_id) AS link,
+    COALESCE(v.views, (0)::bigint) AS views,
+    'tiktok'::text AS source
+   FROM public.tt_videos v
+  WHERE (v.creator IS NOT NULL)
+UNION ALL
+ SELECT ('live:'::text || l.live_id) AS content_id,
+    l.creator,
+    'live'::text AS kind,
+    '{}'::text[] AS product_ids,
+    (l.started_at AT TIME ZONE 'Asia/Kuala_Lumpur'::text) AS posted_at,
+    ((COALESCE(l.started_at, l.first_seen_at) AT TIME ZONE 'Asia/Kuala_Lumpur'::text))::date AS first_observed_on,
+    NULL::text AS link,
+    COALESCE(l.views, (0)::bigint) AS views,
+    'tiktok'::text AS source
+   FROM public.tt_lives l
+  WHERE (l.creator IS NOT NULL);
+
+
+--
+-- Name: creator_daily_counts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.creator_daily_counts (
+    day date NOT NULL,
+    creators integer NOT NULL,
+    sellers integer NOT NULL,
+    todo integer NOT NULL,
+    unowned integer NOT NULL,
+    recorded_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: creator_owners; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.creator_owners (
     username text NOT NULL,
-    gmv double precision DEFAULT 0 NOT NULL,
-    live_gmv double precision DEFAULT 0 NOT NULL,
-    video_gmv double precision DEFAULT 0 NOT NULL,
-    card_gmv double precision DEFAULT 0 NOT NULL,
-    refunds double precision DEFAULT 0 NOT NULL,
-    orders integer DEFAULT 0 NOT NULL,
-    items_sold integer DEFAULT 0 NOT NULL,
-    items_refunded integer DEFAULT 0 NOT NULL,
-    aov double precision DEFAULT 0 NOT NULL,
-    ctor double precision,
-    live_streams integer DEFAULT 0 NOT NULL,
-    videos integer DEFAULT 0 NOT NULL,
-    sample_content integer DEFAULT 0 NOT NULL,
-    samples_shipped integer DEFAULT 0 NOT NULL,
-    ctr double precision,
-    impressions integer DEFAULT 0 NOT NULL,
-    views integer DEFAULT 0 NOT NULL,
-    customers double precision,
-    products_sold double precision,
-    commission double precision DEFAULT 0 NOT NULL
+    user_id uuid,
+    assigned_at timestamp with time zone DEFAULT now() NOT NULL,
+    assigned_by uuid
 );
 
 
@@ -329,278 +306,24 @@ CREATE TABLE public.creators (
 
 
 --
--- Name: import_conflicts; Type: TABLE; Schema: public; Owner: -
+-- Name: ep_events; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.import_conflicts (
-    id integer NOT NULL,
-    kind text NOT NULL,
-    order_id text NOT NULL,
-    sku_id text NOT NULL,
-    upload_id integer,
-    reason text NOT NULL,
-    stored jsonb NOT NULL,
-    incoming jsonb NOT NULL,
-    status text DEFAULT 'pending'::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    resolved_at timestamp with time zone,
-    resolved_by uuid
-);
-
-
---
--- Name: import_conflicts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.import_conflicts_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: import_conflicts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.import_conflicts_id_seq OWNED BY public.import_conflicts.id;
-
-
---
--- Name: order_lines; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.order_lines (
+CREATE TABLE public.ep_events (
     id bigint NOT NULL,
-    order_id text NOT NULL,
-    sku_id text NOT NULL,
-    product_id text NOT NULL,
-    sku_name text,
-    seller_sku text,
-    price double precision DEFAULT 0 NOT NULL,
-    payment_amount double precision DEFAULT 0 NOT NULL,
-    quantity integer DEFAULT 1 NOT NULL,
-    fully_refunded boolean DEFAULT false NOT NULL,
-    cod boolean DEFAULT false NOT NULL,
-    status text NOT NULL,
-    creator text NOT NULL,
-    content_type text NOT NULL,
-    content_id text,
-    commission_model text,
-    commission_rate text,
-    est_commission double precision DEFAULT 0 NOT NULL,
-    actual_commission double precision DEFAULT 0 NOT NULL,
-    est_ads_commission double precision DEFAULT 0 NOT NULL,
-    actual_ads_commission double precision DEFAULT 0 NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    paid_at timestamp without time zone,
-    delivered_at timestamp without time zone,
-    commission_paid_at timestamp without time zone,
-    asof timestamp without time zone,
-    upload_id integer
-);
-
-
---
--- Name: order_lines_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.order_lines_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: order_lines_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.order_lines_id_seq OWNED BY public.order_lines.id;
-
-
---
--- Name: product_snapshots; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.product_snapshots (
-    upload_id integer NOT NULL,
-    product_id text NOT NULL,
-    gmv double precision DEFAULT 0 NOT NULL,
-    items_sold integer DEFAULT 0 NOT NULL,
-    commission double precision DEFAULT 0 NOT NULL,
-    samples integer DEFAULT 0 NOT NULL,
-    sales_creators integer DEFAULT 0 NOT NULL,
-    live_streams integer DEFAULT 0 NOT NULL,
-    videos integer DEFAULT 0 NOT NULL,
-    refunded_gmv double precision DEFAULT 0 NOT NULL,
-    refunded_items integer DEFAULT 0 NOT NULL
-);
-
-
---
--- Name: products; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.products (
-    product_id text NOT NULL,
-    name text NOT NULL,
-    short_name text NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: recommendations; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.recommendations (
-    id integer NOT NULL,
-    username text NOT NULL,
-    type text NOT NULL,
-    priority integer DEFAULT 50 NOT NULL,
-    title text NOT NULL,
-    reason text NOT NULL,
-    instruction text NOT NULL,
-    instruction_ms text,
-    scenario_value double precision DEFAULT 0 NOT NULL,
-    active boolean DEFAULT true NOT NULL,
-    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
-    resolved_at timestamp with time zone
-);
-
-
---
--- Name: recommendations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.recommendations_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: recommendations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.recommendations_id_seq OWNED BY public.recommendations.id;
-
-
---
--- Name: sample_content; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.sample_content (
-    sample_id integer NOT NULL,
-    content_id text NOT NULL,
+    task_id uuid NOT NULL,
+    user_id uuid,
     kind text NOT NULL,
-    link text,
-    posted_at timestamp without time zone,
-    views integer DEFAULT 0 NOT NULL,
-    confidence text NOT NULL,
-    reason text NOT NULL
+    text text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
 --
--- Name: sample_sales; Type: TABLE; Schema: public; Owner: -
+-- Name: ep_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.sample_sales (
-    order_id text NOT NULL,
-    sku_id text NOT NULL,
-    sample_id integer NOT NULL,
-    creator text NOT NULL,
-    product_id text NOT NULL,
-    content_id text,
-    basis text NOT NULL,
-    pay double precision NOT NULL
-);
-
-
---
--- Name: sample_snapshots; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.sample_snapshots (
-    upload_id integer NOT NULL,
-    username text NOT NULL,
-    content_gmv double precision DEFAULT 0 NOT NULL,
-    requested integer DEFAULT 0 NOT NULL,
-    shipped integer DEFAULT 0 NOT NULL,
-    posting_rate double precision DEFAULT 0 NOT NULL,
-    videos_with_samples integer DEFAULT 0 NOT NULL,
-    live_with_samples integer DEFAULT 0 NOT NULL,
-    roi45 double precision DEFAULT 0 NOT NULL,
-    roi90 double precision DEFAULT 0 NOT NULL
-);
-
-
---
--- Name: samples; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.samples (
-    id integer NOT NULL,
-    source text DEFAULT 'orders'::text NOT NULL,
-    order_id text,
-    sku_id text,
-    seller_sku text,
-    product_name text,
-    variation text,
-    quantity integer DEFAULT 1 NOT NULL,
-    buyer_masked text,
-    creator text,
-    creator_match text,
-    order_status text,
-    order_substatus text,
-    raw_code text,
-    requested_at date,
-    approved_at timestamp without time zone,
-    shipped_at timestamp without time zone,
-    delivered_at timestamp without time zone,
-    cancelled_at timestamp without time zone,
-    tracking_id text,
-    shipping_provider text,
-    result text,
-    posted_at timestamp without time zone,
-    post_video_id text,
-    post_link text,
-    product_id text,
-    video_count integer DEFAULT 0 NOT NULL,
-    other_video_count integer DEFAULT 0 NOT NULL,
-    content_views integer DEFAULT 0 NOT NULL,
-    post_by date,
-    post_by_source text,
-    content_gmv double precision DEFAULT 0 NOT NULL,
-    content_orders integer DEFAULT 0 NOT NULL,
-    observed_gmv double precision DEFAULT 0 NOT NULL,
-    observed_orders integer DEFAULT 0 NOT NULL,
-    checked_at timestamp without time zone,
-    result_override text,
-    owner_id uuid,
-    follow_up_at date,
-    note text,
-    upload_id integer,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: samples_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.samples_id_seq
-    AS integer
+CREATE SEQUENCE public.ep_events_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -609,10 +332,65 @@ CREATE SEQUENCE public.samples_id_seq
 
 
 --
--- Name: samples_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: ep_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.samples_id_seq OWNED BY public.samples.id;
+ALTER SEQUENCE public.ep_events_id_seq OWNED BY public.ep_events.id;
+
+
+--
+-- Name: ep_task_assignees; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ep_task_assignees (
+    task_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    assigned_by uuid,
+    assigned_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ep_task_creators; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ep_task_creators (
+    task_id uuid NOT NULL,
+    username text NOT NULL,
+    rank integer DEFAULT 0 NOT NULL,
+    note text DEFAULT ''::text NOT NULL,
+    value numeric DEFAULT 0 NOT NULL,
+    data jsonb DEFAULT '{}'::jsonb NOT NULL,
+    contacted_at timestamp with time zone,
+    contacted_by uuid
+);
+
+
+--
+-- Name: ep_tasks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ep_tasks (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    fingerprint text NOT NULL,
+    product_key text NOT NULL,
+    category text NOT NULL,
+    kind text NOT NULL,
+    priority smallint DEFAULT 2 NOT NULL,
+    title text NOT NULL,
+    summary text NOT NULL,
+    steps jsonb DEFAULT '[]'::jsonb NOT NULL,
+    steps_done jsonb DEFAULT '[]'::jsonb NOT NULL,
+    creators jsonb DEFAULT '[]'::jsonb NOT NULL,
+    evidence jsonb DEFAULT '{}'::jsonb NOT NULL,
+    impact_rm numeric DEFAULT 0 NOT NULL,
+    status text DEFAULT 'not_started'::text NOT NULL,
+    due_on date,
+    closed_reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone
+);
 
 
 --
@@ -644,97 +422,6 @@ CREATE TABLE public.sessions (
 CREATE TABLE public.settings (
     key text NOT NULL,
     value jsonb NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: shop_order_lines; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.shop_order_lines (
-    id bigint NOT NULL,
-    order_id text NOT NULL,
-    sku_id text NOT NULL,
-    status text NOT NULL,
-    substatus text,
-    cancel_type text,
-    cancel_by text,
-    cancel_reason text,
-    preorder boolean DEFAULT false NOT NULL,
-    product_name text,
-    variation text,
-    seller_sku text,
-    quantity integer DEFAULT 1 NOT NULL,
-    return_qty integer DEFAULT 0 NOT NULL,
-    unit_price double precision DEFAULT 0 NOT NULL,
-    subtotal_before double precision DEFAULT 0 NOT NULL,
-    platform_discount double precision DEFAULT 0 NOT NULL,
-    seller_discount double precision DEFAULT 0 NOT NULL,
-    subtotal_after double precision DEFAULT 0 NOT NULL,
-    shipping_fee double precision DEFAULT 0 NOT NULL,
-    order_amount double precision DEFAULT 0 NOT NULL,
-    refund_amount double precision DEFAULT 0 NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    paid_at timestamp without time zone,
-    shipped_at timestamp without time zone,
-    delivered_at timestamp without time zone,
-    cancelled_at timestamp without time zone,
-    delivery_option text,
-    shipping_provider text,
-    payment_method text,
-    state text,
-    category text,
-    order_channel text,
-    creator text,
-    buyer_username text,
-    tracking_id text,
-    rts_at timestamp without time zone,
-    is_sample boolean DEFAULT false NOT NULL,
-    asof timestamp without time zone,
-    upload_id integer
-);
-
-
---
--- Name: shop_order_lines_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.shop_order_lines_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: shop_order_lines_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.shop_order_lines_id_seq OWNED BY public.shop_order_lines.id;
-
-
---
--- Name: sku_bom; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.sku_bom (
-    set_sku text NOT NULL,
-    component_sku text NOT NULL,
-    qty integer DEFAULT 1 NOT NULL
-);
-
-
---
--- Name: sku_items; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.sku_items (
-    sku text NOT NULL,
-    family text,
-    name text NOT NULL,
-    is_set boolean DEFAULT false NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
@@ -778,28 +465,213 @@ ALTER SEQUENCE public.staff_events_id_seq OWNED BY public.staff_events.id;
 
 
 --
--- Name: uploads; Type: TABLE; Schema: public; Owner: -
+-- Name: tt_affiliate_order_lines; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.uploads (
-    id integer NOT NULL,
-    kind public.upload_kind NOT NULL,
-    filename text NOT NULL,
-    period_start date,
-    period_end date,
-    row_count integer DEFAULT 0 NOT NULL,
-    summary jsonb,
-    uploaded_by uuid,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+CREATE TABLE public.tt_affiliate_order_lines (
+    order_id text NOT NULL,
+    sku_id text NOT NULL,
+    created_at timestamp with time zone,
+    delivery_at timestamp with time zone,
+    creator text,
+    content_id text,
+    content_type text,
+    product_id text,
+    seller_sku text,
+    sku_name text,
+    quantity integer,
+    price numeric(14,2),
+    currency text,
+    commission_rate numeric(12,4),
+    est_commission numeric(14,2),
+    paid_commission numeric(14,2),
+    settlement_status text,
+    fully_return boolean,
+    open_collab_id text,
+    target_collab_id text,
+    campaign_id text,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
 --
--- Name: uploads_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: tt_cancellations; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.uploads_id_seq
-    AS integer
+CREATE TABLE public.tt_cancellations (
+    cancel_id text NOT NULL,
+    order_id text,
+    status text,
+    cancel_type text,
+    reason text,
+    skus jsonb,
+    created_at timestamp with time zone,
+    updated_at timestamp with time zone,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_open_collabs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_open_collabs (
+    id text NOT NULL,
+    product_id text,
+    title text,
+    status text,
+    commission_rate numeric(12,4),
+    commission_start timestamp with time zone,
+    commission_end timestamp with time zone,
+    creators integer,
+    showcasing integer,
+    needs_approval boolean,
+    stock integer,
+    price_min numeric(14,2),
+    price_max numeric(14,2),
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_orders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_orders (
+    order_id text NOT NULL,
+    status text,
+    is_sample boolean,
+    created_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    updated_at timestamp with time zone,
+    delivered_at timestamp with time zone,
+    total_amount numeric(14,2),
+    currency text,
+    tracking_number text,
+    shipping_provider text,
+    lines jsonb,
+    is_final boolean DEFAULT false NOT NULL,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_returns; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_returns (
+    return_id text NOT NULL,
+    order_id text,
+    status text,
+    return_type text,
+    reason text,
+    refund_amount numeric(14,2),
+    currency text,
+    skus jsonb,
+    created_at timestamp with time zone,
+    updated_at timestamp with time zone,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_sample_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_sample_requests (
+    id text NOT NULL,
+    status text,
+    creator_id text,
+    creator text,
+    nickname text,
+    followers bigint,
+    creator_gmv numeric(14,2),
+    creator_videos integer,
+    creator_video_views bigint,
+    fulfilment_pct numeric(8,2),
+    product_id text,
+    sku_id text,
+    product_title text,
+    sku_name text,
+    commission_rate numeric(12,4),
+    order_id text,
+    is_approvable boolean,
+    expires_at timestamp with time zone,
+    available_quantity integer,
+    h text,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_shop_daily; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_shop_daily (
+    day date NOT NULL,
+    gmv numeric(14,2),
+    orders integer,
+    buyers integer,
+    units_sold integer,
+    refunds numeric(14,2),
+    returns_cancellations integer,
+    page_views bigint,
+    impressions bigint,
+    avg_order_value numeric(14,2),
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_skus; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_skus (
+    sku_id text NOT NULL,
+    product_id text,
+    product_title text,
+    seller_sku text,
+    price numeric(14,2),
+    currency text,
+    stock integer,
+    product_status text,
+    updated_at timestamp with time zone,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_sync_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_sync_runs (
+    id bigint NOT NULL,
+    dataset text NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone,
+    status text DEFAULT 'running'::text NOT NULL,
+    trigger text DEFAULT 'manual'::text NOT NULL,
+    user_id uuid,
+    pages integer DEFAULT 0 NOT NULL,
+    rows_seen integer DEFAULT 0 NOT NULL,
+    rows_changed integer DEFAULT 0 NOT NULL,
+    error text
+);
+
+
+--
+-- Name: tt_sync_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.tt_sync_runs_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -808,10 +680,42 @@ CREATE SEQUENCE public.uploads_id_seq
 
 
 --
--- Name: uploads_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: tt_sync_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.uploads_id_seq OWNED BY public.uploads.id;
+ALTER SEQUENCE public.tt_sync_runs_id_seq OWNED BY public.tt_sync_runs.id;
+
+
+--
+-- Name: tt_sync_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_sync_state (
+    dataset text NOT NULL,
+    watermark timestamp with time zone,
+    last_success_at timestamp with time zone,
+    last_error text,
+    last_error_at timestamp with time zone,
+    records integer DEFAULT 0 NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_video_windows; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_video_windows (
+    video_id text NOT NULL,
+    window_start date NOT NULL,
+    window_end date NOT NULL,
+    views bigint,
+    gmv numeric(14,2),
+    units_sold integer,
+    click_through_rate numeric(12,6),
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
 
 
 --
@@ -828,55 +732,6 @@ CREATE TABLE public.users (
     can_edit_contacts boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL
 );
-
-
---
--- Name: video_snapshots; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.video_snapshots (
-    upload_id integer NOT NULL,
-    video_id text NOT NULL,
-    gmv double precision DEFAULT 0 NOT NULL,
-    orders integer DEFAULT 0 NOT NULL,
-    aov double precision DEFAULT 0 NOT NULL,
-    items_sold integer DEFAULT 0 NOT NULL,
-    refunds double precision DEFAULT 0 NOT NULL,
-    items_refunded integer DEFAULT 0 NOT NULL,
-    likes integer DEFAULT 0 NOT NULL,
-    comments integer DEFAULT 0 NOT NULL,
-    shares integer DEFAULT 0 NOT NULL,
-    impressions integer DEFAULT 0 NOT NULL,
-    clicks integer DEFAULT 0 NOT NULL,
-    completion_rate double precision,
-    views integer DEFAULT 0 NOT NULL,
-    ctr double precision,
-    gpm double precision,
-    engagement double precision,
-    gmv_per_customer double precision,
-    commission double precision DEFAULT 0 NOT NULL
-);
-
-
---
--- Name: videos; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.videos (
-    video_id text NOT NULL,
-    creator text NOT NULL,
-    posted_at timestamp without time zone,
-    link text,
-    title text,
-    product_ids text[] DEFAULT '{}'::text[] NOT NULL
-);
-
-
---
--- Name: actions id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.actions ALTER COLUMN id SET DEFAULT nextval('public.actions_id_seq'::regclass);
 
 
 --
@@ -901,38 +756,10 @@ ALTER TABLE ONLY public.content_decisions ALTER COLUMN id SET DEFAULT nextval('p
 
 
 --
--- Name: import_conflicts id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: ep_events id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.import_conflicts ALTER COLUMN id SET DEFAULT nextval('public.import_conflicts_id_seq'::regclass);
-
-
---
--- Name: order_lines id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.order_lines ALTER COLUMN id SET DEFAULT nextval('public.order_lines_id_seq'::regclass);
-
-
---
--- Name: recommendations id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.recommendations ALTER COLUMN id SET DEFAULT nextval('public.recommendations_id_seq'::regclass);
-
-
---
--- Name: samples id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.samples ALTER COLUMN id SET DEFAULT nextval('public.samples_id_seq'::regclass);
-
-
---
--- Name: shop_order_lines id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.shop_order_lines ALTER COLUMN id SET DEFAULT nextval('public.shop_order_lines_id_seq'::regclass);
+ALTER TABLE ONLY public.ep_events ALTER COLUMN id SET DEFAULT nextval('public.ep_events_id_seq'::regclass);
 
 
 --
@@ -943,18 +770,10 @@ ALTER TABLE ONLY public.staff_events ALTER COLUMN id SET DEFAULT nextval('public
 
 
 --
--- Name: uploads id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: tt_sync_runs id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.uploads ALTER COLUMN id SET DEFAULT nextval('public.uploads_id_seq'::regclass);
-
-
---
--- Name: actions actions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.actions
-    ADD CONSTRAINT actions_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.tt_sync_runs ALTER COLUMN id SET DEFAULT nextval('public.tt_sync_runs_id_seq'::regclass);
 
 
 --
@@ -990,27 +809,19 @@ ALTER TABLE ONLY public.content_decisions
 
 
 --
--- Name: content_items content_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: creator_daily_counts creator_daily_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.content_items
-    ADD CONSTRAINT content_items_pkey PRIMARY KEY (content_id);
-
-
---
--- Name: creator_list_snapshots creator_list_snapshots_upload_id_username_pk; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.creator_list_snapshots
-    ADD CONSTRAINT creator_list_snapshots_upload_id_username_pk PRIMARY KEY (upload_id, username);
+ALTER TABLE ONLY public.creator_daily_counts
+    ADD CONSTRAINT creator_daily_counts_pkey PRIMARY KEY (day);
 
 
 --
--- Name: creator_txn_snapshots creator_txn_snapshots_upload_id_username_pk; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: creator_owners creator_owners_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.creator_txn_snapshots
-    ADD CONSTRAINT creator_txn_snapshots_upload_id_username_pk PRIMARY KEY (upload_id, username);
+ALTER TABLE ONLY public.creator_owners
+    ADD CONSTRAINT creator_owners_pkey PRIMARY KEY (username);
 
 
 --
@@ -1022,75 +833,43 @@ ALTER TABLE ONLY public.creators
 
 
 --
--- Name: import_conflicts import_conflicts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_events ep_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.import_conflicts
-    ADD CONSTRAINT import_conflicts_pkey PRIMARY KEY (id);
-
-
---
--- Name: order_lines order_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.order_lines
-    ADD CONSTRAINT order_lines_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.ep_events
+    ADD CONSTRAINT ep_events_pkey PRIMARY KEY (id);
 
 
 --
--- Name: product_snapshots product_snapshots_upload_id_product_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_task_assignees ep_task_assignees_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.product_snapshots
-    ADD CONSTRAINT product_snapshots_upload_id_product_id_pk PRIMARY KEY (upload_id, product_id);
-
-
---
--- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.products
-    ADD CONSTRAINT products_pkey PRIMARY KEY (product_id);
+ALTER TABLE ONLY public.ep_task_assignees
+    ADD CONSTRAINT ep_task_assignees_pkey PRIMARY KEY (task_id, user_id);
 
 
 --
--- Name: recommendations recommendations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_task_creators ep_task_creators_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.recommendations
-    ADD CONSTRAINT recommendations_pkey PRIMARY KEY (id);
-
-
---
--- Name: sample_content sample_content_sample_id_content_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.sample_content
-    ADD CONSTRAINT sample_content_sample_id_content_id_pk PRIMARY KEY (sample_id, content_id);
+ALTER TABLE ONLY public.ep_task_creators
+    ADD CONSTRAINT ep_task_creators_pkey PRIMARY KEY (task_id, username);
 
 
 --
--- Name: sample_sales sample_sales_order_id_sku_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_tasks ep_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.sample_sales
-    ADD CONSTRAINT sample_sales_order_id_sku_id_pk PRIMARY KEY (order_id, sku_id);
-
-
---
--- Name: sample_snapshots sample_snapshots_upload_id_username_pk; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.sample_snapshots
-    ADD CONSTRAINT sample_snapshots_upload_id_username_pk PRIMARY KEY (upload_id, username);
+ALTER TABLE ONLY public.ep_tasks
+    ADD CONSTRAINT ep_tasks_pkey PRIMARY KEY (id);
 
 
 --
--- Name: samples samples_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: product_map product_map_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.samples
-    ADD CONSTRAINT samples_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.product_map
+    ADD CONSTRAINT product_map_pkey PRIMARY KEY (product_id);
 
 
 --
@@ -1118,30 +897,6 @@ ALTER TABLE ONLY public.settings
 
 
 --
--- Name: shop_order_lines shop_order_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.shop_order_lines
-    ADD CONSTRAINT shop_order_lines_pkey PRIMARY KEY (id);
-
-
---
--- Name: sku_bom sku_bom_set_sku_component_sku_pk; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.sku_bom
-    ADD CONSTRAINT sku_bom_set_sku_component_sku_pk PRIMARY KEY (set_sku, component_sku);
-
-
---
--- Name: sku_items sku_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.sku_items
-    ADD CONSTRAINT sku_items_pkey PRIMARY KEY (sku);
-
-
---
 -- Name: staff_events staff_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1150,11 +905,107 @@ ALTER TABLE ONLY public.staff_events
 
 
 --
--- Name: uploads uploads_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: tt_affiliate_order_lines tt_affiliate_order_lines_order_id_sku_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.uploads
-    ADD CONSTRAINT uploads_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.tt_affiliate_order_lines
+    ADD CONSTRAINT tt_affiliate_order_lines_order_id_sku_id_pk PRIMARY KEY (order_id, sku_id);
+
+
+--
+-- Name: tt_cancellations tt_cancellations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_cancellations
+    ADD CONSTRAINT tt_cancellations_pkey PRIMARY KEY (cancel_id);
+
+
+--
+-- Name: tt_lives tt_lives_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_lives
+    ADD CONSTRAINT tt_lives_pkey PRIMARY KEY (live_id);
+
+
+--
+-- Name: tt_open_collabs tt_open_collabs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_open_collabs
+    ADD CONSTRAINT tt_open_collabs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tt_orders tt_orders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_orders
+    ADD CONSTRAINT tt_orders_pkey PRIMARY KEY (order_id);
+
+
+--
+-- Name: tt_returns tt_returns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_returns
+    ADD CONSTRAINT tt_returns_pkey PRIMARY KEY (return_id);
+
+
+--
+-- Name: tt_sample_requests tt_sample_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_sample_requests
+    ADD CONSTRAINT tt_sample_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tt_shop_daily tt_shop_daily_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_shop_daily
+    ADD CONSTRAINT tt_shop_daily_pkey PRIMARY KEY (day);
+
+
+--
+-- Name: tt_skus tt_skus_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_skus
+    ADD CONSTRAINT tt_skus_pkey PRIMARY KEY (sku_id);
+
+
+--
+-- Name: tt_sync_runs tt_sync_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_sync_runs
+    ADD CONSTRAINT tt_sync_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tt_sync_state tt_sync_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_sync_state
+    ADD CONSTRAINT tt_sync_state_pkey PRIMARY KEY (dataset);
+
+
+--
+-- Name: tt_video_windows tt_video_windows_video_id_window_start_pk; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_video_windows
+    ADD CONSTRAINT tt_video_windows_video_id_window_start_pk PRIMARY KEY (video_id, window_start);
+
+
+--
+-- Name: tt_videos tt_videos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tt_videos
+    ADD CONSTRAINT tt_videos_pkey PRIMARY KEY (video_id);
 
 
 --
@@ -1171,43 +1022,6 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-
-
---
--- Name: video_snapshots video_snapshots_upload_id_video_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.video_snapshots
-    ADD CONSTRAINT video_snapshots_upload_id_video_id_pk PRIMARY KEY (upload_id, video_id);
-
-
---
--- Name: videos videos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.videos
-    ADD CONSTRAINT videos_pkey PRIMARY KEY (video_id);
-
-
---
--- Name: actions_status_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX actions_status_idx ON public.actions USING btree (status);
-
-
---
--- Name: actions_uq; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX actions_uq ON public.actions USING btree (username, type, period_end);
-
-
---
--- Name: cls_user_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX cls_user_idx ON public.creator_list_snapshots USING btree (username);
 
 
 --
@@ -1246,136 +1060,52 @@ CREATE INDEX content_decisions_user_idx ON public.content_decisions USING btree 
 
 
 --
--- Name: content_items_creator_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: creator_owners_user; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX content_items_creator_idx ON public.content_items USING btree (creator);
-
-
---
--- Name: cts_user_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX cts_user_idx ON public.creator_txn_snapshots USING btree (username);
+CREATE INDEX creator_owners_user ON public.creator_owners USING btree (user_id);
 
 
 --
--- Name: import_conflicts_pending_uq; Type: INDEX; Schema: public; Owner: -
+-- Name: ep_events_task; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX import_conflicts_pending_uq ON public.import_conflicts USING btree (kind, order_id, sku_id) WHERE (status = 'pending'::text);
-
-
---
--- Name: import_conflicts_status_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX import_conflicts_status_idx ON public.import_conflicts USING btree (status);
+CREATE INDEX ep_events_task ON public.ep_events USING btree (task_id, created_at);
 
 
 --
--- Name: order_lines_content_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: ep_task_creators_rank; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX order_lines_content_idx ON public.order_lines USING btree (content_id);
-
-
---
--- Name: order_lines_created_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX order_lines_created_idx ON public.order_lines USING btree (created_at);
+CREATE INDEX ep_task_creators_rank ON public.ep_task_creators USING btree (task_id, rank);
 
 
 --
--- Name: order_lines_creator_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: ep_task_creators_user; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX order_lines_creator_idx ON public.order_lines USING btree (creator, created_at);
-
-
---
--- Name: order_lines_product_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX order_lines_product_idx ON public.order_lines USING btree (product_id);
+CREATE INDEX ep_task_creators_user ON public.ep_task_creators USING btree (username);
 
 
 --
--- Name: order_lines_uq; Type: INDEX; Schema: public; Owner: -
+-- Name: ep_tasks_open_fingerprint; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX order_lines_uq ON public.order_lines USING btree (order_id, sku_id);
-
-
---
--- Name: recommendations_active_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX recommendations_active_idx ON public.recommendations USING btree (active);
+CREATE UNIQUE INDEX ep_tasks_open_fingerprint ON public.ep_tasks USING btree (fingerprint) WHERE (status = ANY (ARRAY['not_started'::text, 'pending'::text]));
 
 
 --
--- Name: recommendations_uq; Type: INDEX; Schema: public; Owner: -
+-- Name: ep_tasks_product; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX recommendations_uq ON public.recommendations USING btree (username, type);
-
-
---
--- Name: sample_sales_sample_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX sample_sales_sample_idx ON public.sample_sales USING btree (sample_id);
+CREATE INDEX ep_tasks_product ON public.ep_tasks USING btree (product_key, status);
 
 
 --
--- Name: samples_creator_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: ep_tasks_status; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX samples_creator_idx ON public.samples USING btree (creator);
-
-
---
--- Name: samples_order_uq; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX samples_order_uq ON public.samples USING btree (order_id, sku_id);
-
-
---
--- Name: samples_result_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX samples_result_idx ON public.samples USING btree (result);
-
-
---
--- Name: shop_order_lines_created_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX shop_order_lines_created_idx ON public.shop_order_lines USING btree (created_at);
-
-
---
--- Name: shop_order_lines_creator_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX shop_order_lines_creator_idx ON public.shop_order_lines USING btree (creator);
-
-
---
--- Name: shop_order_lines_uq; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX shop_order_lines_uq ON public.shop_order_lines USING btree (order_id, sku_id);
-
-
---
--- Name: ss_user_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ss_user_idx ON public.sample_snapshots USING btree (username);
+CREATE INDEX ep_tasks_status ON public.ep_tasks USING btree (status, updated_at);
 
 
 --
@@ -1393,39 +1123,80 @@ CREATE INDEX staff_events_user_idx ON public.staff_events USING btree (username,
 
 
 --
--- Name: uploads_kind_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: tt_aol_content; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX uploads_kind_idx ON public.uploads USING btree (kind, period_start, period_end);
-
-
---
--- Name: videos_creator_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX videos_creator_idx ON public.videos USING btree (creator);
+CREATE INDEX tt_aol_content ON public.tt_affiliate_order_lines USING btree (content_id);
 
 
 --
--- Name: videos_posted_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: tt_aol_created; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX videos_posted_idx ON public.videos USING btree (posted_at);
-
-
---
--- Name: vs_video_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX vs_video_idx ON public.video_snapshots USING btree (video_id);
+CREATE INDEX tt_aol_created ON public.tt_affiliate_order_lines USING btree (created_at);
 
 
 --
--- Name: actions actions_assignee_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: tt_aol_creator; Type: INDEX; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.actions
-    ADD CONSTRAINT actions_assignee_id_users_id_fk FOREIGN KEY (assignee_id) REFERENCES public.users(id) ON DELETE SET NULL;
+CREATE INDEX tt_aol_creator ON public.tt_affiliate_order_lines USING btree (creator);
+
+
+--
+-- Name: tt_aol_product; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_aol_product ON public.tt_affiliate_order_lines USING btree (product_id, created_at);
+
+
+--
+-- Name: tt_lives_creator; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_lives_creator ON public.tt_lives USING btree (creator);
+
+
+--
+-- Name: tt_lives_started; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_lives_started ON public.tt_lives USING btree (started_at);
+
+
+--
+-- Name: tt_samples_creator; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_samples_creator ON public.tt_sample_requests USING btree (creator);
+
+
+--
+-- Name: tt_sync_runs_dataset_started; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_sync_runs_dataset_started ON public.tt_sync_runs USING btree (dataset, started_at);
+
+
+--
+-- Name: tt_video_windows_video; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_video_windows_video ON public.tt_video_windows USING btree (video_id);
+
+
+--
+-- Name: tt_videos_creator; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_videos_creator ON public.tt_videos USING btree (creator);
+
+
+--
+-- Name: tt_videos_posted; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tt_videos_posted ON public.tt_videos USING btree (posted_at);
 
 
 --
@@ -1477,14 +1248,6 @@ ALTER TABLE ONLY public.content_decisions
 
 
 --
--- Name: content_decisions content_decisions_sample_id_samples_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.content_decisions
-    ADD CONSTRAINT content_decisions_sample_id_samples_id_fk FOREIGN KEY (sample_id) REFERENCES public.samples(id) ON DELETE CASCADE;
-
-
---
 -- Name: content_decisions content_decisions_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1493,19 +1256,19 @@ ALTER TABLE ONLY public.content_decisions
 
 
 --
--- Name: creator_list_snapshots creator_list_snapshots_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: creator_owners creator_owners_assigned_by_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.creator_list_snapshots
-    ADD CONSTRAINT creator_list_snapshots_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.creator_owners
+    ADD CONSTRAINT creator_owners_assigned_by_users_id_fk FOREIGN KEY (assigned_by) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
--- Name: creator_txn_snapshots creator_txn_snapshots_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: creator_owners creator_owners_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.creator_txn_snapshots
-    ADD CONSTRAINT creator_txn_snapshots_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.creator_owners
+    ADD CONSTRAINT creator_owners_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -1525,75 +1288,59 @@ ALTER TABLE ONLY public.creators
 
 
 --
--- Name: import_conflicts import_conflicts_resolved_by_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_events ep_events_task_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.import_conflicts
-    ADD CONSTRAINT import_conflicts_resolved_by_users_id_fk FOREIGN KEY (resolved_by) REFERENCES public.users(id) ON DELETE SET NULL;
-
-
---
--- Name: import_conflicts import_conflicts_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.import_conflicts
-    ADD CONSTRAINT import_conflicts_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.ep_events
+    ADD CONSTRAINT ep_events_task_id_fk FOREIGN KEY (task_id) REFERENCES public.ep_tasks(id) ON DELETE CASCADE;
 
 
 --
--- Name: order_lines order_lines_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_events ep_events_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.order_lines
-    ADD CONSTRAINT order_lines_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE SET NULL;
-
-
---
--- Name: product_snapshots product_snapshots_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.product_snapshots
-    ADD CONSTRAINT product_snapshots_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.ep_events
+    ADD CONSTRAINT ep_events_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
--- Name: sample_content sample_content_sample_id_samples_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_task_assignees ep_task_assignees_by_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.sample_content
-    ADD CONSTRAINT sample_content_sample_id_samples_id_fk FOREIGN KEY (sample_id) REFERENCES public.samples(id) ON DELETE CASCADE;
-
-
---
--- Name: sample_sales sample_sales_sample_id_samples_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.sample_sales
-    ADD CONSTRAINT sample_sales_sample_id_samples_id_fk FOREIGN KEY (sample_id) REFERENCES public.samples(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.ep_task_assignees
+    ADD CONSTRAINT ep_task_assignees_by_users_id_fk FOREIGN KEY (assigned_by) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
--- Name: sample_snapshots sample_snapshots_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_task_assignees ep_task_assignees_task_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.sample_snapshots
-    ADD CONSTRAINT sample_snapshots_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE CASCADE;
-
-
---
--- Name: samples samples_owner_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.samples
-    ADD CONSTRAINT samples_owner_id_users_id_fk FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.ep_task_assignees
+    ADD CONSTRAINT ep_task_assignees_task_id_fk FOREIGN KEY (task_id) REFERENCES public.ep_tasks(id) ON DELETE CASCADE;
 
 
 --
--- Name: samples samples_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: ep_task_assignees ep_task_assignees_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.samples
-    ADD CONSTRAINT samples_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.ep_task_assignees
+    ADD CONSTRAINT ep_task_assignees_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ep_task_creators ep_task_creators_contacted_by_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ep_task_creators
+    ADD CONSTRAINT ep_task_creators_contacted_by_users_id_fk FOREIGN KEY (contacted_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: ep_task_creators ep_task_creators_task_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ep_task_creators
+    ADD CONSTRAINT ep_task_creators_task_id_fk FOREIGN KEY (task_id) REFERENCES public.ep_tasks(id) ON DELETE CASCADE;
 
 
 --
@@ -1602,14 +1349,6 @@ ALTER TABLE ONLY public.samples
 
 ALTER TABLE ONLY public.sessions
     ADD CONSTRAINT sessions_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
-
---
--- Name: shop_order_lines shop_order_lines_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.shop_order_lines
-    ADD CONSTRAINT shop_order_lines_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE SET NULL;
 
 
 --
@@ -1629,19 +1368,11 @@ ALTER TABLE ONLY public.staff_events
 
 
 --
--- Name: uploads uploads_uploaded_by_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: tt_sync_runs tt_sync_runs_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.uploads
-    ADD CONSTRAINT uploads_uploaded_by_users_id_fk FOREIGN KEY (uploaded_by) REFERENCES public.users(id) ON DELETE SET NULL;
-
-
---
--- Name: video_snapshots video_snapshots_upload_id_uploads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.video_snapshots
-    ADD CONSTRAINT video_snapshots_upload_id_uploads_id_fk FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.tt_sync_runs
+    ADD CONSTRAINT tt_sync_runs_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -1650,349 +1381,4 @@ ALTER TABLE ONLY public.video_snapshots
 
 
 
--- ===== 0006_tiktok_sync =====
--- 0006: TikTok API sync (Data Sync module). Additive: new tables only. TikTok data lives in tt_* tables and is replaceable;
--- nothing here is written by staff. Customer personal data (names, phones, addresses, emails) is never stored.
-create table if not exists tt_sync_runs (
-  id bigserial primary key,
-  dataset text not null,
-  started_at timestamptz not null default now(),
-  finished_at timestamptz,
-  status text not null default 'running',
-  trigger text not null default 'manual',
-  user_id uuid constraint tt_sync_runs_user_id_users_id_fk references users(id) on delete set null,
-  pages int not null default 0,
-  rows_seen int not null default 0,
-  rows_changed int not null default 0,
-  error text
-);
-create index if not exists tt_sync_runs_dataset_started on tt_sync_runs (dataset, started_at desc);
-
-create table if not exists tt_sync_state (
-  dataset text primary key,
-  watermark timestamptz,
-  last_success_at timestamptz,
-  last_error text,
-  last_error_at timestamptz,
-  records int not null default 0,
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists tt_affiliate_order_lines (
-  order_id text not null,
-  sku_id text not null,
-  created_at timestamptz,
-  delivery_at timestamptz,
-  creator text,
-  content_id text,
-  content_type text,
-  product_id text,
-  seller_sku text,
-  sku_name text,
-  quantity int,
-  price numeric(14,2),
-  currency text,
-  commission_rate numeric(12,4),
-  est_commission numeric(14,2),
-  paid_commission numeric(14,2),
-  settlement_status text,
-  fully_return boolean,
-  open_collab_id text,
-  target_collab_id text,
-  campaign_id text,
-  h text,
-  synced_at timestamptz not null default now(),
-  primary key (order_id, sku_id)
-);
-create index if not exists tt_aol_creator on tt_affiliate_order_lines (creator);
-create index if not exists tt_aol_created on tt_affiliate_order_lines (created_at);
-
-create table if not exists tt_videos (
-  video_id text primary key,
-  creator text,
-  title text,
-  posted_at timestamptz,
-  views bigint,
-  gmv numeric(14,2),
-  units_sold int,
-  click_through_rate numeric(12,6),
-  products jsonb,
-  window_start date,
-  window_end date,
-  h text,
-  first_seen_at timestamptz not null default now(),
-  synced_at timestamptz not null default now()
-);
-create index if not exists tt_videos_creator on tt_videos (creator);
-
-create table if not exists tt_lives (
-  live_id text primary key,
-  creator text,
-  title text,
-  started_at timestamptz,
-  ended_at timestamptz,
-  gmv numeric(14,2),
-  items_sold int,
-  sku_orders int,
-  customers int,
-  viewers bigint,
-  views bigint,
-  avg_viewing_seconds numeric(12,2),
-  new_followers int,
-  likes int,
-  comments int,
-  shares int,
-  product_clicks int,
-  click_through_rate numeric(12,6),
-  click_to_order_rate numeric(12,6),
-  h text,
-  first_seen_at timestamptz not null default now(),
-  synced_at timestamptz not null default now()
-);
-create index if not exists tt_lives_creator on tt_lives (creator);
-
-create table if not exists tt_sample_requests (
-  id text primary key,
-  status text,
-  creator_id text,
-  creator text,
-  nickname text,
-  followers bigint,
-  creator_gmv numeric(14,2),
-  creator_videos int,
-  creator_video_views bigint,
-  fulfilment_pct numeric(8,2),
-  product_id text,
-  sku_id text,
-  product_title text,
-  sku_name text,
-  commission_rate numeric(12,4),
-  order_id text,
-  is_approvable boolean,
-  expires_at timestamptz,
-  available_quantity int,
-  h text,
-  first_seen_at timestamptz not null default now(),
-  synced_at timestamptz not null default now()
-);
-create index if not exists tt_samples_creator on tt_sample_requests (creator);
-
-create table if not exists tt_skus (
-  sku_id text primary key,
-  product_id text,
-  product_title text,
-  seller_sku text,
-  price numeric(14,2),
-  currency text,
-  stock int,
-  product_status text,
-  updated_at timestamptz,
-  h text,
-  synced_at timestamptz not null default now()
-);
-
-create table if not exists tt_returns (
-  return_id text primary key,
-  order_id text,
-  status text,
-  return_type text,
-  reason text,
-  refund_amount numeric(14,2),
-  currency text,
-  skus jsonb,
-  created_at timestamptz,
-  updated_at timestamptz,
-  h text,
-  synced_at timestamptz not null default now()
-);
-
-create table if not exists tt_cancellations (
-  cancel_id text primary key,
-  order_id text,
-  status text,
-  cancel_type text,
-  reason text,
-  skus jsonb,
-  created_at timestamptz,
-  updated_at timestamptz,
-  h text,
-  synced_at timestamptz not null default now()
-);
-
-create table if not exists tt_shop_daily (
-  day date primary key,
-  gmv numeric(14,2),
-  orders int,
-  buyers int,
-  units_sold int,
-  refunds numeric(14,2),
-  returns_cancellations int,
-  page_views bigint,
-  impressions bigint,
-  avg_order_value numeric(14,2),
-  h text,
-  synced_at timestamptz not null default now()
-);
-
--- ===== 0007_sync_orders_collabs =====
--- 0007: Data Sync additions. Additive: two new tables. Sample orders hold shipping status and dates only (no customer data).
-create table if not exists tt_orders (
-  order_id text primary key,
-  status text,
-  is_sample boolean,
-  created_at timestamptz,
-  paid_at timestamptz,
-  updated_at timestamptz,
-  delivered_at timestamptz,
-  total_amount numeric(14,2),
-  currency text,
-  tracking_number text,
-  shipping_provider text,
-  lines jsonb,
-  is_final boolean not null default false,
-  h text,
-  synced_at timestamptz not null default now()
-);
-
-create table if not exists tt_open_collabs (
-  id text primary key,
-  product_id text,
-  title text,
-  status text,
-  commission_rate numeric(12,4),
-  commission_start timestamptz,
-  commission_end timestamptz,
-  creators int,
-  showcasing int,
-  needs_approval boolean,
-  stock int,
-  price_min numeric(14,2),
-  price_max numeric(14,2),
-  h text,
-  synced_at timestamptz not null default now()
-);
-
--- ===== 0008_video_windows =====
--- 0008: per-window video figures, so a video's lifetime numbers can be added up across every window that was synced. Additive.
-create table if not exists tt_video_windows (
-  video_id text not null,
-  window_start date not null,
-  window_end date not null,
-  views bigint,
-  gmv numeric(14,2),
-  units_sold int,
-  click_through_rate numeric(12,6),
-  h text,
-  synced_at timestamptz not null default now(),
-  primary key (video_id, window_start)
-);
-create index if not exists tt_video_windows_video on tt_video_windows (video_id);
--- 0009: which staff member looks after which creator (Creators module). Additive; one row per creator, latest assignment wins.
-create table if not exists creator_owners (
-  username text primary key,
-  user_id uuid constraint creator_owners_user_id_users_id_fk references users(id) on delete set null,
-  assigned_at timestamptz not null default now(),
-  assigned_by uuid constraint creator_owners_assigned_by_users_id_fk references users(id) on delete set null
-);
-create index if not exists creator_owners_user on creator_owners (user_id);
--- 0010: one row per day with the headline Creators counts, so the top boxes can show change over time. Additive.
-create table if not exists creator_daily_counts (
-  day date primary key,
-  creators int not null,
-  sellers int not null,
-  todo int not null,
-  unowned int not null,
-  recorded_at timestamptz not null default now()
-);
--- 0011: which of the 13 ALOOMA products each TikTok listing (product ID) and each SKU ID is. Additive.
--- A listing has one product; a single SKU can be an add-on that is really another product (a pillow sold inside a mattress protector listing).
-create table if not exists product_map (
-  product_id text primary key,
-  product_key text not null,
-  confirmed boolean not null default false,
-  updated_at timestamptz not null default now(),
-  updated_by uuid constraint product_map_updated_by_users_id_fk references users(id) on delete set null
-);
-create table if not exists sku_map (
-  sku_id text primary key,
-  product_id text,
-  product_key text not null,
-  updated_at timestamptz not null default now(),
-  updated_by uuid constraint sku_map_updated_by_users_id_fk references users(id) on delete set null
-);
-create table if not exists product_map_log (
-  id bigserial primary key,
-  at timestamptz not null default now(),
-  user_id uuid constraint product_map_log_user_id_users_id_fk references users(id) on delete set null,
-  kind text not null,
-  ref text not null,
-  from_key text,
-  from_confirmed boolean,
-  to_key text,
-  undone_at timestamptz
-);
-create index if not exists product_map_log_at on product_map_log (at desc);
--- 0013: product names are now worked out automatically; the confirm screen, SKU overrides and change log are gone. Product_map keeps only the automatic answer.
-drop table if exists product_map_log;
-drop table if exists sku_map;
-alter table product_map drop column if exists confirmed;
-alter table product_map drop column if exists updated_by;
--- 0014: Execution Plan. Tasks the system writes from the product analysis, who handles them, and what happened.
-create table if not exists ep_tasks (
-  id uuid primary key default gen_random_uuid(),
-  fingerprint text not null,
-  product_key text not null,
-  category text not null,
-  kind text not null,
-  priority smallint not null default 2,
-  title text not null,
-  summary text not null,
-  steps jsonb not null default '[]'::jsonb,
-  steps_done jsonb not null default '[]'::jsonb,
-  creators jsonb not null default '[]'::jsonb,
-  evidence jsonb not null default '{}'::jsonb,
-  impact_rm numeric not null default 0,
-  status text not null default 'not_started',
-  due_on date,
-  closed_reason text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  completed_at timestamptz
-);
--- One open task per problem: while it is open the system only refreshes its numbers, never makes a copy.
-create unique index if not exists ep_tasks_open_fingerprint on ep_tasks (fingerprint) where status in ('not_started', 'pending');
-create index if not exists ep_tasks_product on ep_tasks (product_key, status);
-create table if not exists ep_task_assignees (
-  task_id uuid not null constraint ep_task_assignees_task_id_fk references ep_tasks(id) on delete cascade,
-  user_id uuid not null constraint ep_task_assignees_user_id_users_id_fk references users(id) on delete cascade,
-  assigned_by uuid constraint ep_task_assignees_by_users_id_fk references users(id) on delete set null,
-  assigned_at timestamptz not null default now(),
-  primary key (task_id, user_id)
-);
-create table if not exists ep_events (
-  id bigserial primary key,
-  task_id uuid not null constraint ep_events_task_id_fk references ep_tasks(id) on delete cascade,
-  user_id uuid constraint ep_events_user_id_users_id_fk references users(id) on delete set null,
-  kind text not null,
-  text text,
-  created_at timestamptz not null default now()
-);
-create index if not exists ep_events_task on ep_events (task_id, created_at);
-create table if not exists ep_product_leads (
-  product_key text not null,
-  user_id uuid not null constraint ep_product_leads_user_id_users_id_fk references users(id) on delete cascade,
-  primary key (product_key, user_id)
-);
--- 0015: Execution Plan v2. Every creator an action is about (not only a few), with their details and whether they were contacted.
-create table if not exists ep_task_creators (
-  task_id uuid not null constraint ep_task_creators_task_id_fk references ep_tasks(id) on delete cascade,
-  username text not null,
-  rank integer not null default 0,
-  note text not null default '',
-  value numeric not null default 0,
-  data jsonb not null default '{}'::jsonb,
-  contacted_at timestamptz,
-  contacted_by uuid constraint ep_task_creators_contacted_by_users_id_fk references users(id) on delete set null,
-  primary key (task_id, username)
-);
-create index if not exists ep_task_creators_rank on ep_task_creators (task_id, rank);
+SET search_path TO public;

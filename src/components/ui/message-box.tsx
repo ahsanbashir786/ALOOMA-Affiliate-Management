@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { MessageCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
-import { waLink, type MsgLang } from "@/lib/samples/states";
+import { waLink, type MsgLang } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
 // The chosen message language is remembered in the browser and shared by every message on the page.

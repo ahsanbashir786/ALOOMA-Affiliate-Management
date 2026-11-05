@@ -1,6 +1,6 @@
 // Reads the Creators page filters from a URL. Pure (no database) so the page, the filter bar and the export agree.
-import type { DirOpts, DirSort } from "@/lib/workflow/directory";
-import { ACTIONS, STATUSES } from "@/lib/workflow/directory-params";
+import type { DirOpts, DirSort } from "@/lib/creators/workflow/directory";
+import { ACTIONS, STATUSES } from "@/lib/creators/workflow/directory-params";
 import { TIERS, type Tier } from "./score";
 import { isProductKey, UNMAPPED } from "@/lib/products/catalog";
 import { addDaysISO, todayKL } from "@/lib/time";
@@ -46,7 +46,6 @@ const pick = <T extends string>(v: string | undefined, allowed: readonly T[]): T
 export function parseCreatorParams(sp: Record<string, string | undefined>): DirOpts & { from: string; to: string } {
   const range = parseRange(sp);
   return {
-    source: "synced",
     q: (sp.q ?? "").trim(),
     samples: (pick(sp.samples, ["with", "none", "all"]) || "all") as "with" | "none" | "all",
     product: isProductKey(sp.product ?? "") || sp.product === UNMAPPED ? sp.product : "",

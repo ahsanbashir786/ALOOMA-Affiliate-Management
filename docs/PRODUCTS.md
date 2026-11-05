@@ -1,10 +1,10 @@
-# Products Module
+# Product Analysis
 
 Shows, for each of the 13 products (owner's order), whether it is growing or lagging and **why**.
 Built only on synced TikTok data (`tt_affiliate_order_lines`, `tt_videos`, `tt_video_windows`, `tt_sample_requests`, returns/cancellations).
 
 ## Period
-Default: last 28 days against the 28 days before. Same date picker as Creators (`?from=&to=`).
+Default: last 28 days against the 28 days before. Same date picker as Affiliate Data (`?from=&to=`).
 
 ## Content age (when the sale happened vs when the video was posted)
 New video: 14 days or less. Recent: 15–30. Old: 31–60. Very old: 61 or more. Also LIVE and Product Cards.

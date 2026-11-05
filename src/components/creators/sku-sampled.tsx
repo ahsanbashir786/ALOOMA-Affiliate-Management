@@ -1,5 +1,5 @@
 import { fmtFullDay } from "@/lib/time";
-import type { DirLine } from "@/lib/workflow/directory";
+import type { DirLine } from "@/lib/creators/workflow/directory";
 
 /**
  * The SKUs that were sent to her as samples for this product, each with the date it was given (delivered; "shipped" when not delivered yet).

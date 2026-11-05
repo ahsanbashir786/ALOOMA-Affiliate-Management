@@ -3,20 +3,20 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { ExternalLink, MessageCircle, Users } from "lucide-react";
 import { can, requireUser } from "@/lib/auth";
-import { ACTION_ORDER, getAffiliateDirectory, STATUS_ORDER, type DirLine, type DirRow } from "@/lib/workflow/directory";
+import { ACTION_ORDER, getAffiliateDirectory, STATUS_ORDER, type DirLine, type DirRow } from "@/lib/creators/workflow/directory";
 import { parseCreatorParams } from "@/lib/creators/params";
 import { getStaff, syncFreshness } from "@/lib/creators/meta";
 import { hasSyncedData } from "@/lib/creators/load";
 import { countsToCompare, recordDailyCounts } from "@/lib/creators/counts";
-import { STATUS_HELP, ACTION_HELP, type CreatorStatus } from "@/lib/affiliates/status";
+import { STATUS_HELP, ACTION_HELP, type CreatorStatus } from "@/lib/creators/status";
 import { fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
-import { statsOf } from "@/lib/affiliates/action-messages";
+import { statsOf } from "@/lib/creators/action-messages";
 import { Pagination } from "@/components/ui/pagination";
-import { OpenPanelButton } from "@/components/creator/open-panel-button";
+import { OpenPanelButton } from "@/components/creators/open-panel-button";
 import { CreatorFilters } from "@/components/creators/creator-filters";
-import { LineAction } from "@/components/affiliates/line-action";
+import { LineAction } from "@/components/creators/line-action";
 import { SkuSampled } from "@/components/creators/sku-sampled";
 import { Avatar } from "@/components/creators/avatar";
 import { TierBadge } from "@/components/creators/tier-badge";
@@ -25,7 +25,7 @@ import { BulkProvider, RowCheck, SelectAllPage } from "@/components/creators/bul
 import { Sparkline } from "@/components/viz/sparkline";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Creators" };
+export const metadata: Metadata = { title: "Affiliate Data" };
 const SIZE = 50;
 const COLS = "lg:grid-cols-[250px_minmax(100px,1.2fr)_minmax(64px,0.7fr)_58px_72px_92px_104px_minmax(110px,1.1fr)_minmax(96px,0.9fr)]";
 const TONE: Record<CreatorStatus, "good" | "brand" | "warn" | "critical" | "neutral"> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
@@ -143,7 +143,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   if (!synced) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Creators" />
+        <PageHeader title="Affiliate Data" />
         <Card><EmptyState icon={<Users className="size-5" />} title="No TikTok data yet" description="Connect TikTok Shop and run Data Sync. Your creators appear here as soon as the first orders arrive." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
       </div>
     );
@@ -171,7 +171,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Creators"
+        title="Affiliate Data"
         description={<span className="inline-flex items-center gap-2"><span className={cn("size-2 rounded-full", fresh.ok ? "bg-good" : "bg-warn")} />{fresh.label} from TikTok Shop</span>}
         actions={<Link href="/sync" className={buttonClasses({ variant: "secondary" })}>Data Sync</Link>}
       />

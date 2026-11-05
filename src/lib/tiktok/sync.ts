@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
 import { addDaysISO, todayKL } from "@/lib/time";
 import { callApi, tiktokConfig, type Fetch, type TikTokConfig } from "./client";
 import * as M from "./map";
@@ -463,34 +463,4 @@ export async function syncOverview(): Promise<SyncOverview> {
     nextAt: settings.enabled && last ? new Date(last + settings.everyMinutes * 60_000).toISOString() : null,
     settings,
   };
-}
-
-// ───────── trust check: API figures against the uploaded files ─────────
-export type TrustCheck = { from: string; to: string; api: { orders: number; gmv: number }; upload: { orders: number; gmv: number } | null; diffPct: number | null };
-
-/** The latest 28 days of affiliate sales, from the API tables and from the uploaded files, side by side. */
-export async function trustCheck(): Promise<TrustCheck | null> {
-  const [apiEnd] = await rows<{ d: string | null }>(sql`select to_char(max(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') as d from tt_affiliate_order_lines`);
-  if (!apiEnd?.d) return null;
-  // Compare the same days: the latest 28 days up to the earlier of the two last dates (uploaded files usually stop sooner than the API).
-  let upEnd: string | null = null;
-  try {
-    const { AL } = await import("@/lib/analytics/sql");
-    const [u] = await rows<{ d: string | null }>(sql`select to_char(max(al.created_at), 'YYYY-MM-DD') as d from ${AL}`);
-    upEnd = u?.d ?? null;
-  } catch { upEnd = null; }
-  const ref = { d: upEnd && upEnd < apiEnd.d ? upEnd : apiEnd.d };
-  const from = addDaysISO(ref.d, -27);
-  const [a] = await rows<{ orders: number; gmv: number }>(sql`
-    select count(distinct order_id)::int as orders, coalesce(sum(price * quantity) filter (where coalesce(fully_return, false) = false), 0)::float8 as gmv
-    from tt_affiliate_order_lines where (created_at at time zone 'Asia/Kuala_Lumpur')::date between ${from}::date and ${ref.d}::date`);
-  let upload: TrustCheck["upload"] = null;
-  try {
-    const { AL } = await import("@/lib/analytics/sql");
-    const [u] = await rows<{ orders: number; gmv: number }>(sql`
-      select (count(distinct al.order_id) filter (where al.valid))::int as orders, coalesce(sum(al.pay) filter (where al.valid), 0)::float8 as gmv
-      from ${AL} where al.created_at::date between ${from}::date and ${ref.d}::date`);
-    if (u && u.orders > 0) upload = u;
-  } catch { upload = null; }
-  return { from, to: ref.d, api: a, upload, diffPct: upload && upload.gmv > 0 ? ((a.gmv - upload.gmv) / upload.gmv) * 100 : null };
 }

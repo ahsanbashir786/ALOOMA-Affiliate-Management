@@ -1,14 +1,14 @@
-# Module 1 – Creators
+# Affiliate Data (creators)
 
 Everyone who sells or is sampled for ALOOMA, built only from the TikTok Data Sync (no uploaded files).
 
 ## Screens
 | Screen | Address | What it does |
 |---|---|---|
-| Creators table | `/creators` | One row per creator, one line per product (sampled, or sold in the last 90 days). Instant filters, sorts, period (28 days / 90 days / 1 year / all), Excel export |
+| Affiliate Data table | `/creators` | One row per creator, one line per product (sampled, or sold in the last 90 days). Instant filters, sorts, period (28 days / 90 days / 1 year / all), Excel export |
 | Creator profile | `/creators/<username>` | Header (tier, score, followers, owner, WhatsApp, TikTok), 6 key numbers, weekly sales chart (video vs LIVE), score breakdown, products with status and action, samples, latest videos, LIVE sessions and orders |
 | Side panel | click a name, or "Message / Record Action" | Messages to send, record what happened, history. Its numbers now come from the same synced data |
-| Menu | left | Grouped (Overview, Affiliates, Shop operations, Reports, Earlier version, System); can shrink to icons |
+| Menu | left | Execution Plan, Affiliate Data, Product Analysis, Data Sync, Settings; can shrink to icons |
 
 ## Where each number comes from
 | Number | Source |
@@ -39,9 +39,8 @@ Sales 35 + Posting 25 + Reliability 15 + Consistency 15 + Reach 10. Gold 70+, Si
 - Reach: followers, log scale (1k = 0, 1M = full)
 
 ## Notes
-- Pending sample requests are counted ("N sample requests") but are not product lines; approving needs a write permission we do not have yet (Module 3, Samples).
+- Pending sample requests are counted ("N sample requests") but are not product lines; approving needs a write permission we do not have yet .
 - The loaded table is cached until the next sync or staff action, so pages stay fast with 100,000+ order lines.
-- Old pages (Affiliate Data (old), analysis, Samples, Segments) still read uploaded files; they sit under "Earlier version" until their module is rebuilt.
 - Demo data for testing only: `DATABASE_URL=…_test npx tsx scripts/seed-creators-demo.ts` (refuses any database not ending in `_test`). Tests: `npm run test:creators`.
 
 ## Products (the 13) and SKU Sampled

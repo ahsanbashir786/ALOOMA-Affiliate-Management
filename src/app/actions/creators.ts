@@ -6,7 +6,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { parseCreatorParams } from "@/lib/creators/params";
-import { getAffiliateDirectory } from "@/lib/workflow/directory";
+import { getAffiliateDirectory } from "@/lib/creators/workflow/directory";
 
 type R = { ok?: true; error?: string };
 export type OwnerBefore = { u: string; id: string | null };

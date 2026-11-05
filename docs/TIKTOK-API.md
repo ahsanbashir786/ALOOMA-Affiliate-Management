@@ -1,6 +1,6 @@
 # TikTok Shop connection
 
-Lets the app read orders, products, returns and shipping straight from TikTok (read-only). Uploads keep working as a backup.
+Lets the app read orders, products, returns and shipping straight from TikTok (read-only). 
 
 ## One-time setup
 
@@ -25,11 +25,9 @@ Lets the app read orders, products, returns and shipping straight from TikTok (r
 | Read-only | Only read scopes are requested; the app never changes the shop |
 | Customer data | The *Customer Service* scope is not requested |
 | Who | Only the owner (admin) can connect, test or disconnect |
-| Off switch | **Disconnect** deletes the tokens. Uploaded data is untouched. |
+| Off switch | **Disconnect** deletes the tokens. Synced data is untouched. |
 
 ## What the test tells us
-If **Orders** returns fields such as the creator and the content/video ID, affiliate orders can sync without uploads. If not, keep uploading the *Affiliate orders* file and use the API for orders, status, products, returns and shipping.
-
 ## Data Sync (module 0)
 **Administration → Data Sync** pulls eleven datasets from TikTok into the `tt_*` tables: products and stock, affiliate orders, sample requests, **shop orders** (every order, reduced to status, dates, totals and line prices; no customer data), **sample orders** (shipping status and delivery dates of the orders behind sample requests; no customer data), **collaborations** (commission offered, stock, creators joined), videos, LIVE sessions, returns, cancellations and daily shop performance.
 
@@ -42,7 +40,6 @@ If **Orders** returns fields such as the creator and the content/video ID, affil
 | History | The very first sync reads the whole history back to 1 Mar 2025 (orders, affiliate orders, returns and cancellations in 30-day windows; videos, LIVE and shop performance in 28-day windows, as far back as TikTok allows, about 6 months). After that **Sync now** and the auto-sync read only what is new since the last sync (plus 2 days), or the last 90 days when the last sync is more than a day old. There is no history picker on the screen any more; each card also has its own small sync button for just that dataset |
 | Rate limits | The sync paces itself, waits when TikTok says "too many requests", and uses a smaller page size if TikTok refuses one |
 | Failures | A failed dataset is shown in red with TikTok's message; the others still run |
-| Trust check | Compares the last 28 days of affiliate sales from the API with the uploaded files so you can see they agree before you stop uploading |
 | Privacy | Only whitelisted fields are read; customer names, phones, emails and addresses never reach the database |
 
 Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).
@@ -63,4 +60,4 @@ Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).
 
 ## Data Sync screen: history and health
 - **Sync history** groups the runs: one line per sync (Full sync, or the one dataset a card's button synced), who started it (Automatic or a name), when, how long it took, and the result (records updated, skipped, failed). Open a line to see every dataset in it.
-- **Data health** replaces the old "Trust check" (which compared the API with uploaded files; uploads are no longer part of the plan). It says whether any dataset failed or is over a day old, how far the order data reaches, whether TikTok skipped records, and whether auto-sync is on.
+- **Data health** says whether any dataset failed or is over a day old, how far the order data reaches, whether TikTok skipped records, and whether auto-sync is on.

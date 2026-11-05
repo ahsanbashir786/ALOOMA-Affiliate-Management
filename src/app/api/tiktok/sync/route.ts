@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { can, getCurrentUser } from "@/lib/auth";
 import { connectionInfo } from "@/lib/tiktok/client";
+import { refreshPlanAfterSync } from "@/lib/execution/refresh";
 import { DATASETS, runAll, runDataset, syncOverview, type DatasetKey } from "@/lib/tiktok/sync";
 
 export const runtime = "nodejs";
@@ -24,6 +25,6 @@ export async function POST(request: Request) {
   const backfill = asked?.history === true;
   const reread = asked?.reread === true;
   const job = key ? runDataset(key, "manual", user.id, { backfill, reread }) : runAll("manual", user.id, { backfill, reread });
-  void Promise.resolve(job).catch(() => {});
+  void Promise.resolve(job).then(refreshPlanAfterSync).catch(() => {});
   return NextResponse.json({ started: key ?? "all" }, { status: 202 });
 }

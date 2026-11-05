@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { can, getCurrentUser } from "@/lib/auth";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
 import { NAV } from "@/components/shell/nav";
 
 export const runtime = "nodejs";

@@ -6,7 +6,7 @@ import { ArrowDownUp, Download, Search, X } from "lucide-react";
 import { Input, Select } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { href } from "@/lib/url";
-import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/affiliates/status";
+import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/creators/status";
 import { CREATOR_SORTS } from "@/lib/creators/params";
 import { TIERS } from "@/lib/creators/score";
 import { DateRange } from "./date-range";

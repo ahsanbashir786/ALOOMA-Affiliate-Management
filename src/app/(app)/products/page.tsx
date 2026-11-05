@@ -14,7 +14,7 @@ import { PeriodPicker } from "@/components/products/period-picker";
 import { Delta, HealthChip, Legend, MixBar, TagBadge } from "@/components/products/ui";
 import { cn, fmtRM } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Products" };
+export const metadata: Metadata = { title: "Product Analysis" };
 
 const TAGS = ["Growing", "Steady", "Slipping", "Dying"] as const;
 const SORTS = [
@@ -72,7 +72,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
   if (!(await hasSyncedData())) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Products" />
+        <PageHeader title="Product Analysis" />
         <Card><EmptyState icon={<Package className="size-5" />} title="No TikTok data yet" description="Connect TikTok Shop and run Data Sync. Your products appear here as soon as the first orders arrive." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
       </div>
     );
@@ -97,7 +97,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Products"
+        title="Product Analysis"
         description={<span>Where each product is growing or lagging, and why · <span className="tnum">{fmtDayLabel(period.start)} – {fmtFullDay(period.end)}</span> compared with <span className="tnum">{fmtDayLabel(period.prevStart)} – {fmtFullDay(period.prevEnd)}</span></span>}
         actions={<PeriodPicker from={raw.from ?? ""} to={raw.to ?? ""} today={todayKL()} keep={{ tag: tag, sort: sort === "order" ? "" : sort }} />}
       />

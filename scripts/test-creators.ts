@@ -11,8 +11,8 @@ async function main() {
   const { parseCreatorParams } = await import("../src/lib/creators/params");
   const { loadCreatorRows } = await import("../src/lib/creators/load");
   const { getCreatorProfile } = await import("../src/lib/creators/profile");
-  const { getAffiliateDirectory } = await import("../src/lib/workflow/directory");
-  const { buildDirectoryWorkbook } = await import("../src/lib/affiliates/directory-export");
+  const { getAffiliateDirectory } = await import("../src/lib/creators/workflow/directory");
+  const { buildDirectoryWorkbook } = await import("../src/lib/creators/directory-export");
   const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
   const ago = (d: number, h = 12) => new Date(Date.now() - d * 86400000 + (h - 12) * 3600000).toISOString();
 
@@ -34,7 +34,7 @@ async function main() {
 
   // ── params ──
   const pp = parseCreatorParams({ from: "2026-01-05", to: "2026-02-10", owner: "none", tier: "Gold", sort: "score", samples: "with", status: "Winner", action: "todo", bogus: "x" });
-  check("params: parsed", pp.source === "synced" && pp.owner === "none" && pp.tier === "Gold" && pp.sort === "score" && pp.samples === "with" && pp.range?.start === "2026-01-05" && pp.range?.end === "2026-02-10" && pp.from === "2026-01-05", JSON.stringify(pp));
+  check("params: parsed", pp.owner === "none" && pp.tier === "Gold" && pp.sort === "score" && pp.samples === "with" && pp.range?.start === "2026-01-05" && pp.range?.end === "2026-02-10" && pp.from === "2026-01-05", JSON.stringify(pp));
   const pd = parseCreatorParams({ tier: "Platinum", owner: "x'; drop table", sort: "evil", days: "7" });
   check("params: junk is dropped", pd.tier === "" && pd.owner === "" && pd.sort === "gmv" && pd.from === "" && pd.range === undefined && pd.samples === "all");
 
@@ -148,7 +148,7 @@ async function main() {
   check("cache: a new contact and owner show straight away", again.lastContactedOn !== null && again.extra!.ownerName === "Zed Zee" && again.lines[0].doneOn !== null, JSON.stringify([again.lastContactedOn, again.extra!.ownerName]));
 
   // ── directory filters ──
-  const dir = (o: Record<string, unknown>) => getAffiliateDirectory({ source: "synced", samples: "all", size: 500, ...o });
+  const dir = (o: Record<string, unknown>) => getAffiliateDirectory({ samples: "all", size: 500, ...o });
   const all0 = await dir({});
   check("directory: overview counts everyone", all0.overview!.creators === all.length && all0.overview!.unowned === all.length - 1);
   check("directory: owner filter", (await dir({ owner: u.id as string })).rows.map((r) => r.username).join() === "zz_c_star" && (await dir({ owner: "none" })).total === all.length - 1);
@@ -188,7 +188,7 @@ async function main() {
   check("SKU sampled: the SKU decides the product – a request whose SKU belongs to another listing goes to that listing's product", sk3.lines.some((l) => l.pid === "mp_wp" && l.sampleSkus?.[0]?.sku === "MP-A") && !sk3.lines.some((l) => l.pid === "quilt"), JSON.stringify(sk3.lines.map((l) => [l.pid, l.sampleSkus])));
   check("SKU sampled: a product she only sells, with no sample, has none", star.lines.every((l) => !l.sampleSkus || l.sampleSkus.length === 0) && (by("zz_c_multi")!.lines.every((l) => !l.sampleSkus?.length)));
   check("SKU sampled: the export carries the SKUs with their dates", await (async () => {
-    const d = await getAffiliateDirectory({ source: "synced", samples: "all", size: 500, q: "zz_c_sk" });
+    const d = await getAffiliateDirectory({ samples: "all", size: 500, q: "zz_c_sk" });
     const buf = await buildDirectoryWorkbook(d.rows.filter((r) => r.username === "zz_c_sk"), d.dataEnd);
     const wb = new (await import("exceljs")).default.Workbook(); await wb.xlsx.load(buf as unknown as ArrayBuffer);
     const ws = wb.worksheets[0]; const heads = (ws.getRow(1).values as unknown[]).map(String);
@@ -208,7 +208,7 @@ async function main() {
   await q(sql`delete from creator_daily_counts where day < current_date - 20`);
   check("counts: before 28 days of history it uses the oldest day we have", (await countsToCompare())?.todo === 6);
   await recordDailyCounts({ creators: 11, sellers: 6, todo: 8, unowned: 9 });
-  check("counts: the latest view of a day wins", ((await q(sql`select todo from creator_daily_counts where day = current_date`))[0].todo as number) === 8);
+  check("counts: the latest view of a day wins", ((await q(sql`select todo from creator_daily_counts where day = (now() at time zone 'Asia/Kuala_Lumpur')::date`))[0].todo as number) === 8);
   await q(sql`delete from creator_daily_counts`);
 
   // ── profile ──

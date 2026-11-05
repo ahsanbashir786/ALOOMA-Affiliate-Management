@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const me = await getCurrentUser();
-  if (me) redirect(landingFor(me.role));
+  if (me) redirect(landingFor());
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
   if (n === 0) redirect("/setup");
   return (

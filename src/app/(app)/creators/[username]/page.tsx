@@ -5,16 +5,16 @@ import { ArrowLeft, ExternalLink, MessageCircle } from "lucide-react";
 import { can, requireUser } from "@/lib/auth";
 import { getCreatorProfile, type ProfileSample, type SampleResult } from "@/lib/creators/profile";
 import { getStaff } from "@/lib/creators/meta";
-import { statsOf } from "@/lib/affiliates/action-messages";
+import { statsOf } from "@/lib/creators/action-messages";
 import { SkuSampled } from "@/components/creators/sku-sampled";
-import { STATUS_HELP, type CreatorStatus } from "@/lib/affiliates/status";
+import { STATUS_HELP, type CreatorStatus } from "@/lib/creators/status";
 import { fmtDayLabel } from "@/lib/time";
 import { Avatar } from "@/components/creators/avatar";
 import { TierBadge } from "@/components/creators/tier-badge";
 import { OwnerPicker } from "@/components/creators/owner-picker";
 import { SalesChart } from "@/components/creators/sales-chart";
-import { LineAction } from "@/components/affiliates/line-action";
-import { OpenPanelButton } from "@/components/creator/open-panel-button";
+import { LineAction } from "@/components/creators/line-action";
+import { OpenPanelButton } from "@/components/creators/open-panel-button";
 import { Section } from "@/components/viz/section";
 import { Badge, Card } from "@/components/ui/primitives";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
@@ -67,7 +67,7 @@ export default async function CreatorProfilePage({ params }: PageProps<"/creator
 
   return (
     <div className="space-y-6">
-      <Link href="/creators" className="inline-flex items-center gap-1.5 text-[14px] text-ink-3 hover:text-ink"><ArrowLeft className="size-4" /> Creators</Link>
+      <Link href="/creators" className="inline-flex items-center gap-1.5 text-[14px] text-ink-3 hover:text-ink"><ArrowLeft className="size-4" /> Affiliate Data</Link>
 
       <Card className="p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">

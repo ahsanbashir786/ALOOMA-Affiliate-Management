@@ -1,8 +1,8 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
 import { dayKL, fmtDayLabel, addDaysISO, daysBetweenISO, weekStartISO } from "@/lib/time";
-import type { DirRow } from "@/lib/workflow/directory";
+import type { DirRow } from "@/lib/creators/workflow/directory";
 import { loadCreatorRows, POST_WINDOW_DAYS } from "./load";
 import { productName } from "@/lib/products/catalog";
 import { kd, PK_LISTING, TL } from "./sql";

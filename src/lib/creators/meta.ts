@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
 
 /** Active team members, for the owner pickers and filters. */
 export async function getStaff(): Promise<{ id: string; name: string }[]> {

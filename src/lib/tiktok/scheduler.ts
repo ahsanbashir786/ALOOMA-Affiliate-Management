@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
+import { refreshPlanAfterSync } from "@/lib/execution/refresh";
 import { connectionInfo, tiktokConfig } from "./client";
 import { CYCLE, clearInterrupted, getSyncSettings, isDue, runAll, type SyncDeps } from "./sync";
 
@@ -25,7 +26,7 @@ export function startScheduler() {
   const g = globalThis as unknown as { __ttScheduler?: boolean };
   if (g.__ttScheduler) return;
   g.__ttScheduler = true;
-  const tick = () => { schedulerTick().catch(() => {}); };
+  const tick = () => { schedulerTick().then((r) => (r === "ran" ? refreshPlanAfterSync() : undefined)).catch(() => {}); };
   // A restart kills any sync in progress; clear its "running" marks first so the screen never waits for work that no longer exists.
   clearInterrupted().catch(() => {});
   setTimeout(tick, 20_000);

@@ -24,7 +24,7 @@ export async function login(_: FormState, formData: FormData): Promise<FormState
   const ok = user && user.active && (await bcrypt.compare(parsed.data.password, user.passwordHash));
   if (!ok) return { error: "Incorrect email or password.", values };
   await createSession(user.id);
-  redirect(landingFor(user.role));
+  redirect(landingFor());
 }
 
 export async function logout() {

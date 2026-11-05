@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
 import { addDaysISO, todayKL } from "@/lib/time";
 
 export type DailyCounts = { day: string; creators: number; sellers: number; todo: number; unowned: number };

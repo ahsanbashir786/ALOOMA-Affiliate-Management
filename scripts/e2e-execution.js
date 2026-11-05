@@ -6,7 +6,7 @@ const ok = (c, n) => { c ? pass++ : fail++; console.log((c ? "PASS  " : "FAIL  "
 const BASE = "http://localhost:3100";
 async function login(p, email) {
   await p.goto(BASE + "/login"); await p.fill("input[name=email]", email); await p.fill("input[name=password]", "Passw0rd!test");
-  await Promise.all([p.waitForURL(/\/(command|today|execution|$)/), p.click("button[type=submit]")]);
+  await Promise.all([p.waitForURL((u) => !/login/.test(u.pathname)), p.click("button[type=submit]")]);
 }
 const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis] button", { hasText: label }).first().innerText()).replace(/\D+/g, "") || 0);
 (async () => {

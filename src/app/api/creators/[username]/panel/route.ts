@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { can, getCurrentUser } from "@/lib/auth";
-import { getCreatorPanel } from "@/lib/workflow/panel";
+import { getCreatorPanel } from "@/lib/creators/workflow/panel";
 
 export const runtime = "nodejs";
 

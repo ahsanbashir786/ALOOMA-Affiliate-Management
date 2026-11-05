@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, User } from "lucide-react";
-import { useCreatorPanel } from "@/components/creator/creator-panel";
+import { useCreatorPanel } from "@/components/creators/creator-panel";
 import { cn } from "@/lib/utils";
 
 type Hit = { kind: "page" | "creator"; label: string; href?: string };

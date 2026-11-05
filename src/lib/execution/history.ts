@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { rows } from "@/lib/analytics/sql";
+import { rows } from "@/lib/sql";
 import { kd, TL } from "@/lib/creators/sql";
 import { addDaysISO, daysBetweenISO } from "@/lib/time";
 import type { Analysis } from "@/lib/products/analysis";

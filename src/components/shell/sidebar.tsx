@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronsLeft, ChevronsRight, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ChevronsLeft, ChevronsRight, X } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { NAV, type NavItem } from "./nav";
 
 type Props = {
   role: "admin" | "manager" | "viewer";
   user: { name: string; email: string };
-  openActions: number;
   sync: { label: string; ok: boolean };
   open: boolean;
   onClose: () => void;
@@ -20,24 +19,9 @@ type Props = {
 const RANK = { viewer: 1, manager: 2, admin: 3 } as const;
 const ROLE_LABEL = { admin: "Admin", manager: "Affiliate manager", viewer: "Viewer" } as const;
 
-export function Sidebar({ role, user, openActions, sync, open, onClose, collapsed, onToggleCollapsed }: Props) {
+export function Sidebar({ role, user, sync, open, onClose, collapsed, onToggleCollapsed }: Props) {
   const pathname = usePathname();
-  const sp = useSearchParams();
-
-  // Carry the selected period across pages.
-  const carry = new URLSearchParams();
-  for (const k of ["range", "from", "to"]) {
-    const v = sp.get(k);
-    if (v) carry.set(k, v);
-  }
-  const qs = carry.toString();
-  const isActive = (item: NavItem) => {
-    if (item.exact) return pathname === item.href;
-    if (item.href === "/") return pathname === "/";
-    // "/affiliates" must not light up on its own sub-pages that have their own entry.
-    if (item.href === "/affiliates") return pathname === "/affiliates";
-    return pathname === item.href || pathname.startsWith(item.href + "/") || !!item.also?.some((p) => pathname.startsWith(p));
-  };
+  const isActive = (item: NavItem) => pathname === item.href || pathname.startsWith(item.href + "/") || !!item.also?.some((p) => pathname.startsWith(p));
   // On phones the menu is always the full one.
   const rail = collapsed;
 
@@ -54,7 +38,7 @@ export function Sidebar({ role, user, openActions, sync, open, onClose, collapse
         )}
       >
         <div className={cn("flex h-16 shrink-0 items-center justify-between border-b border-line px-5", rail && "lg:justify-center lg:px-0")}>
-          <Link href="/" className="flex items-center" onClick={onClose} aria-label="ALOOMA home">
+          <Link href="/execution" className="flex items-center" onClick={onClose} aria-label="ALOOMA home">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/alooma-logo.jpg" alt="ALOOMA" width={118} height={29} className={cn("h-[29px] w-[118px] rounded-md object-cover", rail && "lg:h-8 lg:w-8 lg:object-left")} />
           </Link>
@@ -67,52 +51,35 @@ export function Sidebar({ role, user, openActions, sync, open, onClose, collapse
           {NAV.map((group, gi) => {
             const items = group.items.filter((i) => !i.min || RANK[role] >= RANK[i.min]);
             if (!items.length) return null;
-            const inside = items.some(isActive);
-            const list = (
-              <ul className="space-y-0.5">
-                {items.map((item) => {
-                  const active = isActive(item);
-                  const Icon = item.icon;
-                  const href = item.usesPeriod && qs ? `${item.href}?${qs}` : item.href;
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={href}
-                        onClick={onClose}
-                        title={rail ? item.label : undefined}
-                        aria-current={active ? "page" : undefined}
-                        className={cn(
-                          "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14.5px] font-medium transition-colors",
-                          rail && "lg:justify-center lg:px-0",
-                          active ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
-                        )}
-                      >
-                        {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-3 w-[3px] rounded-r-full bg-brand lg:-left-3" />}
-                        <Icon className={cn("size-[18px] shrink-0", active ? "text-brand" : "text-ink-3 group-hover:text-ink-2")} />
-                        <span className={cn("flex-1 truncate", rail && "lg:hidden")}>{item.label}</span>
-                        {item.badge === "actions" && openActions > 0 && (
-                          <span className={cn("tnum rounded-full bg-brand px-2 py-px text-[11.5px] font-semibold text-white", rail && "lg:absolute lg:top-0.5 lg:right-2 lg:px-1.5 lg:text-[10px]")}>{openActions > 99 ? "99+" : openActions}</span>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            );
-            const heading = <span className={cn(rail && "lg:hidden")}>{group.label}</span>;
-            return group.collapsible ? (
-              <details key={group.label} open={inside} className={cn("group/nav mt-3", rail && "lg:[&:not([open])]:hidden")}>
-                <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-3 py-1.5 text-[11.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase hover:text-ink [&::-webkit-details-marker]:hidden">
-                  {heading}
-                  <ChevronDown className={cn("size-3.5 transition-transform group-open/nav:rotate-180", rail && "lg:hidden")} aria-hidden />
-                </summary>
-                <div className="mt-1">{list}</div>
-              </details>
-            ) : (
+            return (
               <div key={group.label} className={cn(gi > 0 && "mt-3")}>
                 <p className={cn("px-3 pb-1.5 text-[11.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase", rail && "lg:hidden")}>{group.label}</p>
                 {rail && gi > 0 && <div className="mx-3 mb-2 hidden border-t border-line lg:block" />}
-                {list}
+                <ul className="space-y-0.5">
+                  {items.map((item) => {
+                    const active = isActive(item);
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          onClick={onClose}
+                          title={rail ? item.label : undefined}
+                          aria-current={active ? "page" : undefined}
+                          className={cn(
+                            "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14.5px] font-medium transition-colors",
+                            rail && "lg:justify-center lg:px-0",
+                            active ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+                          )}
+                        >
+                          {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-3 w-[3px] rounded-r-full bg-brand lg:-left-3" />}
+                          <Icon className={cn("size-[18px] shrink-0", active ? "text-brand" : "text-ink-3 group-hover:text-ink-2")} />
+                          <span className={cn("flex-1 truncate", rail && "lg:hidden")}>{item.label}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             );
           })}

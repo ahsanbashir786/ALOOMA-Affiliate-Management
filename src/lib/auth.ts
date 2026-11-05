@@ -67,7 +67,7 @@ export async function requireUser(min: Role = "viewer"): Promise<SessionUser> {
 }
 
 /** Where a person lands after signing in: the owner starts at the Command centre, staff at Today's Work. */
-export const landingFor = (role: Role) => (role === "admin" ? "/command" : "/today");
+export const landingFor = () => "/execution";
 
 export const can = (user: { role: Role }, min: Role) => RANK[user.role] >= RANK[min];
 
