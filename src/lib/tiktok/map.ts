@@ -23,6 +23,9 @@ export function ts(v: unknown): string | null {
 }
 export const day = (v: unknown): string | null => { const t = ts(v); return t ? t.slice(0, 10) : str(v)?.slice(0, 10) ?? null; };
 
+/** TikTok writes the order number of a sample that has not shipped as "0" (or leaves it empty): that is no order. */
+export const realOrderId = (v: unknown): string | null => { const t = str(v); return t && !/^0+$/.test(t) ? t : null; };
+
 export type Row = Record<string, unknown>;
 
 export function affiliateOrderLines(o: R): Row[] {
@@ -117,7 +120,7 @@ export function sampleRequest(v: R): Row {
     product_title: str(p.title),
     sku_name: str(p.sku_name),
     commission_rate: num(v.commission_rate),
-    order_id: str(v.order_id),
+    order_id: realOrderId(v.order_id),
     is_approvable: typeof v.is_approvable === "boolean" ? v.is_approvable : null,
     expires_at: ts(v.approve_expiration_time),
     available_quantity: int(v.available_quantity),

@@ -82,6 +82,7 @@ async function main() {
   await req("R3", "zz_c_posted", "2222222", "APPROVED", "SO3", 50000); await sampleOrder("SO3", 30);
   await q(sql`insert into tt_videos (video_id, creator, title, posted_at, views, gmv, units_sold, products) values ('V1', 'zz_c_posted', 'Selimut review', ${ago(20)}, 5000, 0, 0, ${JSON.stringify([{ id: "2222222", name: "Selimut" }])}::jsonb)`);
   await req("R4", "zz_c_req", "2222222", "PENDING", null, 300);
+  await req("R11", "zz_c_zero", "2222222", "PENDING", "0", 300);
   await req("R5", "zz_c_rej", "2222222", "REJECTED", null, 300);
   // Overdue on TikTok (UNFULFILL_CANCELLED): shipped and delivered, decided by OUR evidence
   await req("R6", "zz_c_over", "2222222", "UNFULFILL_CANCELLED", "SO6", 900); await sampleOrder("SO6", 40);
@@ -112,6 +113,7 @@ async function main() {
   const ps = line1("zz_c_posted", "quilt")!;
   check("samples: a video of the product after delivery → Posted / Coach", ps.status === "Posted" && ps.action === "Coach" && ps.videos === 1, `${ps.status}/${ps.action}/${ps.videos}`);
   check("samples: a pending request is counted, not turned into a line", by("zz_c_req")!.extra!.requestsOpen === 1 && by("zz_c_req")!.lines.every((l) => !l.sampled));
+  check("samples: a request with order number 0 (no shipment yet) is a waiting request, never a sample", by("zz_c_zero")!.extra!.requestsOpen === 1 && by("zz_c_zero")!.lines.every((l) => !l.sampled), JSON.stringify(by("zz_c_zero")!.lines.map((l) => [l.pid, l.sampled])));
   check("samples: a declined request is not a sample", by("zz_c_rej")!.lines.every((l) => !l.sampled) && by("zz_c_rej")!.extra!.requestsOpen === 0);
   const ov1 = line1("zz_c_over", "quilt")!, ov2 = line1("zz_c_over_new", "quilt")!, ov3 = line1("zz_c_over_sold", "quilt")!;
   check("overdue on TikTok (UNFULFILL_CANCELLED), delivered, nothing found → a shipped sample, Silent / Chase", ov1?.sampled === true && ov1.status === "Silent" && ov1.action === "Chase", `${ov1?.sampled}/${ov1?.status}/${ov1?.action}`);

@@ -10,7 +10,7 @@ import { getCommitments } from "@/lib/workflow/commitments";
 import type { DirLine, DirRow } from "@/lib/workflow/directory";
 import { creatorScore } from "./score";
 import { kd, PK_LISTING, PK_SKU, TL } from "./sql";
-import { SAMPLE_OVERDUE_SQL, SAMPLE_SHIPPED_SQL } from "./sample-status";
+import { hasOrderSql, SAMPLE_OVERDUE_SQL, SAMPLE_SHIPPED_SQL } from "./sample-status";
 
 /** A sample is "late" this many days after it was delivered with nothing posted. */
 export const POST_WINDOW_DAYS = 14;
@@ -125,13 +125,13 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
             from tt_sample_requests r
             left join tt_orders o on o.order_id = r.order_id
             left join tt_skus k on k.sku_id = r.sku_id
-            where r.creator is not null and r.order_id is not null and ${sql.raw(SAMPLE_SHIPPED_SQL)} and coalesce(upper(o.status), '') <> 'CANCELLED'
+            where r.creator is not null and ${sql.raw(hasOrderSql("r"))} and ${sql.raw(SAMPLE_SHIPPED_SQL)} and coalesce(upper(o.status), '') <> 'CANCELLED'
           ) z where z.pk <> 'excluded'
         ) y
       ) x group by x.creator, x.pk`),
     rows<{ creator: string; nickname: string | null; followers: number | null; gmv: number | null; fulfil: number | null; open: number }>(sql`
       select distinct on (r.creator) r.creator, r.nickname, r.followers::float8::bigint::int as followers, r.creator_gmv::float8 as gmv, r.fulfilment_pct::float8 as fulfil,
-        (select count(*) from tt_sample_requests q where q.creator = r.creator and q.order_id is null and q.is_approvable and coalesce(upper(q.status), '') !~ '(REJECT|EXPIRE|CANCEL|APPROVED)')::int as open
+        (select count(*) from tt_sample_requests q where q.creator = r.creator and not coalesce(${sql.raw(hasOrderSql("q"))}, false) and q.is_approvable and coalesce(upper(q.status), '') !~ '(REJECT|EXPIRE|CANCEL|APPROVED)')::int as open
       from tt_sample_requests r where r.creator is not null order by r.creator, coalesce(r.synced_at, r.first_seen_at) desc`),
     // The three SKUs she sold most under each product (shown when no sample SKU is known).
     rows<{ creator: string; pk: string; skus: string[] }>(sql`

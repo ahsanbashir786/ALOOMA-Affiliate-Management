@@ -34,7 +34,7 @@ export const DATASETS: { key: DatasetKey; label: string; table: string; icon: st
 export async function liveCount(key: DatasetKey): Promise<number> {
   const ds = DATASETS.find((d) => d.key === key)!;
   if (key === "products") return (await rows<{ n: number }>(sql`select count(distinct product_id)::int as n from tt_skus`))[0]?.n ?? 0;
-  if (key === "sample_orders") return (await rows<{ n: number }>(sql`select count(distinct o.order_id)::int as n from tt_orders o join tt_sample_requests r on r.order_id = o.order_id`))[0]?.n ?? 0;
+  if (key === "sample_orders") return (await rows<{ n: number }>(sql`select count(distinct o.order_id)::int as n from tt_orders o join tt_sample_requests r on r.order_id = o.order_id and r.order_id !~ '^0*$'`))[0]?.n ?? 0;
   return (await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`))[0]?.n ?? 0;
 }
 
@@ -280,7 +280,7 @@ const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
     // Only the orders behind sample requests (shipping facts, no customer data); finished orders (completed / cancelled) are not asked for again.
     const need = await rows<{ order_id: string }>(sql`
       select distinct r.order_id from tt_sample_requests r left join tt_orders o on o.order_id = r.order_id
-      where r.order_id is not null and r.order_id <> '' and (o.order_id is null or o.is_final = false) order by 1`);
+      where r.order_id is not null and r.order_id !~ '^0*$' and (o.order_id is null or o.is_final = false) order by 1`);
     const state = { size: 0 };
     // If TikTok fails on a group of ids, split it in half until the one id TikTok cannot handle is found, skip that one and carry on.
     const fetchIds = async (ids: string[]): Promise<void> => {

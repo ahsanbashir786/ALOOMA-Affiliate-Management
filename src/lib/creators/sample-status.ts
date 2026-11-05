@@ -16,3 +16,6 @@ export const isOverdueStatus = (status: string | null | undefined) => /UNFULFILL
 /** The same rule for SQL (alias `r` = tt_sample_requests). */
 export const SAMPLE_SHIPPED_SQL = `(coalesce(upper(r.status), '') !~ '(REJECT|EXPIRE)' and (coalesce(upper(r.status), '') !~ 'CANCEL' or upper(r.status) like '%UNFULFILL%'))`;
 export const SAMPLE_OVERDUE_SQL = `(coalesce(upper(r.status), '') like '%UNFULFILL%')`;
+
+/** A request has a real shipment only when it has an order number that is not empty or all zeros (TikTok uses "0" for none). Alias `r` or the given one. */
+export const hasOrderSql = (a = "r") => `(${a}.order_id is not null and ${a}.order_id !~ '^0*$')`;

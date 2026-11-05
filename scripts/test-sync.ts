@@ -143,9 +143,13 @@ async function main() {
   const afterOv = await syncOverview();
   const rerun = await runDataset("returns", "manual", null, deps);
   check("31 after a restart, runs left running are marked interrupted at once, the screen stops waiting, and the dataset can run again", stuckBefore === true && cleared === 2 && afterOv.running === false && rerun.status === "ok");
+  // TikTok writes "0" (or nothing) as the order number of a sample that has not shipped: that is no order, and it is never asked for
+  check("33a a sample request with order number 0 or empty is saved with no order; a real one is kept", M.sampleRequest({ id: "S0", order_id: "0" })["order_id"] === null && M.sampleRequest({ id: "S1", order_id: "" })["order_id"] === null && M.sampleRequest({ id: "S2", order_id: "00" })["order_id"] === null && M.sampleRequest({ id: "S3" })["order_id"] === null && M.sampleRequest({ id: "S4", order_id: "579593367113205286" })["order_id"] === "579593367113205286");
+  await q(sql`insert into tt_sample_requests (id, order_id, creator) values ('SRZ1', '0', 'zed'), ('SRZ2', '', 'zed')`);
   await q(sql`insert into tt_sample_requests (id, order_id, creator) values ('SRB1', 'BAD1', 'zed'), ('SRB2', 'GOOD1', 'zed'), ('SRB3', 'GOOD2', 'zed')`);
   const isolated = await runDataset("sample_orders", "manual", null, deps);
   const got = (await q(sql`select order_id from tt_orders where order_id in ('GOOD1','GOOD2','BAD1')`)).map((r) => r.order_id).sort();
+  check("33b order number 0 / empty is never asked for and never saved as an order; the Samples Issued card counts only real shipments", ((await q(sql`select count(*)::int as n from tt_orders where order_id in ('0', '')`))[0].n as number) === 0 && (await syncOverview()).datasets.find((d) => d.key === "sample_orders")!.records === (((await q(sql`select count(distinct o.order_id)::int as n from tt_orders o join tt_sample_requests r on r.order_id = o.order_id and r.order_id !~ '^0*$'`))[0].n as number)));
   const ovSk = (await syncOverview()).datasets.find((d) => d.key === "sample_orders")!;
   check("33 skipped orders are counted and shown as a warning (with an example id and TikTok's message), not hidden, and the card is not red", ovSk.lastError === null && /1 skipped/.test(ovSk.note ?? "") && /BAD1/.test(ovSk.note ?? ""), String(ovSk.note));
   check("32 one order TikTok cannot read does not fail the dataset: the group is split, the bad one is skipped and the others are saved", isolated.status === "ok" && got.join() === "GOOD1,GOOD2", JSON.stringify([isolated, got]));

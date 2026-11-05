@@ -6,7 +6,7 @@ import type { DirRow } from "@/lib/workflow/directory";
 import { loadCreatorRows, POST_WINDOW_DAYS } from "./load";
 import { productName } from "@/lib/products/catalog";
 import { kd, PK_SKU, PK_LISTING, TL } from "./sql";
-import { isOverdueStatus, isShippedStatus } from "./sample-status";
+import { hasOrderSql, isOverdueStatus, isShippedStatus } from "./sample-status";
 
 export type SampleResult = "posted" | "waiting" | "not_posted" | "pending" | "closed";
 export type ProfileSample = {
@@ -59,7 +59,7 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
         (select to_char(min(${kd("v.posted_at")}), 'YYYY-MM-DD') from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
           where v.creator = z.creator and v.posted_at >= z.t0 - interval '1 day' and ${sql.raw(PK_LISTING("p->>'id'"))} = z.pk) as first_post
       from (
-        select r.id, r.creator, r.status, r.order_id, r.is_approvable as approvable, r.first_seen_at, k.seller_sku as sku, ${sql.raw(PK_SKU("r.sku_id", "r.product_id"))} as pk,
+        select r.id, r.creator, r.status, case when ${sql.raw(hasOrderSql("r"))} then r.order_id end as order_id, r.is_approvable as approvable, r.first_seen_at, k.seller_sku as sku, ${sql.raw(PK_SKU("r.sku_id", "r.product_id"))} as pk,
           coalesce(o.delivered_at, o.created_at, r.first_seen_at) as t0,
           to_char(${kd("r.first_seen_at")}, 'YYYY-MM-DD') as req,
           to_char(${kd("coalesce(o.paid_at, o.created_at)")}, 'YYYY-MM-DD') as ship,
