@@ -43,11 +43,11 @@ async function main() {
   check("params: follow-up type", parseCreatorParams({ contact: "contacted" }).contact === "contacted" && parseCreatorParams({ contact: "never" }).contact === "never");
 
   // ── fixture ──
-  for (const t of ["tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_orders", "tt_skus", "tt_cancellations", "tt_returns", "tt_video_windows"]) await q(sql.raw(`delete from ${t}`));
+  for (const t of ["tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_orders", "tt_skus", "tt_cancellations", "tt_returns", "tt_video_windows", "product_map", "sku_map"]) await q(sql.raw(`delete from ${t}`));
   await q(sql`delete from creator_owners`);
   await q(sql`delete from staff_events where username like 'zz_c_%'`);
   await q(sql`delete from users where email like 'zzc-%'`);
-  await q(sql`insert into tt_skus (sku_id, product_id, product_title, seller_sku, price, stock) values ('SKU-A', '1111111', 'ALOOMA Waterproof Mattress Protector Anti-Dust Mite', 'MP-A', 59, 10), ('SKU-B', '2222222', 'ALOOMA Selimut Soft Blanket', 'SL-B', 69, 5)`);
+  await q(sql`insert into tt_skus (sku_id, product_id, product_title, seller_sku, price, stock) values ('SKU-A', '1111111', 'ALOOMA Waterproof Mattress Protector Anti-Dust Mite', 'MP-A', 59, 10), ('SKU-B', '2222222', 'ALOOMA Selimut Soft Blanket', 'SL-B', 69, 5), ('SKU-T', '3333333', 'Magnetic Stick Toy Balls Building Blocks', 'MST25', 35, 5)`);
   let n = 0;
   const line = (creator: string, daysAgo: number, pid: string, price: number, qty = 1, extra: { type?: string; ret?: boolean; oid?: string } = {}) =>
     q(sql`insert into tt_affiliate_order_lines (order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, quantity, price, commission_rate, est_commission, fully_return)
@@ -55,6 +55,9 @@ async function main() {
   // star: many sales lately
   for (let d = 1; d <= 20; d++) await line("zz_c_star", d, "1111111", 100, 2);
   await line("zz_c_star", 3, "1111111", 50, 1, { type: "LIVE" });
+  // a toy (excluded from everything), a listing nobody has named yet (shown as unmapped), and a creator who sells two products
+  await q(sql`insert into tt_affiliate_order_lines (order_id, sku_id, created_at, creator, content_type, product_id, seller_sku, quantity, price) values ('OTOY1', 'SKU-T', ${ago(2)}, 'zz_c_star', 'VIDEO', '3333333', 'MST25', 1, 77), ('OUNM1', 'SKU-U', ${ago(2)}, 'zz_c_unm', 'VIDEO', '4444444', 'ZZ-1', 1, 10)`);
+  await line("zz_c_multi", 4, "2222222", 69); await line("zz_c_multi", 5, "1111111", 59);
   // fillers (so "winner" means something)
   for (let i = 1; i <= 12; i++) await line("zz_c_fill" + i, 2 + i, "1111111", 20 + i);
   // returns / cancellations
@@ -91,28 +94,28 @@ async function main() {
   check("load: reference day is the latest order", !!ref);
   const star = by("zz_c_star")!;
   check("load: sales = unit price × quantity", Math.round(star.gmvAll) === 20 * 200 + 50, String(star.gmvAll));
-  check("load: video and LIVE sales are split", Math.round(line1("zz_c_star", "1111111")!.gmvLive) === 50 && line1("zz_c_star", "1111111")!.ordersLive === 1);
-  const ret = line1("zz_c_ret", "1111111")!;
+  check("load: video and LIVE sales are split", Math.round(line1("zz_c_star", "mp_wp")!.gmvLive) === 50 && line1("zz_c_star", "mp_wp")!.ordersLive === 1);
+  const ret = line1("zz_c_ret", "mp_wp")!;
   check("sales: fully returned and cancelled orders are not counted, a withdrawn cancel request is", Math.round(ret.gmv) === 120 && ret.orders === 1, `${ret.gmv}/${ret.orders}`);
-  check("status: the best seller lately is a Winner", line1("zz_c_star", "1111111")!.status === "Winner", line1("zz_c_star", "1111111")!.status);
+  check("status: the best seller lately is a Winner", line1("zz_c_star", "mp_wp")!.status === "Winner", line1("zz_c_star", "mp_wp")!.status);
 
-  const sil = line1("zz_c_silent", "2222222")!;
+  const sil = line1("zz_c_silent", "quilt")!;
   check("samples: delivered long ago, nothing posted → Silent / Chase", sil.status === "Silent" && sil.action === "Chase" && sil.sampled === true, `${sil.status}/${sil.action}`);
-  const wt = line1("zz_c_wait", "2222222")!;
+  const wt = line1("zz_c_wait", "quilt")!;
   check("samples: delivered 3 days ago → Waiting / Wait", wt.status === "Waiting" && wt.action === "Wait", `${wt.status}/${wt.action}`);
-  const ps = line1("zz_c_posted", "2222222")!;
+  const ps = line1("zz_c_posted", "quilt")!;
   check("samples: a video of the product after delivery → Posted / Coach", ps.status === "Posted" && ps.action === "Coach" && ps.videos === 1, `${ps.status}/${ps.action}/${ps.videos}`);
   check("samples: a pending request is counted, not turned into a line", by("zz_c_req")!.extra!.requestsOpen === 1 && by("zz_c_req")!.lines.every((l) => !l.sampled));
   check("samples: a declined request is not a sample", by("zz_c_rej")!.lines.every((l) => !l.sampled) && by("zz_c_rej")!.extra!.requestsOpen === 0);
-  const ov1 = line1("zz_c_over", "2222222")!, ov2 = line1("zz_c_over_new", "2222222")!, ov3 = line1("zz_c_over_sold", "2222222")!;
+  const ov1 = line1("zz_c_over", "quilt")!, ov2 = line1("zz_c_over_new", "quilt")!, ov3 = line1("zz_c_over_sold", "quilt")!;
   check("overdue on TikTok (UNFULFILL_CANCELLED), delivered, nothing found → a shipped sample, Silent / Chase", ov1?.sampled === true && ov1.status === "Silent" && ov1.action === "Chase", `${ov1?.sampled}/${ov1?.status}/${ov1?.action}`);
   check("overdue on TikTok even inside 14 days is still not posted without evidence", ov2?.sampled === true && ov2.status === "Silent", `${ov2?.status}`);
   check("overdue on TikTok but she sold the product after delivery → posted, not Silent", ov3?.sampled === true && ov3.status !== "Silent" && ov3.orders === 1, `${ov3?.status}/${ov3?.orders}`);
   check("a cancelled request is not a sample", by("zz_c_cancelled")!.lines.every((l) => !l.sampled));
   check("creator with only a video is New / Approach", by("zz_c_new")!.lines[0].status === "New" && by("zz_c_new")!.lines[0].action === "Approach");
   check("followers and TikTok creator GMV come from sample requests", by("zz_c_silent")!.extra!.followers === 12000 && by("zz_c_silent")!.extra!.creatorGmv === 9000);
-  check("lines: product names are short listing names", line1("zz_c_star", "1111111")!.name === "Mattress Protector · Waterproof", line1("zz_c_star", "1111111")!.name);
-  check("lines: SKU codes come from the sold SKUs", line1("zz_c_star", "1111111")!.skus.includes("MP-A"));
+  check("lines: product names are short listing names", line1("zz_c_star", "mp_wp")!.name === "Mattress Protector · Waterproof", line1("zz_c_star", "mp_wp")!.name);
+  check("lines: SKU codes come from the sold SKUs", line1("zz_c_star", "mp_wp")!.skus.includes("MP-A"));
   check("type: LIVE session or LIVE orders make a creator Video + LIVE", star.type === "Video + LIVE", String(star.type));
   check("weeks: 8 weekly points and they add up to the last 8 weeks", star.extra!.weeks.length === 8 && Math.round(star.extra!.weeks.reduce((a, b) => a + b, 0)) > 3000);
   check("score and tier are filled for everyone", all.every((r) => r.extra && r.extra.score >= 0 && r.extra.score <= 100));
@@ -121,7 +124,7 @@ async function main() {
   // cache follows the records: a new staff action shows at once
   check("contact: not contacted yet", by("zz_c_star")!.lastContactedOn === null);
   const [u] = await q(sql`insert into users (name, email, password_hash, role, active) values ('Zed Zee', 'zzc-1@test.local', 'x', 'manager', true) returning id`);
-  await q(sql`insert into staff_events (username, kind, details) values ('zz_c_star', 'contacted', ${JSON.stringify({ action: "Push", productId: "1111111" })}::jsonb)`);
+  await q(sql`insert into staff_events (username, kind, details) values ('zz_c_star', 'contacted', ${JSON.stringify({ action: "Push", productId: "mp_wp" })}::jsonb)`);
   await q(sql`insert into creator_owners (username, user_id) values ('zz_c_star', ${u.id as string})`);
   const again = (await loadCreatorRows()).all.find((r) => r.username === "zz_c_star")!;
   check("cache: a new contact and owner show straight away", again.lastContactedOn !== null && again.extra!.ownerName === "Zed Zee" && again.lines[0].doneOn !== null, JSON.stringify([again.lastContactedOn, again.extra!.ownerName]));
@@ -135,7 +138,7 @@ async function main() {
   check("directory: status filter", (await dir({ status: "Silent" })).rows.every((r) => r.lines.every((l) => l.status === "Silent")) && (await dir({ status: "Silent" })).total >= 1);
   check("directory: To Do includes Chase and Approach", (await dir({ action: "todo" })).rows.some((r) => r.username === "zz_c_silent") && (await dir({ action: "todo" })).rows.some((r) => r.username === "zz_c_new"));
   check("directory: sample filter", (await dir({ samples: "with" })).rows.every((r) => r.allLines.some((l) => l.sampled)) && (await dir({ samples: "none" })).rows.every((r) => !r.allLines.some((l) => l.sampled)));
-  check("directory: product filter keeps only that product", (await dir({ product: "2222222" })).rows.every((r) => r.lines.every((l) => l.pid === "2222222")));
+  check("directory: product filter keeps only that product", (await dir({ product: "quilt" })).rows.every((r) => r.lines.every((l) => l.pid === "quilt")));
   check("directory: sort by score puts the star first", (await dir({ sort: "score" })).rows[0].extra!.score >= (await dir({ sort: "score" })).rows[5].extra!.score);
   check("directory: sort by followers", (await dir({ sort: "followers" })).rows[0].username === "zz_c_posted");
   check("directory: type filter", (await dir({ type: "both" })).rows.every((r) => r.type === "Video + LIVE"));
@@ -144,8 +147,24 @@ async function main() {
   const cont = await dir({ contact: "contacted" }), never = await dir({ contact: "never" });
   check("directory: follow-up type Contacted / Not contacted", cont.rows.some((r) => r.username === "zz_c_star") && !never.rows.some((r) => r.username === "zz_c_star") && cont.total + never.total === all.length, `${cont.total}+${never.total} vs ${all.length}`);
   check("overview: new creators in 28 days, sellers now and before", all0.overview!.newCreators28 > 0 && all0.overview!.sellersPrev >= 0 && all0.overview!.sellers28 > 0);
-  check("steady seller who posts little gets Push", line1("zz_c_fill3", "1111111")!.action === "Push" || line1("zz_c_fill3", "1111111")!.status !== "Steady");
+  check("steady seller who posts little gets Push", line1("zz_c_fill3", "mp_wp")!.action === "Push" || line1("zz_c_fill3", "mp_wp")!.status !== "Steady");
   check("directory: paging", (await dir({ size: 5, page: 2 })).rows.length === 5);
+
+  // ── product mapping in use ──
+  check("mapping: a toy is excluded – it is not in the creator's sales and not in any product list", Math.round(star.gmvAll) === 20 * 200 + 50 && !star.lines.some((l) => l.name.toLowerCase().includes("toy")) && !all0.products.some((p) => p.name.toLowerCase().includes("toy")), String(star.gmvAll));
+  const unm = by("zz_c_unm")!;
+  check("mapping: a listing nobody has named is shown as Unmapped (never hidden)", unm.lines[0].pid === "unmapped" && unm.lines[0].name === "Unmapped product" && unm.gmvAll === 10, JSON.stringify(unm.lines.map((l) => [l.pid, l.name])));
+  check("mapping: a creator's lines follow the owner's product order", by("zz_c_multi")!.lines.map((l) => l.pid).join() === "mp_wp,quilt", by("zz_c_multi")!.lines.map((l) => l.pid).join());
+  check("mapping: the product filter list follows the owner's order and uses the 13 names", all0.products.map((p) => p.name).join(" | ").startsWith("Mattress Protector · Waterproof | Quilt Comforter"), all0.products.map((p) => p.name).join(" | "));
+  check("mapping: the product filter accepts a product key and the unmapped bucket", (await dir({ product: "unmapped" })).rows.some((r) => r.username === "zz_c_unm") && (await dir({ product: "mp_wp" })).rows.every((r) => r.lines.every((l) => l.pid === "mp_wp")));
+  await q(sql`insert into sku_map (sku_id, product_id, product_key) values ('SKU-B', '2222222', 'pillows')`);
+  const moved = (await loadCreatorRows()).all.find((r) => r.username === "zz_c_multi")!;
+  check("mapping: an add-on SKU override moves its sales to the other product at once (cache follows)", moved.lines.map((l) => l.pid).join() === "mp_wp,pillows", moved.lines.map((l) => l.pid).join());
+  await q(sql`delete from sku_map`);
+  await q(sql`update product_map set product_key = 'excluded' where product_id = '2222222'`);
+  const gone = (await loadCreatorRows()).all.find((r) => r.username === "zz_c_silent")!;
+  check("mapping: marking a listing Excluded removes its sales AND its samples everywhere", gone.lines.every((l) => l.pid !== "quilt") && gone.lines[0].noSample === true, JSON.stringify(gone.lines.map((l) => l.pid)));
+  await q(sql`update product_map set product_key = 'quilt' where product_id = '2222222'`);
 
   // ── daily counts (the change on the top boxes) ──
   const { recordDailyCounts, countsToCompare } = await import("../src/lib/creators/counts");

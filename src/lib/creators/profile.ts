@@ -3,8 +3,9 @@ import { sql } from "drizzle-orm";
 import { rows } from "@/lib/analytics/sql";
 import { dayKL, fmtDayLabel, addDaysISO, daysBetweenISO, weekStartISO } from "@/lib/time";
 import type { DirRow } from "@/lib/workflow/directory";
-import { loadCreatorRows, POST_WINDOW_DAYS, productName } from "./load";
-import { kd, TL } from "./sql";
+import { loadCreatorRows, POST_WINDOW_DAYS } from "./load";
+import { productName } from "@/lib/products/catalog";
+import { kd, PK_SKU, PK_LISTING, TL } from "./sql";
 import { isOverdueStatus, isShippedStatus } from "./sample-status";
 
 export type SampleResult = "posted" | "waiting" | "not_posted" | "pending" | "closed";
@@ -49,18 +50,25 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
         coalesce(sum(tl.pay) filter (where tl.valid and tl.content_type <> 'Livestream'), 0)::float8 as v,
         coalesce(sum(tl.pay) filter (where tl.valid and tl.content_type = 'Livestream'), 0)::float8 as l
       from ${TL} where tl.creator = ${username} and ${kd("tl.created_at")} >= ${w26}::date group by 1`),
-    rows<{ id: string; title: string | null; sku: string | null; status: string | null; req: string | null; ship: string | null; dlv: string | null; ostatus: string | null; has_post: boolean; first_post: string | null; order_id: string | null; approvable: boolean | null }>(sql`
-      select r.id, r.product_title as title, k.seller_sku as sku, r.status, r.order_id, r.is_approvable as approvable,
-        to_char(${kd("r.first_seen_at")}, 'YYYY-MM-DD') as req,
-        to_char(${kd("coalesce(o.paid_at, o.created_at)")}, 'YYYY-MM-DD') as ship,
-        to_char(${kd("coalesce(o.delivered_at, case when o.status in ('DELIVERED', 'COMPLETED') then o.updated_at end)")}, 'YYYY-MM-DD') as dlv,
-        o.status as ostatus,
-        (exists (select 1 from tt_videos v where v.creator = r.creator and v.posted_at >= coalesce(o.delivered_at, o.created_at, r.first_seen_at) - interval '1 day' and v.products @> jsonb_build_array(jsonb_build_object('id', r.product_id)))
-         or exists (select 1 from tt_affiliate_order_lines a where a.creator = r.creator and a.product_id = r.product_id and a.created_at >= coalesce(o.delivered_at, o.created_at, r.first_seen_at) - interval '1 day')) as has_post,
-        (select to_char(min(${kd("v.posted_at")}), 'YYYY-MM-DD') from tt_videos v where v.creator = r.creator and v.posted_at >= coalesce(o.delivered_at, o.created_at, r.first_seen_at) - interval '1 day' and v.products @> jsonb_build_array(jsonb_build_object('id', r.product_id))) as first_post
-      from tt_sample_requests r left join tt_orders o on o.order_id = r.order_id left join tt_skus k on k.sku_id = r.sku_id
-      where r.creator = ${username} order by r.first_seen_at desc`),
-    rows<{ id: string; title: string | null; posted: string | null; views: number | null; gmv: number; units: number; products: { name: string | null }[] | null }>(sql`
+    rows<{ id: string; pk: string; sku: string | null; status: string | null; req: string | null; ship: string | null; dlv: string | null; ostatus: string | null; has_post: boolean; first_post: string | null; order_id: string | null; approvable: boolean | null }>(sql`
+      select z.id, z.pk, z.sku, z.status, z.order_id, z.approvable, z.req, z.ship, z.dlv, z.ostatus,
+        (exists (select 1 from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
+                 where v.creator = z.creator and v.posted_at >= z.t0 - interval '1 day' and ${sql.raw(PK_LISTING("p->>'id'"))} = z.pk)
+         or exists (select 1 from tt_affiliate_order_lines a left join sku_map sm on sm.sku_id = a.sku_id left join product_map pm on pm.product_id = a.product_id
+                    where a.creator = z.creator and coalesce(sm.product_key, pm.product_key, 'unmapped') = z.pk and a.created_at >= z.t0 - interval '1 day')) as has_post,
+        (select to_char(min(${kd("v.posted_at")}), 'YYYY-MM-DD') from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
+          where v.creator = z.creator and v.posted_at >= z.t0 - interval '1 day' and ${sql.raw(PK_LISTING("p->>'id'"))} = z.pk) as first_post
+      from (
+        select r.id, r.creator, r.status, r.order_id, r.is_approvable as approvable, r.first_seen_at, k.seller_sku as sku, ${sql.raw(PK_SKU("r.sku_id", "r.product_id"))} as pk,
+          coalesce(o.delivered_at, o.created_at, r.first_seen_at) as t0,
+          to_char(${kd("r.first_seen_at")}, 'YYYY-MM-DD') as req,
+          to_char(${kd("coalesce(o.paid_at, o.created_at)")}, 'YYYY-MM-DD') as ship,
+          to_char(${kd("coalesce(o.delivered_at, case when o.status in ('DELIVERED', 'COMPLETED') then o.updated_at end)")}, 'YYYY-MM-DD') as dlv,
+          o.status as ostatus
+        from tt_sample_requests r left join tt_orders o on o.order_id = r.order_id left join tt_skus k on k.sku_id = r.sku_id
+        where r.creator = ${username}
+      ) z where z.pk <> 'excluded' order by z.first_seen_at desc`),
+    rows<{ id: string; title: string | null; posted: string | null; views: number | null; gmv: number; units: number; products: { id: string | null }[] | null }>(sql`
       select v.video_id as id, v.title, to_char(${kd("v.posted_at")}, 'YYYY-MM-DD') as posted, v.views::float8 as views,
         coalesce((select sum(w.gmv) from tt_video_windows w where w.video_id = v.video_id), v.gmv, 0)::float8 as gmv,
         coalesce((select sum(w.units_sold) from tt_video_windows w where w.video_id = v.video_id), v.units_sold, 0)::int as units, v.products
@@ -70,7 +78,7 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
         (extract(epoch from (l.ended_at - l.started_at)) / 60)::float8 as minutes, coalesce(l.gmv, 0)::float8 as gmv, coalesce(l.items_sold, 0)::int as items, coalesce(l.viewers, 0)::float8 as viewers, coalesce(l.new_followers, 0)::int as fol
       from tt_lives l where l.creator = ${username} order by l.started_at desc nulls last limit 6`),
     rows<{ order_id: string; on: string; pid: string | null; qty: number; pay: number; type: string; valid: boolean; returned: boolean }>(sql`
-      select tl.order_id, to_char(${kd("tl.created_at")}, 'YYYY-MM-DD') as on, tl.product_id as pid, tl.qty::int as qty, tl.pay::float8 as pay, tl.content_type as type, tl.valid,
+      select tl.order_id, to_char(${kd("tl.created_at")}, 'YYYY-MM-DD') as on, tl.pk as pid, tl.qty::int as qty, tl.pay::float8 as pay, tl.content_type as type, tl.valid,
         coalesce((select a.fully_return from tt_affiliate_order_lines a where a.order_id = tl.order_id and a.sku_id = tl.sku_id), false) as returned
       from ${TL} where tl.creator = ${username} order by tl.created_at desc limit 12`),
     rows<{ orders: number; units: number; gmv: number; comm90: number; bad: number; n: number }>(sql`
@@ -86,9 +94,8 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
         union all select ${kd("first_seen_at")} from tt_sample_requests where creator = ${username}) x`),
   ]);
 
-  const titles = new Map<string, string>();
-  const pids = [...new Set(orders.map((o) => o.pid).filter((x): x is string => !!x))];
-  if (pids.length) for (const t of await rows<{ product_id: string; title: string | null }>(sql`select product_id, max(product_title) as title from tt_skus where product_id in (${sql.join(pids.map((p) => sql`${p}`), sql`, `)}) group by product_id`)) titles.set(t.product_id, productName(t.title));
+  // Video product links are TikTok listing IDs; show them as your 13 products.
+  const listingKey = new Map((await rows<{ product_id: string; product_key: string }>(sql`select product_id, product_key from product_map`)).map((r) => [r.product_id, r.product_key]));
 
   const wk = new Map(weekly.map((x) => [x.w, x]));
   const weeks: CreatorProfile["weeks"] = [];
@@ -104,7 +111,7 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
     const postBy = s.dlv ? addDaysISO(s.dlv, POST_WINDOW_DAYS) : null;
     const result: SampleResult = dead ? "closed" : !s.order_id ? "pending" : s.has_post ? "posted" : s.dlv && (isOverdueStatus(st) || (postBy && postBy < nowDay)) ? "not_posted" : "waiting";
     const stage = dead ? (/REJECT/.test(st) ? "Declined" : /EXPIRE/.test(st) ? "Request expired" : "Cancelled") : !s.order_id ? (s.approvable ? "Waiting for your decision" : "Requested") : s.dlv ? (isOverdueStatus(st) ? "Delivered · overdue on TikTok" : "Delivered") : "On the way";
-    return { id: s.id, product: productName(s.title), sku: s.sku, requestedOn: s.req, shippedOn: s.ship, deliveredOn: s.dlv, postByOn: postBy, result, stage, daysToPost: result === "posted" && s.first_post && s.dlv ? Math.max(0, daysBetweenISO(s.dlv, s.first_post)) : null };
+    return { id: s.id, product: productName(s.pk), sku: s.sku, requestedOn: s.req, shippedOn: s.ship, deliveredOn: s.dlv, postByOn: postBy, result, stage, daysToPost: result === "posted" && s.first_post && s.dlv ? Math.max(0, daysBetweenISO(s.dlv, s.first_post)) : null };
   });
 
   const t = tot[0];
@@ -113,9 +120,9 @@ export async function getCreatorProfile(username: string): Promise<CreatorProfil
     firstSeenOn: first[0]?.d ?? null,
     weeks,
     samples: sampleList,
-    videos: videos.map((v) => ({ id: v.id, title: v.title, postedOn: v.posted, views: v.views ?? 0, gmv: v.gmv, units: v.units, products: (v.products ?? []).map((p) => productName(p.name)).filter((x, i, a) => a.indexOf(x) === i) })),
+    videos: videos.map((v) => ({ id: v.id, title: v.title, postedOn: v.posted, views: v.views ?? 0, gmv: v.gmv, units: v.units, products: (v.products ?? []).map((p) => (p.id && listingKey.get(p.id) !== "excluded" ? productName(listingKey.get(p.id ?? "") ?? null) : "")).filter((x, i, a) => x && a.indexOf(x) === i) })),
     lives: lives.map((l) => ({ id: l.id, title: l.title, on: l.on, minutes: l.minutes, gmv: l.gmv, items: l.items, viewers: l.viewers, newFollowers: l.fol })),
-    orders: orders.map((o) => ({ orderId: o.order_id, on: o.on, product: (o.pid && titles.get(o.pid)) || "Product", qty: o.qty, amount: o.pay, type: o.type, state: o.valid ? "Counted" : o.returned ? "Returned" : "Cancelled" })),
+    orders: orders.map((o) => ({ orderId: o.order_id, on: o.on, product: productName(o.pid), qty: o.qty, amount: o.pay, type: o.type, state: o.valid ? "Counted" : o.returned ? "Returned" : "Cancelled" })),
     totals: { orders: t?.orders ?? 0, units: t?.units ?? 0, gmv: t?.gmv ?? 0, aov: t && t.orders ? t.gmv / t.orders : 0, commission90: t?.comm90 ?? 0, returnPct: t && t.n ? (t.bad / t.n) * 100 : null },
   };
 }

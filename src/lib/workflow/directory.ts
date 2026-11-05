@@ -6,6 +6,7 @@ import { addDaysISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { listingName } from "@/lib/affiliates/product-name";
 import { loadRelationships } from "./relationships";
 import { loadCreatorRows } from "@/lib/creators/load";
+import { productRank } from "@/lib/products/catalog";
 import type { Tier } from "@/lib/creators/score";
 
 /** One sampled product of a creator: its own sales, videos, status and action. */
@@ -299,14 +300,14 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     }
   }
 
-  // Products to filter by: every sampled product, most creators first.
+  // Products to filter by, in the owner's product order (older upload data falls back to most creators first).
   const pm = new Map<string, { pid: string; name: string; creators: number }>();
   for (const a of all) for (const l of a.lines) if (l.pid) {
     const e = pm.get(l.pid) ?? { pid: l.pid, name: l.name, creators: 0 };
     e.creators++;
     pm.set(l.pid, e);
   }
-  const products = [...pm.values()].sort((x, y) => y.creators - x.creators || x.name.localeCompare(y.name));
+  const products = [...pm.values()].sort((x, y) => productRank(x.pid) - productRank(y.pid) || y.creators - x.creators || x.name.localeCompare(y.name));
 
   // Keep only the matching lines of the matching creators.
   const filtered: DirRow[] = [];

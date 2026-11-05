@@ -17,6 +17,7 @@
     "test:tiktok": "tsx --conditions=react-server scripts/test-tiktok.ts",
     "test:sync": "tsx --conditions=react-server scripts/test-sync.ts",
     "test:creators": "tsx --conditions=react-server scripts/test-creators.ts",
+    "test:products": "tsx --conditions=react-server scripts/test-products.ts",
     "diag:creator": "tsx --env-file=.env --conditions=react-server scripts/diag-creator.ts",
     "diag:products": "tsx --env-file=.env --conditions=react-server scripts/diag-products.ts"
   },

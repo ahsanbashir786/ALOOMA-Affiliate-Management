@@ -2,6 +2,7 @@
 import type { DirOpts, DirSort } from "@/lib/workflow/directory";
 import { ACTIONS, STATUSES } from "@/lib/workflow/directory-params";
 import { TIERS, type Tier } from "./score";
+import { isProductKey, UNMAPPED } from "@/lib/products/catalog";
 import { addDaysISO, todayKL } from "@/lib/time";
 
 /** Quick choices for the date range (days counted back from today, today included). */
@@ -48,7 +49,7 @@ export function parseCreatorParams(sp: Record<string, string | undefined>): DirO
     source: "synced",
     q: (sp.q ?? "").trim(),
     samples: (pick(sp.samples, ["with", "none", "all"]) || "all") as "with" | "none" | "all",
-    product: /^\d{5,30}$/.test(sp.product ?? "") ? sp.product : "",
+    product: isProductKey(sp.product ?? "") || sp.product === UNMAPPED ? sp.product : "",
     status: pick(sp.status, STATUSES),
     action: pick(sp.action, [...ACTIONS, "todo"] as const),
     type: pick(sp.type, ["video", "live", "both"] as const),

@@ -43,3 +43,17 @@ Sales 35 + Posting 25 + Reliability 15 + Consistency 15 + Reach 10. Gold 70+, Si
 - The loaded table is cached until the next sync or staff action, so pages stay fast with 100,000+ order lines.
 - Old pages (Affiliate Data (old), analysis, Samples, Segments) still read uploaded files; they sit under "Earlier version" until their module is rebuilt.
 - Demo data for testing only: `DATABASE_URL=…_test npx tsx scripts/seed-creators-demo.ts` (refuses any database not ending in `_test`). Tests: `npm run test:creators`.
+
+## Product mapping (the 13 products)
+Every list in the Creators module uses ALOOMA's 13 products, in the owner's order, never TikTok's long titles:
+Mattress Protector Non-Waterproof, Waterproof, Quilt Comforter, Pillows, Bedsheet Non-Waterproof / Waterproof (single), Bedsheet Non-Waterproof / Waterproof (set), Cotton Towel, Coral Fleece Towel, Mattress Protector Non-Waterproof / Waterproof (Exclusive), Pillow Protectors.
+
+| Screen / rule | Detail |
+|---|---|
+| **System → Product mapping** (managers) | One row per TikTok listing (product ID) with a dropdown of the 13 products or **Excluded** (toys: never shown or counted). Evidence beside each row: title, price, variation names, what it sells, orders, samples |
+| Suggestions | Computed from the API data only (title words + which SKU family the listing mostly sells). Marked **Suggested** until confirmed; "Confirm all suggested" or per row. Pages work from the first visit using the suggestions and show a banner until everything is confirmed |
+| Add-on SKUs | The same seller SKU in several listings, big in one (its home) and tiny in another = probably an add-on (a pillow inside a mattress protector listing). Choose what it counts as; the key is the unique **SKU ID** |
+| Coverage | Order lines per product + Excluded + Unmapped must add up to the total, or the screen says so. New listings or SKUs show as **Unmapped** (last in every list) until assigned |
+| Log and undo | Every change is logged (who, when, from → to) with Undo |
+| Samples | Matched to the sale through the same product: a sample's SKU ID, else its listing, gives its product |
+| Overdue samples | TikTok's `UNFULFILL_CANCELLED` (portal: Overdue) is a shipped sample. Posted = her video linking the product, or her sales of it, after delivery (orders reach back further than the video list); otherwise Not posted |
