@@ -23,9 +23,17 @@ Everyone who sells or is sampled for ALOOMA, built only from the TikTok Data Syn
 | Status and action | the one shared rule set (`creatorStatus`) – unchanged |
 | Owner | table `creator_owners` (managers can change; latest wins) |
 
+## Filters, dates and bulk actions
+- Filters (all inline, instant): Product, Status, Owner, All Tiers, All Content Types, All Samples Type, Follow-up Type (Contacted / Not Contacted), Contact Source (WhatsApp / No WhatsApp), Action chips, sort.
+- **Date range** (button, right of the Action chips): Last 7 days, Last 1 month, Last 3 months, All time, or any From and To day. It changes only **Orders, Videos, GMV and Total GMV** (and sorting by them). Creators are not hidden; status, action, tier, score and the five top boxes always use the latest 28 days.
+- **Top boxes** show the change as a percentage and a number ("▲ 2% (+5)"). Creators shows "+N new" (first order, video or LIVE in the last 28 days). To do and Not owned are saved once a day (`creator_daily_counts`), so their change appears from the day after the first visit and compares with 28 days ago once there is that much history.
+- **Bulk actions** (managers): tick creators (or the whole page, then "Select all N matching") → Assign owner (asks to confirm the number, one Undo) or Mark contacted (up to 200 at a time, one Undo).
+- Steady creators who post fewer than 2 videos in 28 days get the action **Push**.
+
 ## Creator score (0–100)
-Sales 40 + Reliability 25 + Consistency 20 + Reach 15. Gold 70+, Silver 45+, Bronze 20+, else Starter. Hover the tier badge to see the breakdown.
+Sales 35 + Posting 25 + Reliability 15 + Consistency 15 + Reach 10. Gold 70+, Silver 45+, Bronze 20+, else Starter. Hover the tier badge to see the breakdown.
 - Sales: where the last-28-day sales rank among everyone who sold
+- Posting: videos plus LIVE sessions in the last 28 days (8 = full 25 points)
 - Reliability: samples that ended in a post (falls back to TikTok's fulfilment %)
 - Consistency: weeks with a sale out of the last 8
 - Reach: followers, log scale (1k = 0, 1M = full)

@@ -19,7 +19,7 @@ export const STATUS_HELP: Record<CreatorStatus, string> = {
 export const ACTION_HELP: Record<CreatorAction, string> = {
   Resume: "Paused – decide when to come back.",
   Chase: "Remind them to post the sample content.",
-  Push: "Selling well but posting little – ask for more videos.",
+  Push: "Selling but posting little – ask for more videos so they can move up.",
   Reward: "Selling and posting well – offer another sample.",
   Revive: "Ask for a fresh video or reach out again.",
   Coach: "Content is up but not converting – share a hook, voucher or brief.",
@@ -50,7 +50,7 @@ export function creatorStatus(i: StatusInput): { status: CreatorStatus; action: 
   if (i.gmv28 > 0 && i.gmv28 >= i.winnerGmv) return { status: "Winner", action: i.videos28 < LITTLE_POSTING ? "Push" : "Reward" };
   if (i.prev28 > 0 && i.gmv28 < i.prev28 * 0.7) return { status: "Slipping", action: i.videos28 === 0 ? "Revive" : "Coach" };
   if (i.gmv28 > 0 && i.gmv28 > i.prev28 * 1.3) return { status: "Rising", action: i.videos28 < LITTLE_POSTING ? "Push" : "Keep" };
-  if (i.gmv28 > 0) return { status: "Steady", action: "Keep" };
+  if (i.gmv28 > 0) return { status: "Steady", action: i.videos28 < LITTLE_POSTING ? "Push" : "Keep" };
   if (i.gmvAll > 0) return { status: "Quiet", action: "Revive" };
   if (i.samples.waiting > 0) return { status: "Waiting", action: "Wait" };
   if (i.samples.posted > 0) return { status: "Posted", action: "Coach" };

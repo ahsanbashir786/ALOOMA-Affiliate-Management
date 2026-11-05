@@ -17,7 +17,8 @@ check("sales up 30%+ and posting well → Rising / Keep", r({ gmv28: 500, prev28
 check("similar sales → Steady / Keep", r({ gmv28: 400, prev28: 380, videos28: 2 }) === "Steady/Keep");
 check("sold before, nothing lately → Quiet / Revive", r({ gmvAll: 900 }) === "Quiet/Revive");
 check("sample past deadline, nothing posted, no sales → Silent / Chase", r({ samples: { sent: 1, notPosted: 1 } }) === "Silent/Chase");
-check("sample past deadline but selling anyway is not Silent", r({ gmv28: 400, prev28: 400, samples: { sent: 1, notPosted: 1 } }) === "Steady/Keep");
+check("sample past deadline but selling anyway is not Silent", r({ gmv28: 400, prev28: 400, videos28: 2, samples: { sent: 1, notPosted: 1 } }) === "Steady/Keep");
+check("steady but posting little → Push for more videos", r({ gmv28: 400, prev28: 380, videos28: 1 }) === "Steady/Push" && r({ gmv28: 400, prev28: 380, videos28: 0 }) === "Steady/Push");
 check("sample inside the posting window → Waiting / Wait", r({ samples: { sent: 1, waiting: 1 } }) === "Waiting/Wait");
 check("posted for a sample but no sales yet → Posted / Coach", r({ samples: { sent: 1, posted: 1 } }) === "Posted/Coach");
 check("nothing recorded → New / Approach", r({}) === "New/Approach");

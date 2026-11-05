@@ -56,13 +56,15 @@ export type CreatorExtra = {
   score: number;
   tier: Tier;
   scoreWhy: string;
-  scoreParts: { sales: number; reliability: number; consistency: number; reach: number };
+  scoreParts: { sales: number; posting: number; reliability: number; consistency: number; reach: number };
   ownerId: string | null;
   ownerName: string | null;
   videosAll: number;
   videos28: number;
   livesAll: number;
   lives28: number;
+  /** First day with an order, video or LIVE (null = only a sample request so far). */
+  firstOn: string | null;
   lastVideoOn: string | null;
   lastLiveOn: string | null;
   lastSaleOn: string | null;
@@ -94,7 +96,7 @@ export type DirOpts = {
   action?: CreatorAction | "todo" | "";
   type?: "video" | "live" | "both" | "";
   wa?: "yes" | "no" | "";
-  contact?: "never" | "recent" | "overdue" | "";
+  contact?: "contacted" | "never" | "recent" | "overdue" | "";
   /** Synced data only: a staff member's id, or "none" for creators nobody looks after. */
   owner?: string;
   tier?: Tier | "";
@@ -116,7 +118,7 @@ export type Directory = {
   products: { pid: string; name: string; creators: number }[];
   dataEnd: string | null;
   /** Synced data only: headline numbers over ALL creators (ignores the filters). */
-  overview?: { creators: number; sellers28: number; gmv28: number; prev28: number; todoLines: number; silentLines: number; requestsOpen: number; unowned: number; tiers: Record<Tier, number> };
+  overview?: { creators: number; newCreators28: number; sellers28: number; sellersPrev: number; gmv28: number; prev28: number; todoLines: number; silentLines: number; requestsOpen: number; unowned: number; tiers: Record<Tier, number> };
 };
 
 export const STATUS_ORDER: CreatorStatus[] = ["Silent", "Slipping", "Winner", "Rising", "Quiet", "Posted", "Waiting", "New", "Steady", "Paused"];
@@ -275,7 +277,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     (!opts.type || (opts.type === "video" ? a.type === "Video" : opts.type === "live" ? a.type === "LIVE" : a.type === "Video + LIVE")) &&
     (!opts.wa || (opts.wa === "yes") === !!a.phone) &&
     (!opts.contact ||
-      (opts.contact === "never" ? !a.lastContactedOn : opts.contact === "recent" ? !!a.lastContactedOn && a.lastContactedOn >= weekAgo : a.overdue));
+      (opts.contact === "contacted" ? !!a.lastContactedOn : opts.contact === "never" ? !a.lastContactedOn : opts.contact === "recent" ? !!a.lastContactedOn && a.lastContactedOn >= weekAgo : a.overdue));
   const lineOk = (l: DirLine, skip?: "status" | "action") =>
     (!opts.product || l.pid === opts.product) &&
     (skip === "status" || !opts.status || l.status === opts.status) &&
@@ -346,11 +348,13 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
 
   let overview: Directory["overview"];
   if (opts.source === "synced") {
-    overview = { creators: all.length, sellers28: 0, gmv28: 0, prev28: 0, todoLines: 0, silentLines: 0, requestsOpen: 0, unowned: 0, tiers: { Gold: 0, Silver: 0, Bronze: 0, Starter: 0 } };
+    overview = { creators: all.length, newCreators28: 0, sellers28: 0, sellersPrev: 0, gmv28: 0, prev28: 0, todoLines: 0, silentLines: 0, requestsOpen: 0, unowned: 0, tiers: { Gold: 0, Silver: 0, Bronze: 0, Starter: 0 } };
     for (const a of all) {
       const e = a.extra;
       if (!e) continue;
       if (e.gmv28 > 0) overview.sellers28++;
+      if (e.prev28 > 0) overview.sellersPrev++;
+      if (e.firstOn && e.firstOn >= addDaysISO(today, -27)) overview.newCreators28++;
       overview.gmv28 += e.gmv28;
       overview.prev28 += e.prev28;
       overview.requestsOpen += e.requestsOpen;

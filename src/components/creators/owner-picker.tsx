@@ -9,7 +9,9 @@ export type Staff = { id: string; name: string };
 
 /** Who looks after this creator. Everyone sees the name; managers can change it (saved at once). */
 export function OwnerPicker({ username, ownerId, staff, canAct, className }: { username: string; ownerId: string | null; staff: Staff[]; canAct: boolean; className?: string }) {
-  const [value, setValue] = useState(ownerId ?? "");
+  // What we show while saving; once saved the page sends the new owner and this steps aside.
+  const [local, setLocal] = useState<string | null>(null);
+  const value = local ?? ownerId ?? "";
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const name = staff.find((s) => s.id === value)?.name;
@@ -26,12 +28,12 @@ export function OwnerPicker({ username, ownerId, staff, canAct, className }: { u
           disabled={pending}
           onChange={(e) => {
             const v = e.target.value;
-            const before = value;
-            setValue(v);
+            setLocal(v);
             setErr("");
             start(async () => {
               const r = await assignOwner(username, v || null);
-              if (r.error) { setValue(before); setErr(r.error); }
+              if (r.error) setErr(r.error);
+              setLocal(null);
             });
           }}
           className="max-w-[120px] cursor-pointer appearance-none truncate bg-transparent pr-1 outline-none"

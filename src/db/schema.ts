@@ -944,3 +944,13 @@ export const creatorOwners = pgTable(
   },
   (t) => [index("creator_owners_user").on(t.userId)],
 );
+
+// Mirrors migrations/0010_creator_daily_counts.sql
+export const creatorDailyCounts = pgTable("creator_daily_counts", {
+  day: date("day").primaryKey(),
+  creators: integer("creators").notNull(),
+  sellers: integer("sellers").notNull(),
+  todo: integer("todo").notNull(),
+  unowned: integer("unowned").notNull(),
+  recordedAt: tz("recorded_at").notNull().defaultNow(),
+});

@@ -108,10 +108,11 @@ export default async function CreatorProfilePage({ params }: PageProps<"/creator
         <Section title="Sales by week" hint="Last 26 weeks, split by where the sale came from" className="lg:col-span-2"><SalesChart data={chart} /></Section>
         <Section title="Creator score" hint={`${e.tier} · ${e.score} out of 100`}>
           <div className="space-y-3.5">
-            <Bar label="Sales" value={e.scoreParts.sales} max={40} />
-            <Bar label="Reliability" value={e.scoreParts.reliability} max={25} />
-            <Bar label="Consistency" value={e.scoreParts.consistency} max={20} />
-            <Bar label="Reach" value={e.scoreParts.reach} max={15} />
+            <Bar label="Sales" value={e.scoreParts.sales} max={35} />
+            <Bar label="Posting" value={e.scoreParts.posting} max={25} />
+            <Bar label="Reliability" value={e.scoreParts.reliability} max={15} />
+            <Bar label="Consistency" value={e.scoreParts.consistency} max={15} />
+            <Bar label="Reach" value={e.scoreParts.reach} max={10} />
           </div>
           {e.creatorGmv != null && <p className="mt-4 border-t border-line pt-3 text-[13px] text-ink-3">TikTok says this creator has sold <b className="text-ink">{fmtRM(e.creatorGmv)}</b> across all shops.</p>}
         </Section>

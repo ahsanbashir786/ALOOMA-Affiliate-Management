@@ -59,7 +59,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
   const D = kd("tl.created_at");
   const refD = ref ?? "1970-01-01";
 
-  const [csales, psales, weekly, vidsC, vidsP, livesC, samples, reqs, skuRows, contact, owners, doneRows, names] = await Promise.all([
+  const [csales, psales, weekly, vidsC, vidsP, livesC, samples, reqs, skuRows, contact, owners, doneRows, names, firsts] = await Promise.all([
     rows<{ creator: string; gmv_all: number; gmv28: number; prev28: number; ov: number; ol: number; last: string | null }>(sql`
       select tl.creator,
         coalesce(sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")}), 0)::float8 as gmv_all,
@@ -140,6 +140,12 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
       select creator as c from tt_affiliate_order_lines where creator is not null union select creator from tt_sample_requests where creator is not null
       union select creator from tt_videos where creator is not null union select creator from tt_lives where creator is not null
       union select username from creators where source = 'manual' union select username from creator_owners`),
+    // The first day we see any real activity (an order, a video or a LIVE). Sample requests do not count: their dates are when we first synced them.
+    rows<{ creator: string; d: string }>(sql`
+      select creator, to_char(min(d), 'YYYY-MM-DD') as d from (
+        select creator, ${kd("created_at")} as d from tt_affiliate_order_lines where creator is not null
+        union all select creator, ${kd("posted_at")} from tt_videos where creator is not null and posted_at is not null
+        union all select creator, ${kd("started_at")} from tt_lives where creator is not null and started_at is not null) x group by creator`),
   ]);
 
   const usernames = names.map((n) => n.c);
@@ -161,6 +167,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
   const titleBy = new Map(skuRows.map((x) => [x.product_id, x.title]));
   const infoBy = new Map(contact.map((c) => [c.username, c]));
   const ownBy = new Map(owners.map((o) => [o.username, o]));
+  const firstBy = new Map(firsts.map((x) => [x.creator, x.d]));
   const doneBy = new Map(doneRows.map((x) => [`${x.username}|${x.pid ?? ""}|${x.action}`, x.d]));
 
   // Winner bars: per product (top 10% of that product's sellers) when enough creators sell it, otherwise the overall bar.
@@ -235,7 +242,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
     const type = hasVideo && hasLive ? "Video + LIVE" : hasLive ? "LIVE" : hasVideo ? "Video" : info?.approach === "both" ? "Video + LIVE" : info?.approach === "live" ? "LIVE" : info?.approach === "video" ? "Video" : null;
     const weeks = wkBy.get(username) ?? new Array(8).fill(0);
     const posted = sm.reduce((n, s) => n + s.posted, 0), notPosted = sm.reduce((n, s) => n + s.not_posted, 0);
-    const sc = creatorScore({ salesRank: cs && cs.gmv28 > 0 ? rank(cs.gmv28) : null, gmv28: cs?.gmv28 ?? 0, gmvAll: cs?.gmv_all ?? 0, posted, notPosted, fulfilmentPct: rq?.fulfil ?? null, weeks, followers: rq?.followers ?? null });
+    const sc = creatorScore({ salesRank: cs && cs.gmv28 > 0 ? rank(cs.gmv28) : null, gmv28: cs?.gmv28 ?? 0, gmvAll: cs?.gmv_all ?? 0, posted, notPosted, fulfilmentPct: rq?.fulfil ?? null, posts28: (vc?.n28 ?? 0) + (lv?.n28 ?? 0), weeks, followers: rq?.followers ?? null });
     const own = ownBy.get(username);
     all.push({
       username, type, phone: info?.phone ?? null, lines, allLines: lines, gmvAll: cs?.gmv_all ?? 0, overdue, paused,
@@ -245,7 +252,7 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
         weeks, gmv28: cs?.gmv28 ?? 0, prev28: cs?.prev28 ?? 0, score: sc.score, tier: sc.tier, scoreWhy: sc.why, scoreParts: sc.parts,
         ownerId: own?.user_id ?? null, ownerName: own?.name ?? null,
         videosAll: vc?.n ?? 0, videos28: vc?.n28 ?? 0, livesAll: lv?.n ?? 0, lives28: lv?.n28 ?? 0,
-        lastVideoOn: vc?.last ?? null, lastLiveOn: lv?.last ?? null, lastSaleOn: cs?.last ?? null, requestsOpen: rq?.open ?? 0, nextLabel,
+        firstOn: firstBy.get(username) ?? null, lastVideoOn: vc?.last ?? null, lastLiveOn: lv?.last ?? null, lastSaleOn: cs?.last ?? null, requestsOpen: rq?.open ?? 0, nextLabel,
       },
     });
   }

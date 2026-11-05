@@ -17,19 +17,24 @@ async function main() {
   const ago = (d: number, h = 12) => new Date(Date.now() - d * 86400000 + (h - 12) * 3600000).toISOString();
 
   // ── score (pure) ──
-  const base = { salesRank: 1, gmv28: 500, gmvAll: 5000, posted: 4, notPosted: 0, fulfilmentPct: 90, weeks: [1, 1, 1, 1, 1, 1, 1, 1], followers: 1_000_000 };
+  const base = { salesRank: 1, gmv28: 500, gmvAll: 5000, posted: 4, notPosted: 0, fulfilmentPct: 90, posts28: 8, weeks: [1, 1, 1, 1, 1, 1, 1, 1], followers: 1_000_000 };
   const top = creatorScore(base);
   check("score: a top creator is Gold with 100", top.score === 100 && top.tier === "Gold", JSON.stringify(top));
-  check("score: nothing known = Starter", creatorScore({ ...base, salesRank: null, gmv28: 0, gmvAll: 0, posted: 0, notPosted: 0, fulfilmentPct: null, weeks: [0, 0, 0, 0, 0, 0, 0, 0], followers: null }).tier === "Starter");
+  check("score: nothing known = Starter", creatorScore({ ...base, salesRank: null, gmv28: 0, gmvAll: 0, posted: 0, notPosted: 0, fulfilmentPct: null, posts28: 0, weeks: [0, 0, 0, 0, 0, 0, 0, 0], followers: null }).tier === "Starter");
   check("score: tier edges", tierOf(70) === "Gold" && tierOf(69) === "Silver" && tierOf(45) === "Silver" && tierOf(44) === "Bronze" && tierOf(20) === "Bronze" && tierOf(19) === "Starter");
   check("score: never posting lowers reliability to 0", creatorScore({ ...base, posted: 0, notPosted: 3 }).parts.reliability === 0);
-  check("score: explains itself", /Sales \d+\/40 · Reliability \d+\/25 · Consistency \d+\/20 · Reach \d+\/15/.test(top.why));
+  check("score: posting counts – no posts earns 0, 4 posts half, 8+ full", creatorScore({ ...base, posts28: 0 }).parts.posting === 0 && creatorScore({ ...base, posts28: 4 }).parts.posting === 13 && creatorScore({ ...base, posts28: 20 }).parts.posting === 25);
+  check("score: explains itself", /Sales \d+\/35 · Posting \d+\/25 · Reliability \d+\/15 · Consistency \d+\/15 · Reach \d+\/10/.test(top.why));
 
   // ── params ──
-  const pp = parseCreatorParams({ days: "28", owner: "none", tier: "Gold", sort: "score", samples: "with", status: "Winner", action: "todo", bogus: "x" });
-  check("params: parsed", pp.source === "synced" && pp.owner === "none" && pp.tier === "Gold" && pp.sort === "score" && pp.samples === "with" && pp.range !== undefined && pp.days === "28", JSON.stringify(pp));
+  const pp = parseCreatorParams({ from: "2026-01-05", to: "2026-02-10", owner: "none", tier: "Gold", sort: "score", samples: "with", status: "Winner", action: "todo", bogus: "x" });
+  check("params: parsed", pp.source === "synced" && pp.owner === "none" && pp.tier === "Gold" && pp.sort === "score" && pp.samples === "with" && pp.range?.start === "2026-01-05" && pp.range?.end === "2026-02-10" && pp.from === "2026-01-05", JSON.stringify(pp));
   const pd = parseCreatorParams({ tier: "Platinum", owner: "x'; drop table", sort: "evil", days: "7" });
-  check("params: junk is dropped", pd.tier === "" && pd.owner === "" && pd.sort === "gmv" && pd.days === "all" && pd.range === undefined && pd.samples === "all");
+  check("params: junk is dropped", pd.tier === "" && pd.owner === "" && pd.sort === "gmv" && pd.from === "" && pd.range === undefined && pd.samples === "all");
+
+  check("params: old ?days=28 link still works", parseCreatorParams({ days: "28" }).range !== undefined);
+  check("params: only From means up to today; a reversed range is swapped; junk dates are ignored", parseCreatorParams({ from: "2026-01-05" }).range?.start === "2026-01-05" && parseCreatorParams({ from: "2026-03-01", to: "2026-02-01" }).range?.start === "2026-02-01" && parseCreatorParams({ from: "nope", to: "2026-13-45" }).range === undefined);
+  check("params: follow-up type", parseCreatorParams({ contact: "contacted" }).contact === "contacted" && parseCreatorParams({ contact: "never" }).contact === "never");
 
   // ── fixture ──
   for (const t of ["tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_orders", "tt_skus", "tt_cancellations", "tt_returns", "tt_video_windows"]) await q(sql.raw(`delete from ${t}`));
@@ -119,7 +124,26 @@ async function main() {
   check("directory: type filter", (await dir({ type: "both" })).rows.every((r) => r.type === "Video + LIVE"));
   const narrow = await dir({ range: { start: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10), end: new Date().toISOString().slice(0, 10) } });
   check("directory: a short period only counts orders inside it", (narrow.rows.find((r) => r.username === "zz_c_star")?.gmvAll ?? 0) < star.gmvAll);
+  const cont = await dir({ contact: "contacted" }), never = await dir({ contact: "never" });
+  check("directory: follow-up type Contacted / Not contacted", cont.rows.some((r) => r.username === "zz_c_star") && !never.rows.some((r) => r.username === "zz_c_star") && cont.total + never.total === all.length, `${cont.total}+${never.total} vs ${all.length}`);
+  check("overview: new creators in 28 days, sellers now and before", all0.overview!.newCreators28 > 0 && all0.overview!.sellersPrev >= 0 && all0.overview!.sellers28 > 0);
+  check("steady seller who posts little gets Push", line1("zz_c_fill3", "1111111")!.action === "Push" || line1("zz_c_fill3", "1111111")!.status !== "Steady");
   check("directory: paging", (await dir({ size: 5, page: 2 })).rows.length === 5);
+
+  // ── daily counts (the change on the top boxes) ──
+  const { recordDailyCounts, countsToCompare } = await import("../src/lib/creators/counts");
+  await q(sql`delete from creator_daily_counts`);
+  check("counts: nothing saved yet → nothing to compare", (await countsToCompare()) === null);
+  await recordDailyCounts({ creators: 10, sellers: 5, todo: 7, unowned: 10 });
+  check("counts: today only is not a comparison", (await countsToCompare()) === null);
+  await q(sql`insert into creator_daily_counts (day, creators, sellers, todo, unowned) values (current_date - 3, 9, 4, 6, 9), (current_date - 40, 5, 2, 3, 5), (current_date - 30, 7, 3, 4, 7)`);
+  const cmpC = await countsToCompare();
+  check("counts: compares with the newest day at least 28 days old", cmpC?.todo === 4 && cmpC.unowned === 7, JSON.stringify(cmpC));
+  await q(sql`delete from creator_daily_counts where day < current_date - 20`);
+  check("counts: before 28 days of history it uses the oldest day we have", (await countsToCompare())?.todo === 6);
+  await recordDailyCounts({ creators: 11, sellers: 6, todo: 8, unowned: 9 });
+  check("counts: the latest view of a day wins", ((await q(sql`select todo from creator_daily_counts where day = current_date`))[0].todo as number) === 8);
+  await q(sql`delete from creator_daily_counts`);
 
   // ── profile ──
   const pr = (await getCreatorProfile("zz_c_silent"))!;

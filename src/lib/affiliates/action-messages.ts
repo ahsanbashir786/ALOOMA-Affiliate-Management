@@ -57,6 +57,9 @@ const CLOSE: Record<CreatorAction, Msg | null> = {
   Approach: null, Resume: null, Keep: null, Wait: null,
 };
 
+/** A steady seller who posts little: encourage more videos without calling them a top creator. */
+const PUSH_STEADY: Msg = { en: "More videos would grow those orders – could you post 2 this week? We'll help with a brief.", ms: "Lebih banyak video boleh naikkan pesanan itu – boleh upload 2 minggu ini? Kami bantu dengan brief." };
+
 /** Short message about ONE product: thanks by status, the numbers (LIVE only if any), last video age, then one clear request. */
 export function lineMessage(action: CreatorAction, username: string, product: string | null, l: LineStats | null, period: string): Msg | null {
   if (action === "Approach") {
@@ -66,7 +69,7 @@ export function lineMessage(action: CreatorAction, username: string, product: st
       ms: `Hai ${username}, kami suka kandungan awak dan rasa ${p} kami sesuai untuk penonton awak. Nak sampel percuma? Balas di sini dan kami uruskan.`,
     };
   }
-  const close = CLOSE[action];
+  const close = action === "Push" && l?.status === "Steady" ? PUSH_STEADY : CLOSE[action];
   if (!close || !l) return null;
   const open = (OPEN[l.status] ?? OPEN.Steady)(product ?? l.name);
   const nums = (ms: boolean) => {
