@@ -68,7 +68,7 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
         <header className="border-b border-line px-5 pt-4 pb-4">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <Link href={`/products/${task.productKey}`} className="inline-flex items-center gap-1.5 rounded-md bg-ink px-2.5 py-1 text-[13px] font-semibold text-surface hover:opacity-90">{task.productName}<ArrowUpRight className="size-3.5" /></Link>
+              <Link href={`/products/${task.productKey}`} className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand-strong hover:underline">{task.productName}<ArrowUpRight className="size-3.5" /></Link>
               <CategoryChip c={task.category} />
               <PriorityFlag p={task.priority} label />
             </div>
@@ -95,7 +95,7 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
           {skipping && (
             <div className="mt-3 flex gap-2">
               <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is it not needed? (short)" className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-[14px]" />
-              <button onClick={() => { mutate.status(task.id, "skipped", reason.trim() || "Marked not needed."); setSkipping(false); setReason(""); }} className="h-9 rounded-lg bg-ink px-3 text-[13.5px] font-medium text-white">Confirm</button>
+              <button onClick={() => { mutate.status(task.id, "skipped", reason.trim() || "Marked not needed."); setSkipping(false); setReason(""); }} className="h-9 rounded-lg bg-brand px-3 text-[13.5px] font-medium text-white">Confirm</button>
             </div>
           )}
 
@@ -164,7 +164,7 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
           {task.creatorCount > 0 && (
             <Block icon={Users} title={`Creators To Contact · ${task.creatorCount}`} right={msg && (
               <div className="inline-flex overflow-hidden rounded-md border border-line-strong text-[12px] font-medium">
-                {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1", lang === l ? "bg-ink text-white" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
+                {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1", lang === l ? "bg-brand text-white" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
               </div>
             )}>
               <CreatorList key={task.id} taskId={task.id} kind={task.kind} product={task.productName} canEdit={canEdit} closed={closed} total={task.creatorCount} contacted={task.contactedCount} lang={lang} onContacted={(n) => mutate.contacted(task.id, n)} />

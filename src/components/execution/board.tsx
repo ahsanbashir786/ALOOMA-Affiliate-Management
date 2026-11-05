@@ -259,7 +259,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-line-strong bg-surface p-0.5" role="tablist" aria-label="View">
             {([["list", "List", LayoutList], ["board", "Board", Columns3], ["team", "Team", Users]] as const).map(([k, l, Icon]) => (
-              <button key={k} role="tab" aria-selected={view === k} data-testid={`view-${k}`} onClick={() => setView(k)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13.5px] font-medium", view === k ? "bg-ink text-white" : "text-ink-2 hover:bg-surface-2")}><Icon className="size-4" />{l}</button>
+              <button key={k} role="tab" aria-selected={view === k} data-testid={`view-${k}`} onClick={() => setView(k)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13.5px] font-medium", view === k ? "bg-brand text-white" : "text-ink-2 hover:bg-surface-2")}><Icon className="size-4" />{l}</button>
             ))}
           </div>
           {view === "list" && (
@@ -284,7 +284,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                 const on = same(f, s.f);
                 return (
                   <button key={s.key} data-testid={`scope-${s.key}`} aria-pressed={on} onClick={() => setF({ ...NO_FILTER, ...s.f })}
-                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[14px] font-medium transition-colors", on ? "bg-ink text-white" : "bg-surface-2 text-ink-2 hover:bg-line")}>
+                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[14px] font-medium transition-colors", on ? "bg-brand text-white" : "bg-surface-2 text-ink-2 hover:bg-line")}>
                     {s.label}<span className={cn("tnum rounded-full px-1.5 text-[12.5px]", on ? "bg-white/20 text-white" : cn("bg-surface", s.tone ?? "text-ink-3"))}>{s.n}</span>
                   </button>
                 );
@@ -297,9 +297,9 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
                 const on = f.priority === k;
                 return (
                   <button key={k} data-testid={`prio-${k}`} aria-pressed={on} onClick={() => set({ priority: k })}
-                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-[14px] font-medium transition-colors", on ? "border-ink bg-ink text-surface" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>
-                    {k !== "all" && <Flag className={cn("size-4", on ? "text-surface" : tone)} fill="currentColor" />}{label}
-                    <span className={cn("tnum rounded-full px-2 text-[13px] font-semibold", on ? "bg-surface/20 text-surface" : cn("bg-surface-2", tone || "text-ink-3"))}>{n}</span>
+                    className={cn("inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-[14px] font-medium transition-colors", on ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>
+                    {k !== "all" && <Flag className={cn("size-4", on ? "text-white" : tone)} fill="currentColor" />}{label}
+                    <span className={cn("tnum rounded-full px-2 text-[13px] font-semibold", on ? "bg-white/25 text-white" : cn("bg-surface-2", tone || "text-ink-3"))}>{n}</span>
                   </button>
                 );
               })}
@@ -359,16 +359,16 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
             const allPicked = ids.length > 0 && ids.every((i) => picked.has(i));
             return (
               <section key={g.key} data-testid="group" data-group={g.key} className="overflow-hidden rounded-2xl border border-line-strong bg-surface shadow-card">
-                <div className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4", g.product ? "bg-ink py-3.5 text-surface" : "border-b border-line bg-surface-2/40 py-2.5 hover:bg-surface-2")}>
+                <div className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4", "border-b border-line bg-surface-2/50 py-3 hover:bg-surface-2")}>
                   {canManage && <input type="checkbox" aria-label={`Select all in ${g.label}`} checked={allPicked} onChange={() => setPicked((p) => { const n = new Set(p); for (const i of ids) { if (allPicked) n.delete(i); else n.add(i); } return n; })} className="size-4 accent-[var(--brand)]" />}
                   <button onClick={() => setCollapsed((c) => { const n = new Set(c); if (n.has(g.key)) n.delete(g.key); else n.add(g.key); return n; })} aria-expanded={!isCol} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-left">
-                    {isCol ? <ChevronRight className={cn("size-4", g.product ? "text-surface/70" : "text-ink-3")} /> : <ChevronDown className={cn("size-4", g.product ? "text-surface/70" : "text-ink-3")} />}
-                    <span className={cn("font-semibold", g.product ? "text-[17px] tracking-tight text-surface" : "text-[15px] text-ink", g.tone)}>{g.label}</span>
+                    {isCol ? <ChevronRight className="size-4 text-ink-3" /> : <ChevronDown className="size-4 text-ink-3" />}
+                    <span className={cn("text-[15.5px] font-semibold text-ink", g.tone)}>{g.label}</span>
                     {g.product && <TagBadge tag={g.product.tag as Tag} />}
-                    {g.product && g.product.changePct != null && <span className="tnum text-[12.5px] font-semibold text-surface/90">{g.product.change >= 0 ? "▲" : "▼"} {Math.abs(Math.round(g.product.changePct))}%</span>}
-                    <span className={cn("tnum text-[13px]", g.product ? "text-surface/70" : "text-ink-3")}>{g.tasks.length} action{g.tasks.length === 1 ? "" : "s"}</span>
+                    {g.product && g.product.changePct != null && <span className={cn("tnum text-[12.5px] font-semibold", g.product.change >= 0 ? "text-good" : "text-critical")}>{g.product.change >= 0 ? "▲" : "▼"} {Math.abs(Math.round(g.product.changePct))}%</span>}
+                    <span className="tnum text-[13px] text-ink-3">{g.tasks.length} action{g.tasks.length === 1 ? "" : "s"}</span>
                   </button>
-                  <span className="ml-auto flex items-center gap-2"><span className={cn("tnum text-[12.5px]", g.product ? "text-surface/70" : "text-ink-3")}>{done}/{cnt} done</span><span className={cn("h-1.5 w-20 overflow-hidden rounded-full", g.product ? "bg-surface/25" : "bg-line")}><span className={cn("block h-full rounded-full", g.product ? "bg-surface" : "bg-good")} style={{ width: `${cnt ? (done / cnt) * 100 : 0}%` }} /></span></span>
+                  <span className="ml-auto flex items-center gap-2"><span className="tnum text-[12.5px] text-ink-3">{done}/{cnt} done</span><span className="h-1.5 w-20 overflow-hidden rounded-full bg-line"><span className="block h-full rounded-full bg-good" style={{ width: `${cnt ? (done / cnt) * 100 : 0}%` }} /></span></span>
                 </div>
                 {!isCol && (
                   <ul>
@@ -418,23 +418,23 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
 
       {/* Bulk bar */}
       {canManage && picked.size > 0 && view === "list" && (
-        <div role="region" aria-label="Selected actions" data-testid="bulk-bar" className="fixed bottom-5 left-1/2 z-30 flex max-w-[94vw] -translate-x-1/2 flex-wrap items-center gap-2 rounded-2xl border border-line-strong bg-ink px-3 py-2.5 text-white shadow-2xl">
+        <div role="region" aria-label="Selected actions" data-testid="bulk-bar" className="fixed bottom-5 left-1/2 z-30 flex max-w-[94vw] -translate-x-1/2 flex-wrap items-center gap-2 rounded-2xl border border-line-strong bg-surface px-3 py-2.5 text-ink shadow-2xl">
           <span className="px-1 text-[14px] font-semibold"><span className="tnum" data-testid="picked-count">{picked.size}</span> selected</span>
-          <Popover up testId="bulk-assign" trigger={<span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/15 px-3 text-[13.5px] font-medium hover:bg-white/25"><Users className="size-4" />Assign</span>}>
+          <Popover up testId="bulk-assign" trigger={<span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surface-2 px-3 text-[13.5px] font-medium text-ink hover:bg-line"><Users className="size-4" />Assign</span>}>
             <p className="px-2.5 pt-1 pb-1.5 text-[12px] text-ink-3">Add these people to every selected action</p>
             <PeoplePicker staff={data.staff} value={[]} onChange={(ids) => bulk({ addAssignees: ids }, "Assigned")} disabled={busy} />
           </Popover>
-          {(["pending", "done", "not_started"] as Status[]).map((s) => <button key={s} onClick={() => bulk({ status: s }, `Marked ${STATUS_META[s].label}`)} disabled={busy} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/15 px-3 text-[13.5px] font-medium hover:bg-white/25 disabled:opacity-60">{s === "done" && <Check className="size-4" />}{STATUS_META[s].label}</button>)}
-          <label className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/15 px-2.5 text-[13px]">Due<input type="date" aria-label="Set due date" onChange={(e) => { if (e.target.value) bulk({ due: e.target.value }, "Due date set"); }} className="h-6 rounded bg-white/90 px-1 text-[12.5px] text-ink" /></label>
-          <button onClick={() => setPicked(new Set())} className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13.5px] text-white/80 hover:bg-white/15"><X className="size-4" />Clear</button>
+          {(["pending", "done", "not_started"] as Status[]).map((s) => <button key={s} onClick={() => bulk({ status: s }, `Marked ${STATUS_META[s].label}`)} disabled={busy} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surface-2 px-3 text-[13.5px] font-medium text-ink hover:bg-line disabled:opacity-60">{s === "done" && <Check className="size-4" />}{STATUS_META[s].label}</button>)}
+          <label className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surface-2 px-2.5 text-[13px] text-ink-2">Due<input type="date" aria-label="Set due date" onChange={(e) => { if (e.target.value) bulk({ due: e.target.value }, "Due date set"); }} className="h-6 rounded border border-line-strong bg-surface px-1 text-[12.5px] text-ink" /></label>
+          <button onClick={() => setPicked(new Set())} className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13.5px] text-ink-2 hover:bg-surface-2"><X className="size-4" />Clear</button>
         </div>
       )}
 
       {openTask && <TaskPanel key={openTask.id} task={openTask} data={data} me={me} canManage={canManage} mutate={mutate} onClose={() => setOpenId(null)} onNav={nav} />}
       {toast && (
-        <div role="status" className={cn("fixed bottom-5 left-1/2 z-[60] flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-[14px] text-white shadow-xl", toast.tone === "error" ? "bg-critical" : "bg-ink", picked.size > 0 && canManage && "bottom-24")}>
+        <div role="status" className={cn("fixed bottom-5 left-1/2 z-[60] flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-xl border px-4 py-2.5 text-[14px] shadow-xl", toast.tone === "error" ? "border-critical/30 bg-critical-soft text-critical" : "border-line-strong bg-surface text-ink", picked.size > 0 && canManage && "bottom-24")}>
           {toast.tone === "error" ? <AlertCircle className="size-4" /> : <Check className="size-4 text-good" />}{toast.text}
-          {toast.undo && <button onClick={() => { toast.undo?.(); setToast(null); }} className="rounded-md bg-white/20 px-2 py-0.5 text-[13px] font-semibold hover:bg-white/30">Undo</button>}
+          {toast.undo && <button onClick={() => { toast.undo?.(); setToast(null); }} className="rounded-md bg-brand px-2.5 py-0.5 text-[13px] font-semibold text-white hover:bg-brand-strong">Undo</button>}
         </div>
       )}
     </div>

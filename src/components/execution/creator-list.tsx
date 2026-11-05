@@ -78,7 +78,7 @@ export function CreatorList({ taskId, kind, product, canEdit, closed, total, con
           <input data-testid="creator-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${total} creators`} className="h-8 w-full rounded-lg border border-line-strong bg-surface pr-3 pl-8 text-[13.5px] placeholder:text-ink-3" />
         </div>
         <div className="inline-flex overflow-hidden rounded-lg border border-line-strong text-[12.5px] font-medium">
-          {([["all", "All"], ["todo", "To Do"], ["done", "Done"]] as const).map(([k, l]) => <button key={k} data-testid={`cl-${k}`} onClick={() => setFilter(k)} className={cn("px-2.5 py-1.5", filter === k ? "bg-ink text-white" : "bg-surface text-ink-2 hover:bg-surface-2")}>{l}</button>)}
+          {([["all", "All"], ["todo", "To Do"], ["done", "Done"]] as const).map(([k, l]) => <button key={k} data-testid={`cl-${k}`} onClick={() => setFilter(k)} className={cn("px-2.5 py-1.5", filter === k ? "bg-brand text-white" : "bg-surface text-ink-2 hover:bg-surface-2")}>{l}</button>)}
         </div>
       </div>
       {error && <p role="alert" className="mb-2 rounded-lg bg-critical-soft px-3 py-2 text-[13px] text-critical">{error}</p>}
