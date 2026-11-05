@@ -163,3 +163,33 @@ export async function listTaskCreators(taskId: string, o: { offset: number; limi
   ]);
   return { items: items.map((r) => ({ name: r.username, note: r.note, value: r.value, data: r.data, contactedAt: r.contacted_at, contactedBy: r.contacted_by, owner: r.owner, phone: r.phone })), total: t.n, contacted: c.c };
 }
+
+export type CreatorAsk = { task: string; product: string; productName: string; kind: string; title: string; priority: 1 | 2 | 3; note: string; data: import("./rules").LineData; done: boolean };
+export type CreatorCard = { name: string; best: 1 | 2 | 3; asks: CreatorAsk[]; contacted: number; products: number; owner: string | null; phone: string | null };
+
+/** One page of creators with every open ask about them, across all products: contact each person once. */
+export async function listCreatorAsks(o: { offset: number; limit: number; q: string; mine: string | null; show: "todo" | "all"; priority: number | null; multi: boolean }): Promise<{ items: CreatorCard[]; total: number }> {
+  const like = `%${o.q.replace(/[%_\\]/g, "").toLowerCase()}%`;
+  const scope = o.mine ? sql`and exists (select 1 from ep_task_assignees x where x.task_id = t.id and x.user_id = ${o.mine}::uuid)` : sql``;
+  const filt = sql`where true ${o.q ? sql`and lower(g.username) like ${like}` : sql``} ${o.show === "todo" ? sql`and g.c < g.n` : sql``} ${o.priority ? sql`and g.best = ${o.priority}` : sql``} ${o.multi ? sql`and g.n > 1` : sql``}`;
+  const base = sql`
+    with a as (
+      select tc.username, t.id::text as task_id, t.product_key, t.kind, t.title, t.priority::int as priority, tc.note, tc.value::float8 as value, tc.data, tc.contacted_at
+      from ep_task_creators tc join ep_tasks t on t.id = tc.task_id where t.status in ('not_started', 'pending') and t.kind not in ('fix_conversion', 'recruit', 'low_views') ${scope}
+    ), g as (
+      select username, min(priority)::int as best, count(*)::int as n, count(contacted_at)::int as c, sum(value) as val, count(distinct product_key)::int as products,
+        json_agg(json_build_object('task', task_id, 'product', product_key, 'kind', kind, 'title', title, 'priority', priority, 'note', note, 'data', data, 'done', contacted_at is not null) order by priority, value desc) as asks
+      from a group by username
+    )`;
+  const [items, [t]] = await Promise.all([
+    rows<{ username: string; best: number; n: number; c: number; products: number; asks: Omit<CreatorAsk, "productName">[]; phone: string | null; owner: string | null }>(sql`
+      ${base} select g.username, g.best, g.n, g.c, g.products, g.asks, cr.phone, ow.name as owner
+      from g left join creators cr on cr.username = g.username left join creator_owners co on co.username = g.username left join users ow on ow.id = co.user_id
+      ${filt} order by g.best, g.val desc, g.username limit ${o.limit} offset ${o.offset}`),
+    rows<{ n: number }>(sql`${base} select count(*)::int as n from g ${filt}`),
+  ]);
+  return {
+    items: items.map((r) => ({ name: r.username, best: r.best as 1 | 2 | 3, contacted: r.c, products: r.products, owner: r.owner, phone: r.phone, asks: r.asks.map((a) => ({ ...a, productName: productName(a.product) })) })),
+    total: t.n,
+  };
+}

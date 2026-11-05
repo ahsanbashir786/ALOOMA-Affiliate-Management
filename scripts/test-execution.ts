@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { syncPlan, loadPlan } from "@/lib/execution/plan";
 import { analyseProducts } from "@/lib/products/analysis";
-import { buildDrafts } from "@/lib/execution/rules";
+import { buildDrafts, CREATOR_RANK } from "@/lib/execution/rules";
 import { loadHistory } from "@/lib/execution/history";
 import { todayKL } from "@/lib/time";
 
@@ -23,6 +23,21 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   check("rules: one fingerprint per product and kind", new Set(drafts.map((d) => d.fingerprint)).size === drafts.length);
   check("rules: products with no sales get no actions", a.products.filter((p) => p.diagnosis.tag === "No Sales").every((p) => buildDrafts(p, ctx).length === 0));
   check("rules: a creator is never listed twice in one action", drafts.every((d) => new Set(d.creators.map((c) => c.name)).size === d.creators.length));
+  // One main action per creator per product.
+  const byProduct = new Map<string, Map<string, string[]>>();
+  for (const d of drafts) if (CREATOR_RANK[d.kind] !== undefined) for (const c of d.creators) {
+    const m2 = byProduct.get(d.productKey) ?? byProduct.set(d.productKey, new Map()).get(d.productKey)!;
+    (m2.get(c.name) ?? m2.set(c.name, []).get(c.name)!).push(d.kind);
+  }
+  const repeats = [...byProduct.values()].reduce((n, m2) => n + [...m2.values()].filter((k) => k.length > 1).length, 0);
+  check("one action: no creator is in two actions of the same product", repeats === 0, `${repeats} repeats`);
+  const alsoLines = drafts.flatMap((d) => d.creators).filter((c) => (c.data.also?.length ?? 0) > 0).length;
+  check("one action: the other asks are kept as notes on the creator's line", alsoLines > 0, String(alsoLines));
+  const rank = (k: string) => CREATOR_RANK[k];
+  const wrongOrder = drafts.some((d) => d.creators.some((c) => (c.data.also ?? []).some((k) => rank(k) < rank(d.kind))));
+  check("one action: a creator sits in the most important action that applies", !wrongOrder);
+  const refs = drafts.filter((d) => ["fix_conversion", "low_views"].includes(d.kind));
+  check("one action: product-level actions do not list creators to contact", refs.every((d) => d.kind !== "low_views" || d.creators.length === 0));
   const kinds = new Set(drafts.map((d) => d.kind));
   console.log("kinds:", Object.fromEntries([...kinds].map((k) => [k, drafts.filter((d) => d.kind === k).reduce((n, d) => n + d.creators.length, 0)])));
   check("rules: several kinds of action across content, creators and samples", ["new_videos", "reactivate", "chase_unposted"].every((k) => kinds.has(k)) && new Set(drafts.map((d) => d.category)).size >= 3, [...kinds].join(","));

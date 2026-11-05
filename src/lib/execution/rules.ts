@@ -26,6 +26,8 @@ export type LineData = {
   videos?: VideoRef[];
   /** For samples: the day it was delivered. For cross-sell: what they sell today. */
   sampleDay?: string; sells?: string;
+  /** Other asks that also apply to this creator for this product (they are handled here so the creator is contacted once). */
+  also?: string[];
 };
 export type CreatorLine = { name: string; note: string; value: number; data: LineData };
 
@@ -62,10 +64,12 @@ const DUE: Record<Priority, number> = { 1: 3, 2: 7, 3: 14 };
 
 export type Ctx = { history: History; today: string; periodStart: string; prevStart: string };
 
-export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
+function run(p: ProductAnalysis, ctx: Ctx, excl: Map<string, Set<string>>): Draft[] {
   const m = p.metrics, d = p.diagnosis;
   if (d.tag === "No Sales") return [];
   const out: Draft[] = [];
+  /** False when this creator is already handled by a more important action of this product. */
+  const ok = (kind: string, who: string) => !excl.get(kind)?.has(who);
   const sales = m.sales.now;
   const key = p.key;
   const B = m.buckets;
@@ -83,6 +87,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
     // One line per creator; never anyone we must not contact.
     const seen = new Set<string>();
     const creators = x.creators.filter((c) => !H.blocked.has(c.name) && (seen.has(c.name) ? false : (seen.add(c.name), true))).slice(0, LIST_CAP);
+    if (CREATOR_RANK[x.kind] !== undefined && !creators.length) return;
     out.push({ ...x, creators, fingerprint: `${key}:${x.kind}`, productKey: key, priority, dueDays: DUE[priority] });
   };
   const line = (c: { name: string }, note: string, value: number, data: LineData): CreatorLine => ({ name: c.name, note, value, data });
@@ -99,7 +104,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   const fewVideos = vp.now != null && (vp.now === 0 || (vp.prev != null && vp.prev > 0 && vp.now < vp.prev * 0.8));
   const freshShare = videoLive > 0 ? fresh.now / videoLive : 1;
   if (fewVideos || (freshShare < 0.3 && sales >= 1000)) {
-    const targets = p.creatorsAll.filter((c) => c.mix.new === 0 && (c.now > 0 || c.prev > 0)).map((c) =>
+    const targets = p.creatorsAll.filter((c) => c.mix.new === 0 && (c.now > 0 || c.prev > 0) && ok("new_videos", c.name)).map((c) =>
       line(c, `${c.now > 0 ? `${rm(c.now)} this period` : `${rm(c.prev)} last period`}, no new video of it`, c.now + c.prev, { ...base(c), videos: lifeOf(c.name)?.recent.length ? lifeOf(c.name)!.recent.slice(0, 1) : lifeOf(c.name)?.tops.slice(0, 1) }));
     const lost = Math.max(fresh.prev - fresh.now, 0);
     add({
@@ -142,7 +147,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   // 3. Old and very old videos carry the product: list every creator with the old videos that still sell
   const oldShare = d.oldShare ?? 0;
   if (oldShare >= 0.6 && sales >= 1000) {
-    const targets = creatorsNow.filter((c) => (c.mix.old + c.mix.veryold) / Math.max(c.now, 1) >= 0.5).map((c) => {
+    const targets = creatorsNow.filter((c) => (c.mix.old + c.mix.veryold) / Math.max(c.now, 1) >= 0.5 && ok("refresh_old", c.name)).map((c) => {
       const l = lifeOf(c.name);
       const vids = (l?.recent.filter((v) => (v.ageDays ?? 0) > 30).length ? l!.recent.filter((v) => (v.ageDays ?? 0) > 30) : l?.tops ?? []).slice(0, 3);
       const top = vids[0];
@@ -165,7 +170,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   // 4. Put ad money behind the videos that already win
-  const winners = [...life.values()].filter((l) => l.tops[0]?.kind === "video" && l.tops[0].sales >= 150).sort((x, y) => y.tops[0].sales - x.tops[0].sales).slice(0, 15);
+  const winners = [...life.values()].filter((l) => l.tops[0]?.kind === "video" && l.tops[0].sales >= 150).sort((x, y) => y.tops[0].sales - x.tops[0].sales).slice(0, 15).filter((l) => ok("promote_best", l.creator));
   if (sales >= 2000 && winners.length >= 3) {
     add({
       category: "content", kind: "promote_best",
@@ -186,8 +191,8 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   const liveNow = B.now.live, livePrev = B.prev.live;
   const liveFell = livePrev >= 500 && liveNow <= livePrev * 0.75;
   if (liveFell || (sales >= 3000 && liveNow < sales * 0.1)) {
-    const lc = creatorsNow.filter((c) => c.mix.live > 0).map((c) => line(c, `${rm(c.mix.live)} from LIVE`, c.mix.live, base(c)));
-    const fallback = creatorsNow.slice(0, 20).map((c) => line(c, `${rm(c.now)} sold, ask for a LIVE`, c.now, base(c)));
+    const lc = creatorsNow.filter((c) => c.mix.live > 0 && ok("live_push", c.name)).map((c) => line(c, `${rm(c.mix.live)} from LIVE`, c.mix.live, base(c)));
+    const fallback = creatorsNow.slice(0, 20).filter((c) => ok("live_push", c.name)).map((c) => line(c, `${rm(c.now)} sold, ask for a LIVE`, c.now, base(c)));
     add({
       category: "content", kind: "live_push",
       title: liveFell ? "LIVE sales fell, bring LIVE back" : "Get this product into more LIVE sessions",
@@ -214,14 +219,14 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
         "Ask creators to post at peak times (evening) and to use trending sounds.",
         "Try shorter videos with the product result in the first second.",
       ],
-      creators: creatorsNow.slice(0, 20).map((c) => line(c, `${rm(c.now)} sold`, c.now, base(c))), impactRm: sales * 0.06,
+      creators: [], impactRm: sales * 0.06,
       evidence: { views: Math.round(nc.now.views), viewsBefore: Math.round(nc.prev.views) },
     });
   }
 
   // ── CREATORS ────────────────────────────────────────────
   // 7. Creators who nearly stopped (sold in the last period, almost nothing now): the full list
-  const quiet = p.creatorsAll.filter((c) => c.prev >= Math.max(100, m.sales.prev * 0.01) && c.now <= c.prev * 0.25).sort((x, y) => y.prev - y.now - (x.prev - x.now));
+  const quiet = p.creatorsAll.filter((c) => c.prev >= Math.max(100, m.sales.prev * 0.01) && c.now <= c.prev * 0.25 && ok("reactivate", c.name)).sort((x, y) => y.prev - y.now - (x.prev - x.now));
   if (quiet.length) {
     const drop = quiet.reduce((n, c) => n + (c.prev - c.now), 0);
     add({
@@ -240,7 +245,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   // 8. Creators whose sales are falling but not gone
-  const falling = p.creatorsAll.filter((c) => c.prev >= 200 && c.now > c.prev * 0.25 && c.now <= c.prev * 0.6).sort((x, y) => y.prev - y.now - (x.prev - x.now));
+  const falling = p.creatorsAll.filter((c) => c.prev >= 200 && c.now > c.prev * 0.25 && c.now <= c.prev * 0.6 && ok("falling", c.name)).sort((x, y) => y.prev - y.now - (x.prev - x.now));
   if (falling.length) {
     const drop = falling.reduce((n, c) => n + (c.prev - c.now), 0);
     add({
@@ -263,9 +268,9 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   const mkSleep = (l: typeof sleeping[number]) => line({ name: l.creator }, `Sold ${rm(l.total)} in total, last sale ${dayLabel(l.lastDay)} (${daysBetweenISO(l.lastDay, ctx.today)} days ago)`, l.total, {
     lifetime: l.total, orders: l.orders, firstSale: l.firstDay, lastSale: l.lastDay, daysSince: daysBetweenISO(l.lastDay, ctx.today), videos: l.tops.slice(0, 2),
   });
-  const stars = sleeping.filter((l) => l.total >= 500).sort((x, y) => y.total - x.total);
-  const regulars = sleeping.filter((l) => l.total < 500 && l.total >= 100 && l.orders >= 3).sort((x, y) => y.total - x.total);
-  const onehit = sleeping.filter((l) => l.total < 500 && !(l.total >= 100 && l.orders >= 3) && l.total >= 30).sort((x, y) => y.total - x.total);
+  const stars = sleeping.filter((l) => l.total >= 500 && ok("lapsed_stars", l.creator)).sort((x, y) => y.total - x.total);
+  const regulars = sleeping.filter((l) => l.total < 500 && l.total >= 100 && l.orders >= 3 && ok("lapsed_regular", l.creator)).sort((x, y) => y.total - x.total);
+  const onehit = sleeping.filter((l) => l.total < 500 && !(l.total >= 100 && l.orders >= 3) && l.total >= 30 && ok("one_hit", l.creator)).sort((x, y) => y.total - x.total);
   if (stars.length) {
     const mo = stars.reduce((n, l) => n + monthly(l), 0);
     add({
@@ -303,7 +308,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   // 10. Protect the biggest sellers so they do not become next month's quiet list
-  const keep = creatorsNow.filter((c) => c.now >= Math.max(300, sales * 0.02) && (c.prev === 0 || c.now >= c.prev * 0.6)).slice(0, 25);
+  const keep = creatorsNow.filter((c) => c.now >= Math.max(300, sales * 0.02) && (c.prev === 0 || c.now >= c.prev * 0.6)).slice(0, 25).filter((c) => ok("retain_top", c.name));
   if (keep.length >= 3) {
     add({
       category: "creators", kind: "retain_top",
@@ -316,7 +321,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   // 11. Proven sellers of OTHER products who never tried this one
-  const candidates = [...H.overall.values()].filter((o) => !H.blocked.has(o.creator) && o.total >= 500 && !life.has(o.creator) && daysBetweenISO(o.lastDay, ctx.today) <= 60 && !o.products.has(key)).sort((x, y) => y.total - x.total);
+  const candidates = [...H.overall.values()].filter((o) => !H.blocked.has(o.creator) && o.total >= 500 && !life.has(o.creator) && daysBetweenISO(o.lastDay, ctx.today) <= 60 && !o.products.has(key) && ok("cross_sell", o.creator)).sort((x, y) => y.total - x.total);
   if (sales >= 1000 && candidates.length >= 5) {
     add({
       category: "creators", kind: "cross_sell",
@@ -349,7 +354,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   // 13. Winners to scale
-  const rising = creatorsNow.filter((c) => c.now >= 200 && (c.prev > 0 ? c.now >= c.prev * 1.3 : c.isNew) && c.mix.new + c.mix.recent > 0).sort((x, y) => y.now - y.prev - (x.now - x.prev));
+  const rising = creatorsNow.filter((c) => c.now >= 200 && (c.prev > 0 ? c.now >= c.prev * 1.3 : c.isNew) && c.mix.new + c.mix.recent > 0 && ok("scale_winners", c.name)).sort((x, y) => y.now - y.prev - (x.now - x.prev));
   if (rising.length) {
     const gain = rising.reduce((n, c) => n + Math.max(c.now - c.prev, 0), 0);
     add({
@@ -368,7 +373,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   // 14. New creators who just started
-  const fresh1 = creatorsNow.filter((c) => c.isNew);
+  const fresh1 = creatorsNow.filter((c) => c.isNew && ok("welcome_new", c.name));
   if (fresh1.length) {
     add({
       category: "creators", kind: "welcome_new",
@@ -381,9 +386,10 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   // ── SAMPLES ─────────────────────────────────────────────
-  if (p.unposted.length) {
+  const unp = p.unposted.filter((u) => ok("chase_unposted", u.creator));
+  if (unp.length) {
     const per = p.samples.now.salesPerSample ?? p.samples.prev.salesPerSample ?? avgPerCreator * 0.5;
-    const people = new Set(p.unposted.map((u) => u.creator));
+    const people = new Set(unp.map((u) => u.creator));
     add({
       category: "samples", kind: "chase_unposted",
       title: `Chase ${plural(people.size, "creator")} who did not post their sample`,
@@ -394,7 +400,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
         "If still nothing after 14 more days, stop sending samples to them.",
         "Tick each creator when they reply or are stopped.",
       ],
-      creators: [...p.unposted].sort((x, y) => y.days - x.days).map((s) => line({ name: s.creator }, `Delivered ${s.days} days ago`, s.days, { sampleDay: s.givenOn, daysSince: s.days })),
+      creators: [...unp].sort((x, y) => y.days - x.days).map((s) => line({ name: s.creator }, `Delivered ${s.days} days ago`, s.days, { sampleDay: s.givenOn, daysSince: s.days })),
       impactRm: people.size * per * 0.5, evidence: { samples: people.size, perSample: Math.round(per) }, priority: people.size >= 5 ? 1 : 2,
     });
   }
@@ -406,7 +412,7 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
       title: `Send ${n} more samples, they pay back`,
       summary: `Each sample of this product earned about ${rm(sp)} within 45 days. ${p.samples.now.sent} sent this period${p.samples.prev.sent ? ` (was ${p.samples.prev.sent})` : ""}, so there is room to send more. The best candidates are listed: creators who already sell it.`,
       steps: ["Pick creators who posted well before or who match the best sellers.", "Skip creators with unposted samples (see the Samples task).", "Send the samples and set a reminder to check posting after 7 days."],
-      creators: creatorsNow.slice(0, 40).map((c) => line(c, `${rm(c.now)} sold, send another variant`, c.now, base(c))),
+      creators: creatorsNow.slice(0, 40).filter((c) => ok("more_samples", c.name)).map((c) => line(c, `${rm(c.now)} sold, send another variant`, c.now, base(c))),
       impactRm: n * sp * 0.6, evidence: { perSample: Math.round(sp), sent: p.samples.now.sent, sentBefore: p.samples.prev.sent },
     });
   }
@@ -454,6 +460,45 @@ export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
   }
 
   return out.sort((a, b) => a.priority - b.priority || b.impactRm - a.impactRm);
+}
+
+/**
+ * Creator-level actions in order of importance. A creator appears in ONE of them per product (the most important one that applies);
+ * the others are noted on that creator's line, so nobody is contacted several times for the same product.
+ */
+export const CREATOR_RANK: Record<string, number> = {
+  chase_unposted: 1, reactivate: 2, lapsed_stars: 2.1, falling: 2.2, lapsed_regular: 2.3, retain_top: 3, scale_winners: 3.1, promote_best: 3.5,
+  refresh_old: 4, new_videos: 4.1, live_push: 4.5, cross_sell: 5, welcome_new: 6, one_hit: 7, more_samples: 7.1,
+};
+/** Short note shown on a creator's line for an ask that was folded into their main action. */
+export const ALSO: Record<string, string> = {
+  chase_unposted: "sample not posted yet", reactivate: "sales just stopped", lapsed_stars: "past star", lapsed_regular: "sold several times before", falling: "selling less",
+  retain_top: "top seller, thank them", scale_winners: "taking off, offer extra", promote_best: "ask for the video's ad code", refresh_old: "old video fading, ask for a new one",
+  new_videos: "ask for a new video", live_push: "ask for a LIVE", cross_sell: "offer this product", welcome_new: "new seller, ask for a second video", one_hit: "sold once, second chance", more_samples: "send another variant",
+};
+
+export function buildDrafts(p: ProductAnalysis, ctx: Ctx): Draft[] {
+  // Pass 1: every action with its full list. Then give each creator to the most important action and run again without them in the others.
+  const first = run(p, ctx, new Map());
+  const members = new Map<string, string[]>();
+  const claimed = new Map<string, string>();
+  for (const dr of first.filter((d) => CREATOR_RANK[d.kind] !== undefined).sort((a, b) => CREATOR_RANK[a.kind] - CREATOR_RANK[b.kind])) {
+    for (const c of dr.creators) {
+      (members.get(c.name) ?? members.set(c.name, []).get(c.name)!).push(dr.kind);
+      if (!claimed.has(c.name)) claimed.set(c.name, dr.kind);
+    }
+  }
+  const excl = new Map<string, Set<string>>();
+  for (const [who, main] of claimed) for (const kind of members.get(who)!) if (kind !== main) (excl.get(kind) ?? excl.set(kind, new Set()).get(kind)!).add(who);
+  const out = excl.size ? run(p, ctx, excl) : first;
+  for (const dr of out) {
+    if (CREATOR_RANK[dr.kind] === undefined) continue;
+    for (const c of dr.creators) {
+      const others = (members.get(c.name) ?? []).filter((k) => k !== dr.kind);
+      if (others.length) c.data.also = others;
+    }
+  }
+  return out;
 }
 
 /** A ready-to-send message per kind. {name}, {product}, {video}, {videoDate}, {videoSales}, {lifetime} are filled in for each creator. */
@@ -520,9 +565,41 @@ export const MESSAGES: Record<string, { en: string; ms: string }> = {
   },
 };
 
+/** A short request added to the message for each other ask that was folded into this creator's main action. */
+const ASK_LINE: Record<string, { en: string; ms: string }> = {
+  chase_unposted: { en: "Your sample should have arrived, could you post a video?", ms: "Sample dah sampai kan? Boleh post video?" },
+  retain_top: { en: "We would like to give you something special as one of our top sellers.", ms: "Kami nak bagi sesuatu yang istimewa sebab awak antara penjual terbaik." },
+  scale_winners: { en: "We would love 2 more videos from you this week.", ms: "Kami harap awak boleh buat 2 video lagi minggu ni." },
+  promote_best: { en: "Could you share the ad authorization code of your best {product} video?", ms: "Boleh kongsi kod kebenaran iklan video {product} terbaik awak?" },
+  refresh_old: { en: "Your older {product} video still sells, could you remake it with a new angle?", ms: "Video lama {product} awak masih laku, boleh buat semula dengan idea baru?" },
+  new_videos: { en: "Could you also make a new {product} video this week?", ms: "Boleh juga buat video {product} baru minggu ni?" },
+  live_push: { en: "Could you feature it in your next LIVE too?", ms: "Boleh letak dalam LIVE seterusnya juga?" },
+  more_samples: { en: "We can also send another variant as a sample.", ms: "Kami boleh hantar varian lain sebagai sample juga." },
+  cross_sell: { en: "Would you also like to try our {product}? They sell well for other creators.", ms: "Nak cuba {product} kami juga? Ia laku untuk kreator lain." },
+};
+
+export const KIND_LABEL: Record<string, string> = {
+  chase_unposted: "Chase sample", reactivate: "Win back", lapsed_stars: "Past star", lapsed_regular: "Sleeping seller", falling: "Selling less", retain_top: "Top seller",
+  scale_winners: "Taking off", promote_best: "Ad code", refresh_old: "Refresh old video", new_videos: "New video", live_push: "LIVE", cross_sell: "Try this product",
+  welcome_new: "New seller", one_hit: "Second chance", more_samples: "Another sample",
+};
+/** Actions that only show examples (no one to contact): left out of the By Creator view. */
+export const REFERENCE_KINDS = ["fix_conversion", "recruit", "low_views"];
+
+/** One message for a creator with several asks (maybe in several products): the main ask in full, then a short line for each other one. */
+export function combinedMessage(creator: string, asks: { kind: string; product: string; data: LineData }[], lang: "ms" | "en"): string {
+  if (!asks.length) return "";
+  const [main, ...rest] = asks;
+  const tpl = MESSAGES[main.kind];
+  const base = tpl ? fillMessage(tpl[lang], creator, main.product, main.data, lang) : `Hi ${creator}!`;
+  const lines = rest.map((a) => ASK_LINE[a.kind]?.[lang]?.replaceAll("{product}", a.product.replace(" · ", " "))).filter(Boolean) as string[];
+  return lines.length ? `${base}\n\n${lang === "ms" ? "Juga:" : "Also:"}\n${lines.map((l) => `- ${l}`).join("\n")}` : base;
+}
+
 /** Fills a message for one creator. The video details come from that creator's own line, so each message is personal. */
 export function fillMessage(template: string, creator: string, product: string, data: LineData | undefined, lang: "ms" | "en"): string {
   const v = data?.videos?.[0];
+  const extra = (data?.also ?? []).map((k) => ASK_LINE[k]?.[lang]).filter(Boolean).map((t) => ` ${t.replaceAll("{product}", product.replace(" · ", " "))}`).join("");
   const date = v?.postDay ? dayLabel(v.postDay) : "";
   const link = v?.url ? `(${v.url}) ` : "";
   const last = v ? (lang === "ms" ? `Video terakhir awak pada ${date}${link ? ` ${link}` : " "}` : `Your last video was on ${date}${link ? ` ${link}` : " "}`) : "";
@@ -531,5 +608,5 @@ export function fillMessage(template: string, creator: string, product: string, 
     .replaceAll("{videoDate}", date || "dulu").replaceAll("{videoSales}", v ? String(Math.round(v.sales)) : "")
     .replaceAll("{video}", link).replaceAll("{lastVideo}", last)
     .replaceAll("{lifetime}", data?.lifetime != null ? Math.round(data.lifetime).toLocaleString("en-MY") : "")
-    .replace(/\s{2,}/g, " ").trim();
+    .replace(/\s{2,}/g, " ").trim() + extra;
 }

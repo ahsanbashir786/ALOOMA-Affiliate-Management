@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight, Columns3, Flag, LayoutList, Loader2, RefreshCw, Search, SlidersHorizontal, UserX, Users, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronRight, Columns3, Contact, Flag, LayoutList, Loader2, RefreshCw, Search, SlidersHorizontal, UserX, Users, X } from "lucide-react";
 import { addTaskComment, bulkUpdateTasks, refreshPlan, restoreTasks, setTaskAssignees, setTaskDue, setTaskStatus, toggleTaskStep } from "@/app/actions/execution";
 import { Select } from "@/components/ui/primitives";
 import { TagBadge } from "@/components/products/ui";
@@ -14,9 +14,10 @@ import { daysBetweenISO } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
 import { TaskPanel, type Mutate } from "./task-panel";
 import { TeamView } from "./team";
+import { CreatorsView } from "./creators-view";
 import { CategoryChip, dueInfo, NEXT_STATUS, PeoplePicker, PersonStack, Popover, PriorityFlag, ProductChip, StatusIcon, STATUS_META } from "./ui";
 
-type View = "list" | "board" | "team";
+type View = "list" | "board" | "creators" | "team";
 type GroupBy = "product" | "category" | "status" | "person" | "due" | "priority";
 type StatusFilter = "all" | "open" | Status | "closed";
 type Filters = { q: string; status: StatusFilter; category: string; priority: string; person: string; product: string; due: string };
@@ -258,7 +259,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-line-strong bg-surface p-0.5" role="tablist" aria-label="View">
-            {([["list", "List", LayoutList], ["board", "Board", Columns3], ["team", "Team", Users]] as const).map(([k, l, Icon]) => (
+            {([["list", "List", LayoutList], ["board", "Board", Columns3], ["creators", "By Creator", Contact], ["team", "Team", Users]] as const).map(([k, l, Icon]) => (
               <button key={k} role="tab" aria-selected={view === k} data-testid={`view-${k}`} onClick={() => setView(k)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13.5px] font-medium", view === k ? "bg-brand text-white" : "text-ink-2 hover:bg-surface-2")}><Icon className="size-4" />{l}</button>
             ))}
           </div>
@@ -276,7 +277,7 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
           {canManage && <button data-testid="refresh-plan" onClick={doRefresh} disabled={busy} className="inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2 disabled:opacity-60" title="Write the plan again from the latest numbers">{busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}Update Plan</button>}
         </div>
 
-        {view !== "team" && (
+        {(view === "list" || view === "board") && (
           <>
             {/* Quick views */}
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quick views" data-testid="scopes">
@@ -318,7 +319,9 @@ export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData
       </div>
 
       {/* Views */}
-      {view === "team" ? (
+      {view === "creators" ? (
+        <CreatorsView canManage={canManage} onOpenTask={(id) => setOpenId(id)} />
+      ) : view === "team" ? (
         <TeamView tasks={tasks} data={data} today={data.today} onPick={(id) => { setF({ ...NO_FILTER, person: id }); setView("list"); setGroup("product"); }} />
       ) : view === "board" ? (
         <div className="grid gap-4 lg:grid-cols-3" data-testid="board">

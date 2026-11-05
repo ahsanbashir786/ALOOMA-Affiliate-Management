@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Check, Download, ExternalLink, Loader2, MessageCircle, Search } from "lucide-react";
 import { exportTaskCreators, getTaskCreators, setCreatorsContacted } from "@/app/actions/execution";
 import { CopyButton } from "@/components/ui/copy-button";
-import { fillMessage, MESSAGES, videoText } from "@/lib/execution/rules";
+import { ALSO, fillMessage, MESSAGES, videoText } from "@/lib/execution/rules";
 import type { CreatorItem } from "@/lib/execution/plan";
 import { fmtDateTimeKL } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
@@ -15,8 +15,8 @@ type Filter = "all" | "todo" | "done";
 const PAGE = 50;
 
 /** Every creator an action is about: search, tick off who was contacted, see their videos, message them. */
-export function CreatorList({ taskId, kind, product, canEdit, closed, total, contacted, onContacted, lang }: {
-  taskId: string; kind: string; product: string; canEdit: boolean; closed: boolean; total: number; contacted: number; onContacted: (n: number) => void; lang: "ms" | "en";
+export function CreatorList({ taskId, kind, product, canEdit, closed, reference = false, total, contacted, onContacted, lang }: {
+  taskId: string; kind: string; product: string; canEdit: boolean; closed: boolean; reference?: boolean; total: number; contacted: number; onContacted: (n: number) => void; lang: "ms" | "en";
 }) {
   const [items, setItems] = useState<CreatorItem[]>([]);
   const [count, setCount] = useState(total);
@@ -65,10 +65,11 @@ export function CreatorList({ taskId, kind, product, canEdit, closed, total, con
   return (
     <div data-testid="creator-list">
       <div className="mb-3 flex items-center gap-3">
-        <div className="min-w-0 flex-1">
+        {!reference && <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-baseline justify-between text-[13px]"><span className="text-ink-2"><b className="tnum font-semibold text-ink" data-testid="contacted-count">{done}</b> of {total} contacted</span><span className="tnum text-ink-3">{pct}%</span></div>
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-good transition-all" style={{ width: `${pct}%` }} /></div>
-        </div>
+        </div>}
+        {reference && <div className="flex-1" />}
         <button onClick={download} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2" title="Download everyone in this action as a spreadsheet"><Download className="size-4" />CSV</button>
       </div>
 
@@ -89,8 +90,8 @@ export function CreatorList({ taskId, kind, product, canEdit, closed, total, con
           const wa = c.phone ? `https://wa.me/${c.phone.replace(/\D/g, "")}?text=${encodeURIComponent(msgFor(c))}` : null;
           return (
             <li key={c.name} data-testid="creator-row" data-done={isDone} className={cn("flex items-start gap-3 px-3 py-3", isDone && "bg-surface-2/50")}>
-              <button aria-label={isDone ? `Untick ${c.name}` : `Tick ${c.name} as contacted`} disabled={!canEdit || closed} onClick={() => tick([c.name], !isDone)}
-                className={cn("mt-1 flex size-[20px] shrink-0 items-center justify-center rounded-md border-2 transition-colors disabled:opacity-50", isDone ? "border-good bg-good text-white" : "border-line-strong hover:border-brand")}>{isDone && <Check className="size-3.5" strokeWidth={3} />}</button>
+              {!reference && (<button aria-label={isDone ? `Untick ${c.name}` : `Tick ${c.name} as contacted`} disabled={!canEdit || closed} onClick={() => tick([c.name], !isDone)}
+                className={cn("mt-1 flex size-[20px] shrink-0 items-center justify-center rounded-md border-2 transition-colors disabled:opacity-50", isDone ? "border-good bg-good text-white" : "border-line-strong hover:border-brand")}>{isDone && <Check className="size-3.5" strokeWidth={3} />}</button>)}
               <Person name={c.name} size={32} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2">
@@ -98,6 +99,7 @@ export function CreatorList({ taskId, kind, product, canEdit, closed, total, con
                   {c.owner && <span className="text-[12px] text-ink-3">Owner: {c.owner}</span>}
                 </div>
                 <p className="text-[12.5px] text-ink-3">{c.note}</p>
+                {!!c.data.also?.length && <p className="mt-1 flex flex-wrap items-center gap-1" data-testid="also">{c.data.also.map((k) => <span key={k} className="rounded-full bg-brand-soft px-2 py-0.5 text-[11.5px] font-medium text-brand-strong">Also: {ALSO[k] ?? k}</span>)}</p>}
                 {c.data.videos?.slice(0, 2).map((v) => (
                   <p key={v.id} className="mt-1 flex items-start gap-1.5 rounded-md bg-surface-2 px-2 py-1 text-[12.5px] text-ink-2">
                     <span className="min-w-0 flex-1">{videoText(v)}</span>

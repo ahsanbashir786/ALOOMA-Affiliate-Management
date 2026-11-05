@@ -5,7 +5,7 @@ import * as z from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { can, requireUser, type SessionUser } from "@/lib/auth";
-import { listTaskCreators, syncPlan, type CreatorItem } from "@/lib/execution/plan";
+import { listCreatorAsks, listTaskCreators, syncPlan, type CreatorCard, type CreatorItem } from "@/lib/execution/plan";
 
 type R = { ok?: true; error?: string };
 const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
@@ -198,4 +198,29 @@ export async function restoreTasks(items: { id: string; status: string; due: str
   }
   refresh();
   return { ok: true, count };
+}
+
+/** One page of creators with all their open asks (the By Creator view). */
+export async function getCreatorAsks(offset: number, q: string, scope: "all" | "mine", show: "todo" | "all", priority: string, multi: boolean): Promise<{ items: CreatorCard[]; total: number } | { error: string }> {
+  const user = await requireUser();
+  const p = z.object({ o: z.number().int().min(0).max(20000), q: z.string().trim().max(60), s: z.enum(["all", "mine"]), sh: z.enum(["todo", "all"]), pr: z.enum(["all", "1", "2", "3"]), m: z.boolean() }).safeParse({ o: offset, q, s: scope, sh: show, pr: priority, m: multi });
+  if (!p.success) return { error: "Something is wrong with that request." };
+  return listCreatorAsks({ offset: p.data.o, limit: 25, q: p.data.q, mine: p.data.s === "mine" ? user.id : null, show: p.data.sh, priority: p.data.pr === "all" ? null : Number(p.data.pr), multi: p.data.m });
+}
+
+/** Ticks one creator as contacted in every open action that lists them (managers: all; team members: only actions assigned to them). */
+export async function contactCreatorEverywhere(username: string, on: boolean): Promise<R & { count?: number }> {
+  const user = await requireUser();
+  const p = z.string().min(1).max(80).safeParse(username);
+  if (!p.success) return { error: "Choose a creator." };
+  const mine = can(user, "manager") ? sql`` : sql`and exists (select 1 from ep_task_assignees x where x.task_id = t.id and x.user_id = ${user.id}::uuid)`;
+  const hit = await q(on
+    ? sql`update ep_task_creators tc set contacted_at = now(), contacted_by = ${user.id}::uuid from ep_tasks t where t.id = tc.task_id and tc.username = ${p.data} and tc.contacted_at is null and t.status in ('not_started', 'pending') ${mine} returning tc.task_id::text as id`
+    : sql`update ep_task_creators tc set contacted_at = null, contacted_by = null from ep_tasks t where t.id = tc.task_id and tc.username = ${p.data} and tc.contacted_at is not null and t.status in ('not_started', 'pending') ${mine} returning tc.task_id::text as id`);
+  for (const h of hit) {
+    await q(sql`update ep_tasks set updated_at = now() where id = ${h.id as string}::uuid`);
+    if (on) await log(h.id as string, user.id, "contacted", `Contacted @${p.data} (from By Creator)`);
+  }
+  refresh();
+  return hit.length ? { ok: true, count: hit.length } : { error: "Nothing to change for this creator." };
 }

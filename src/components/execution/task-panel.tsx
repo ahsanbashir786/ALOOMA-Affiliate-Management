@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, CalendarDays, CheckCircle2, ListChecks, MessageSquare, Send, Users, X } from "lucide-react";
-import { MESSAGES, PRIORITY_LABEL } from "@/lib/execution/rules";
+import { MESSAGES, PRIORITY_LABEL, REFERENCE_KINDS } from "@/lib/execution/rules";
 import type { PlanData, Staff, Status, TaskView } from "@/lib/execution/plan";
 import { fmtDateTimeKL } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
@@ -162,12 +162,12 @@ export function TaskPanel({ task, data, me, canManage, mutate, onClose, onNav }:
           </Block>
 
           {task.creatorCount > 0 && (
-            <Block icon={Users} title={`Creators To Contact · ${task.creatorCount}`} right={msg && (
+            <Block icon={Users} title={`${task.kind === "fix_conversion" ? "Best Videos To Learn From" : task.kind === "recruit" ? "Top Sellers Today" : "Creators To Contact"} · ${task.creatorCount}`} right={msg && (
               <div className="inline-flex overflow-hidden rounded-md border border-line-strong text-[12px] font-medium">
                 {(["ms", "en"] as const).map((l) => <button key={l} onClick={() => setLang(l)} className={cn("px-2 py-1", lang === l ? "bg-brand text-white" : "bg-surface text-ink-2")}>{l === "ms" ? "Malay" : "English"}</button>)}
               </div>
             )}>
-              <CreatorList key={task.id} taskId={task.id} kind={task.kind} product={task.productName} canEdit={canEdit} closed={closed} total={task.creatorCount} contacted={task.contactedCount} lang={lang} onContacted={(n) => mutate.contacted(task.id, n)} />
+              <CreatorList key={task.id} taskId={task.id} kind={task.kind} product={task.productName} canEdit={canEdit && !REFERENCE_KINDS.includes(task.kind)} closed={closed || REFERENCE_KINDS.includes(task.kind)} reference={REFERENCE_KINDS.includes(task.kind)} total={task.creatorCount} contacted={task.contactedCount} lang={lang} onContacted={(n) => mutate.contacted(task.id, n)} />
             </Block>
           )}
 

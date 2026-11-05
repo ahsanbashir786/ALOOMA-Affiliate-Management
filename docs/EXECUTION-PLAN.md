@@ -29,6 +29,8 @@ Every product is read after each sync. A rule fires when its numbers say so, and
 | Samples | Be stricter | 40%+ of delivered samples never posted | None |
 | Shop & Offer | Returns / Rescue / Keep up | Returns up, product Slipping or Dying, or Growing | None |
 
+**One main action per creator, per product.** A creator is listed only in the most important action that applies (order: sample not posted, win back / past star / falling, top seller / taking off, ad code, old video / new video, LIVE, cross-sell, new seller, one-time seller / another sample). The other asks are kept as "Also: ..." notes on that creator's line, and the message includes them, so nobody is contacted several times for one product. Actions about the product itself (best videos to learn from, top sellers, low views) only show examples and are not contact lists.
+
 Every creator an action is about is stored (not only a few). Open the action to see them all: search, To Do / Done filter, paging, a tick for "contacted" (who and when), the creator's own videos with a Watch link, a personal Malay or English message with the video details filled in, a WhatsApp button when a number is known, and a CSV download. People marked "do not contact" are never listed. A tick survives plan refreshes.
 
 History used: all sales ever (not only the last two periods), so a creator who sold well months ago but went quiet is found.
@@ -57,3 +59,6 @@ Migrations: `0014_execution_plan.sql`, `0015_execution_creators.sql` (run `npm r
 - Quick views: My Work, All Work, Unassigned, Overdue. Priority filter: All, High, Medium, Normal, each with its number. Filters, search, group by.
 - Managers: tick several actions and assign, set status or due date at once; click the assigned people in a row to change them.
 - Marking Done or Not Needed shows an Undo for a few seconds.
+
+## By Creator view
+One card per creator with every open ask about them across all products (the same kind of ask in several products is one line with the product names). Tick all, or tick each ask; "One Message" and WhatsApp send one message that covers every ask (Malay or English). Filters: all creators or my actions, to contact or everyone, several asks, priority. "Open Action" opens the action in the side panel.
