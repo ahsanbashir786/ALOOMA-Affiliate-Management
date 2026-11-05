@@ -31,7 +31,7 @@ Lets the app read orders, products, returns and shipping straight from TikTok (r
 If **Orders** returns fields such as the creator and the content/video ID, affiliate orders can sync without uploads. If not, keep uploading the *Affiliate orders* file and use the API for orders, status, products, returns and shipping.
 
 ## Data Sync (module 0)
-**Administration → Data Sync** pulls ten datasets from TikTok into the `tt_*` tables: products and stock, affiliate orders, sample requests, **shop orders** (every order, reduced to status, dates, totals and line prices; no customer data), **sample orders** (shipping status and delivery dates of the orders behind sample requests; no customer data), **collaborations** (commission offered, stock, creators joined), videos, LIVE sessions, returns, cancellations and daily shop performance.
+**Administration → Data Sync** pulls eleven datasets from TikTok into the `tt_*` tables: products and stock, affiliate orders, sample requests, **shop orders** (every order, reduced to status, dates, totals and line prices; no customer data), **sample orders** (shipping status and delivery dates of the orders behind sample requests; no customer data), **collaborations** (commission offered, stock, creators joined), videos, LIVE sessions, returns, cancellations and daily shop performance.
 
 | Point | How it works |
 |---|---|
@@ -46,3 +46,17 @@ If **Orders** returns fields such as the creator and the content/video ID, affil
 | Privacy | Only whitelisted fields are read; customer names, phones, emails and addresses never reach the database |
 
 Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).
+
+## Data Sync cards (names and what they hold)
+| Card | What it holds |
+|---|---|
+| Products | Your listings (the big number counts products; SKUs and stock are under it) |
+| Total Orders | Every shop order: status, dates, totals, shipping (no buyer data) |
+| Affiliate Orders | Sales made through creators, one row per order line, with the video or LIVE ID |
+| Affiliate Samples Issued | The shipments behind approved sample requests: delivery status and dates. Counts only those orders, not all orders |
+| Promotion Videos | Videos that promoted your products (from Shop Analytics), with views, sales, linked products |
+| Promotion LIVE Sessions | LIVE streams that promoted your products |
+| Open Collaboration | Open collaboration offers: commission, period, creators joined, stock |
+| Affiliate Sample Requests | Creators' requests for free samples (status, creator, product, SKU) |
+| Return Orders / Cancelled Orders | Return and refund requests / cancellations |
+| Shop Performance | Shop totals, one row per day (sales, orders, buyers, units, refunds, page views) |

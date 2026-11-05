@@ -14,18 +14,29 @@ export type RunResult = { dataset: DatasetKey; status: "ok" | "failed" | "skippe
 
 /** Display order = run order. `table` is where the rows land. */
 export const DATASETS: { key: DatasetKey; label: string; table: string; icon: string; what: string }[] = [
-  { key: "products", label: "Product SKUs", table: "tt_skus", icon: "package", what: "SKUs" },
-  { key: "affiliate_orders", label: "Affiliate orders", table: "tt_affiliate_order_lines", icon: "receipt", what: "order lines" },
-  { key: "sample_requests", label: "Sample requests", table: "tt_sample_requests", icon: "gift", what: "requests" },
-  { key: "orders", label: "Shop orders", table: "tt_orders", icon: "cart", what: "orders" },
-  { key: "sample_orders", label: "Sample orders", table: "tt_orders", icon: "truck", what: "orders" },
-  { key: "open_collabs", label: "Collaborations", table: "tt_open_collabs", icon: "handshake", what: "offers" },
-  { key: "videos", label: "Videos", table: "tt_videos", icon: "video", what: "videos" },
-  { key: "lives", label: "LIVE sessions", table: "tt_lives", icon: "radio", what: "sessions" },
-  { key: "returns", label: "Returns", table: "tt_returns", icon: "undo", what: "returns" },
-  { key: "cancellations", label: "Cancellations", table: "tt_cancellations", icon: "x", what: "cancellations" },
-  { key: "shop_daily", label: "Shop performance", table: "tt_shop_daily", icon: "chart", what: "days" },
+  { key: "products", label: "Products", table: "tt_skus", icon: "package", what: "products" },
+  { key: "orders", label: "Total Orders", table: "tt_orders", icon: "cart", what: "orders" },
+  { key: "affiliate_orders", label: "Affiliate Orders", table: "tt_affiliate_order_lines", icon: "receipt", what: "order lines" },
+  { key: "sample_orders", label: "Affiliate Samples Issued", table: "tt_orders", icon: "truck", what: "samples" },
+  { key: "videos", label: "Promotion Videos", table: "tt_videos", icon: "video", what: "videos" },
+  { key: "lives", label: "Promotion LIVE Sessions", table: "tt_lives", icon: "radio", what: "sessions" },
+  { key: "open_collabs", label: "Open Collaboration", table: "tt_open_collabs", icon: "handshake", what: "offers" },
+  { key: "sample_requests", label: "Affiliate Sample Requests", table: "tt_sample_requests", icon: "gift", what: "requests" },
+  { key: "returns", label: "Return Orders", table: "tt_returns", icon: "undo", what: "returns" },
+  { key: "cancellations", label: "Cancelled Orders", table: "tt_cancellations", icon: "x", what: "cancellations" },
+  { key: "shop_daily", label: "Shop Performance", table: "tt_shop_daily", icon: "chart", what: "days" },
 ];
+
+/**
+ * How many records a card shows. Most count their own table; two share a table with something else and must not count it all:
+ * Products counts listings (not SKUs), Affiliate Samples Issued counts only the orders behind approved sample requests.
+ */
+export async function liveCount(key: DatasetKey): Promise<number> {
+  const ds = DATASETS.find((d) => d.key === key)!;
+  if (key === "products") return (await rows<{ n: number }>(sql`select count(distinct product_id)::int as n from tt_skus`))[0]?.n ?? 0;
+  if (key === "sample_orders") return (await rows<{ n: number }>(sql`select count(distinct o.order_id)::int as n from tt_orders o join tt_sample_requests r on r.order_id = o.order_id`))[0]?.n ?? 0;
+  return (await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`))[0]?.n ?? 0;
+}
 
 const MAX_PAGES = 600;
 const REPEAT_WINDOW_MIN = 180;
@@ -301,7 +312,6 @@ const lastError = (e: unknown) => (e instanceof Error ? e.message : String(e)).s
 
 /** Runs one dataset: logs the run, never throws (a failure is recorded and the next dataset can still run). */
 export async function runDataset(key: DatasetKey, trigger: "manual" | "schedule", userId: string | null, deps: SyncDeps = {}): Promise<RunResult> {
-  const ds = DATASETS.find((d) => d.key === key)!;
   const cfg = deps.cfg === undefined ? tiktokConfig() : deps.cfg;
   const [busy] = await rows<{ n: number }>(sql`select count(*)::int as n from tt_sync_runs where dataset = ${key} and status = 'running' and started_at > now() - (${REPEAT_WINDOW_MIN}::int * interval '1 minute')`);
   if (busy.n > 0) return { dataset: key, status: "skipped", pages: 0, seen: 0, changed: 0, error: "Already running" };
@@ -314,7 +324,7 @@ export async function runDataset(key: DatasetKey, trigger: "manual" | "schedule"
   try {
     await RUNNERS[key]({ deps: { ...deps, cfg }, full, watermark, runId: run.id, backfill: !!deps.backfill || !watermark, ...(await (async () => { const h = await getSyncSettings(); return { historyFrom: h.historyFrom, historyTo: h.historyTo }; })()), loaded: (await getLoaded())[key] ?? null }, c);
     if (c.loadedFrom && c.loadedTo && (!!deps.backfill || !watermark)) await saveLoaded(key, c.loadedFrom, c.loadedTo);
-    const [cnt] = await rows<{ n: number }>(sql`select count(*)::int as n from ${sql.raw(ds.table)}`);
+    const cnt = { n: await liveCount(key) };
     const note = [c.skipped ? `${c.skipped.toLocaleString("en-MY")} skipped (TikTok would not return them${c.skipWhy ? `: ${c.skipWhy}` : ""}; e.g. ${(c.skipExamples ?? []).join(", ")})` : null, c.note ?? null].filter(Boolean).join(" · ") || null;
     await rows(sql`update tt_sync_runs set status = 'ok', finished_at = now(), pages = ${c.pages}, rows_seen = ${c.seen}, rows_changed = ${c.changed}, error = ${note} where id = ${run.id}`);
     await rows(sql`
@@ -424,12 +434,15 @@ export async function syncOverview(): Promise<SyncOverview> {
     rows<{ dataset: string; status: string; error: string | null }>(sql`select distinct on (dataset) dataset, status, error from tt_sync_runs where dataset <> ${CYCLE} order by dataset, started_at desc, id desc`),
   ]);
   const lastRun = new Map(latest.map((r) => [r.dataset, r]));
-  const [pc] = await rows<{ n: number; units: number }>(sql`select count(distinct product_id)::int as n, coalesce(sum(stock), 0)::int as units from tt_skus`);
+  const [pc] = await rows<{ n: number; skus: number; units: number }>(sql`select count(distinct product_id)::int as n, count(*)::int as skus, coalesce(sum(stock), 0)::int as units from tt_skus`);
   const spans = new Map<string, { a: string | null; b: string | null }>();
+  const live = new Map<string, number>([["products", await liveCount("products")], ["sample_orders", await liveCount("sample_orders")]]);
   for (const d of DATASETS) {
     const col = DATE_COL[d.table];
     if (!col) continue;
-    const [r] = await rows<{ a: string | null; b: string | null }>(sql`select to_char(min(${sql.raw(col)}), 'YYYY-MM-DD') as a, to_char(max(${sql.raw(col)}), 'YYYY-MM-DD') as b from ${sql.raw(d.table)}`);
+    const [r] = d.key === "sample_orders"
+      ? await rows<{ a: string | null; b: string | null }>(sql`select to_char(min(o.created_at), 'YYYY-MM-DD') as a, to_char(max(o.created_at), 'YYYY-MM-DD') as b from tt_orders o join tt_sample_requests r on r.order_id = o.order_id`)
+      : await rows<{ a: string | null; b: string | null }>(sql`select to_char(min(${sql.raw(col)}), 'YYYY-MM-DD') as a, to_char(max(${sql.raw(col)}), 'YYYY-MM-DD') as b from ${sql.raw(d.table)}`);
     spans.set(d.key, r);
   }
   const st = new Map(states.map((s) => [s.dataset, s]));
@@ -439,7 +452,7 @@ export async function syncOverview(): Promise<SyncOverview> {
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   return {
     now: Date.now(),
-    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, detail: d.key === "products" && pc?.n ? `${pc.n.toLocaleString("en-MY")} products · ${pc.units.toLocaleString("en-MY")} units in stock` : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
+    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: live.get(d.key) ?? st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, detail: d.key === "products" && pc?.n ? `${pc.skus.toLocaleString("en-MY")} SKU${pc.skus === 1 ? "" : "s"} · ${pc.units.toLocaleString("en-MY")} units in stock` : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,
     lastFullAt: times.length ? new Date(Math.min(...times)).toISOString() : null,
