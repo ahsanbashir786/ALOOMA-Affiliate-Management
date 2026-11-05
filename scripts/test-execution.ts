@@ -38,6 +38,15 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   check("one action: a creator sits in the most important action that applies", !wrongOrder);
   const refs = drafts.filter((d) => ["fix_conversion", "low_views"].includes(d.kind));
   check("one action: product-level actions do not list creators to contact", refs.every((d) => d.kind !== "low_views" || d.creators.length === 0));
+  // LIVE actions: always High, always first in their product, and they claim their creators first.
+  const base0 = a.products.find((p) => p.diagnosis.tag !== "No Sales" && p.metrics.sales.now > 500)!;
+  const noLive = structuredClone(base0);
+  noLive.metrics.buckets.now.live = 0; noLive.metrics.buckets.prev.live = 0; noLive.metrics.sales.now = Math.max(noLive.metrics.sales.now, 5000);
+  const liveDrafts = buildDrafts(noLive, ctx);
+  const liveOne = liveDrafts.find((d) => d.kind === "live_push");
+  check("LIVE: a product with little LIVE gets a LIVE action", !!liveOne && liveOne.creators.length > 0);
+  check("LIVE: the LIVE action is High priority and first in its product", !!liveOne && liveOne.priority === 1 && liveDrafts[0].kind === "live_push");
+  check("LIVE: its creators are not repeated in other actions of the product", !!liveOne && liveDrafts.filter((d) => d.kind !== "live_push" && CREATOR_RANK[d.kind] !== undefined).every((d) => d.creators.every((c) => !liveOne.creators.some((l) => l.name === c.name))));
   const kinds = new Set(drafts.map((d) => d.kind));
   console.log("kinds:", Object.fromEntries([...kinds].map((k) => [k, drafts.filter((d) => d.kind === k).reduce((n, d) => n + d.creators.length, 0)])));
   check("rules: several kinds of action across content, creators and samples", ["new_videos", "reactivate", "chase_unposted"].every((k) => kinds.has(k)) && new Set(drafts.map((d) => d.category)).size >= 3, [...kinds].join(","));

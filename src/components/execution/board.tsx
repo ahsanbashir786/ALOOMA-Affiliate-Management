@@ -27,8 +27,10 @@ type Toast = { text: string; undo?: () => void; tone?: "ok" | "error" };
 const isOpen = (t: TaskView) => t.status === "not_started" || t.status === "pending";
 const isClosed = (t: TaskView) => t.status === "skipped" || t.status === "auto_closed";
 const ORDER: Record<string, number> = { not_started: 1, pending: 0, done: 2, skipped: 3, auto_closed: 3 };
+/** Open LIVE actions always come first in their product. */
+const liveFirst = (t: TaskView) => (t.kind === "live_push" && isOpen(t) ? 0 : 1);
 const sortTasks = (a: TaskView, b: TaskView) =>
-  ORDER[a.status] - ORDER[b.status] || a.priority - b.priority || (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || b.impactRm - a.impactRm;
+  liveFirst(a) - liveFirst(b) || ORDER[a.status] - ORDER[b.status] || a.priority - b.priority || (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || b.impactRm - a.impactRm;
 const same = (a: Filters, b: Partial<Filters>) => (Object.keys(NO_FILTER) as (keyof Filters)[]).every((k) => a[k] === (b[k] ?? NO_FILTER[k]));
 
 export function ExecutionBoard({ data, me, meName, canManage }: { data: PlanData; me: string; meName: string; canManage: boolean }) {

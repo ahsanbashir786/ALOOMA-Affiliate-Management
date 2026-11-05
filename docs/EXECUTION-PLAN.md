@@ -29,7 +29,9 @@ Every product is read after each sync. A rule fires when its numbers say so, and
 | Samples | Be stricter | 40%+ of delivered samples never posted | None |
 | Shop & Offer | Returns / Rescue / Keep up | Returns up, product Slipping or Dying, or Growing | None |
 
-**One main action per creator, per product.** A creator is listed only in the most important action that applies (order: sample not posted, win back / past star / falling, top seller / taking off, ad code, old video / new video, LIVE, cross-sell, new seller, one-time seller / another sample). The other asks are kept as "Also: ..." notes on that creator's line, and the message includes them, so nobody is contacted several times for one product. Actions about the product itself (best videos to learn from, top sellers, low views) only show examples and are not contact lists.
+**LIVE actions come first.** Any LIVE action is always High priority, sits at the top of its product's list, and gets its creators before any other action.
+
+**One main action per creator, per product.** A creator is listed only in the most important action that applies (order: LIVE, sample not posted, win back / past star / falling, top seller / taking off, ad code, old video / new video, cross-sell, new seller, one-time seller / another sample). The other asks are kept as "Also: ..." notes on that creator's line, and the message includes them, so nobody is contacted several times for one product. Actions about the product itself (best videos to learn from, top sellers, low views) only show examples and are not contact lists.
 
 Every creator an action is about is stored (not only a few). Open the action to see them all: search, To Do / Done filter, paging, a tick for "contacted" (who and when), the creator's own videos with a Watch link, a personal Malay or English message with the video details filled in, a WhatsApp button when a number is known, and a CSV download. People marked "do not contact" are never listed. A tick survives plan refreshes.
 

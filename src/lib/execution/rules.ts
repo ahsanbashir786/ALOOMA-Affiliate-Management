@@ -83,7 +83,8 @@ function run(p: ProductAnalysis, ctx: Ctx, excl: Map<string, Set<string>>): Draf
   const name = productName(key);
 
   const add = (x: Omit<Draft, "fingerprint" | "productKey" | "dueDays" | "priority"> & { priority?: Priority; bump?: number }) => {
-    const priority = x.priority ?? priorityOf(x.impactRm, Math.max(sales, m.sales.prev), x.bump ?? tagBump);
+    // LIVE actions are always High: LIVE buyers order fast and in groups.
+    const priority = x.kind === "live_push" ? 1 : x.priority ?? priorityOf(x.impactRm, Math.max(sales, m.sales.prev), x.bump ?? tagBump);
     // One line per creator; never anyone we must not contact.
     const seen = new Set<string>();
     const creators = x.creators.filter((c) => !H.blocked.has(c.name) && (seen.has(c.name) ? false : (seen.add(c.name), true))).slice(0, LIST_CAP);
@@ -459,7 +460,9 @@ function run(p: ProductAnalysis, ctx: Ctx, excl: Map<string, Set<string>>): Draf
     });
   }
 
-  return out.sort((a, b) => a.priority - b.priority || b.impactRm - a.impactRm);
+  // LIVE actions first, then by priority and money at stake.
+  const live = (d: Draft) => (d.kind === "live_push" ? 0 : 1);
+  return out.sort((a, b) => live(a) - live(b) || a.priority - b.priority || b.impactRm - a.impactRm);
 }
 
 /**
@@ -467,8 +470,8 @@ function run(p: ProductAnalysis, ctx: Ctx, excl: Map<string, Set<string>>): Draf
  * the others are noted on that creator's line, so nobody is contacted several times for the same product.
  */
 export const CREATOR_RANK: Record<string, number> = {
-  chase_unposted: 1, reactivate: 2, lapsed_stars: 2.1, falling: 2.2, lapsed_regular: 2.3, retain_top: 3, scale_winners: 3.1, promote_best: 3.5,
-  refresh_old: 4, new_videos: 4.1, live_push: 4.5, cross_sell: 5, welcome_new: 6, one_hit: 7, more_samples: 7.1,
+  live_push: 0.5, chase_unposted: 1, reactivate: 2, lapsed_stars: 2.1, falling: 2.2, lapsed_regular: 2.3, retain_top: 3, scale_winners: 3.1, promote_best: 3.5,
+  refresh_old: 4, new_videos: 4.1, cross_sell: 5, welcome_new: 6, one_hit: 7, more_samples: 7.1,
 };
 /** Short note shown on a creator's line for an ask that was folded into their main action. */
 export const ALSO: Record<string, string> = {
