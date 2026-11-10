@@ -158,7 +158,7 @@ async function main() {
 
   // ── the connection check ──
   const chk = await K.runAdsChecks({ cfg, f: fake, sleep });
-  check("check: ad accounts, shops, campaigns, results, videos and boosts all answer", chk.checks.length === 6 && chk.checks.every((c) => c.ok), JSON.stringify(chk.checks.filter((c) => !c.ok)));
+  check("check: ad accounts, shops, campaigns, results, status values, videos and boosts all answer", chk.checks.length === 7 && chk.checks.every((c) => c.ok), JSON.stringify(chk.checks.filter((c) => !c.ok)));
   check("accounts list: the login goes in the Access-Token header, never in the web address, and the app id and secret are sent", seen.filter((x) => x.path === "/oauth2/advertiser/get/").every((x) => x.headers["access-token"] === "AT123" && !x.q.access_token && x.q.app_id === "APP1" && x.q.secret === "s3cret"));
   check("check: it lists the accounts and the field names TikTok sent", chk.accounts.length === 2 && chk.accounts[0].name === "ALOOMA" && !!chk.checks.find((c) => c.name.startsWith("Campaign results"))?.fields?.includes("cost"));
 

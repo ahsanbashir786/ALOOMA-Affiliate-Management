@@ -15,7 +15,7 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   const roles = await q(sql`select r.key, r.is_admin, array_agg(p.permission order by p.permission) filter (where p.permission is not null) as perms from roles r left join role_permissions p on p.role_id = r.id group by r.key, r.is_admin`);
   const by = new Map(roles.map((r) => [r.key as string, r]));
   const all = PERMISSIONS.map((p) => p.key).sort();
-  check("permissions: exactly the six screens", JSON.stringify(all) === JSON.stringify(["creators", "execution", "products", "settings", "sync", "users"]));
+  check("permissions: exactly the seven screens", JSON.stringify(all) === JSON.stringify(["ads", "creators", "execution", "products", "settings", "sync", "users"]));
   check("roles: Admin exists and is the locked owner role", by.get("admin")?.is_admin === true);
   check("roles: Admin holds every screen", JSON.stringify(by.get("admin")!.perms) === JSON.stringify(all));
   const [old] = await q(sql`select count(*)::int as n from role_permissions where permission like '%.%'`);
@@ -33,7 +33,7 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   check("toggle: switching a screen on adds only that screen", on.length === 2 && on.includes("sync") && on.includes("products"));
   const off = withDependencies(["execution", "products"], "execution", false);
   check("toggle: switching a screen off removes only that screen", off.length === 1 && off[0] === "products");
-  check("menu: every menu screen names one permission and each is known", Object.values(SCREEN_PERMISSION).every((k) => PERMISSIONS.some((p) => p.key === k)) && Object.keys(SCREEN_PERMISSION).length === 6);
+  check("menu: every menu screen names one permission and each is known", Object.values(SCREEN_PERMISSION).every((k) => PERMISSIONS.some((p) => p.key === k)) && Object.keys(SCREEN_PERMISSION).length === 7);
 
   // The migration keeps who was who: an admin user is still on the Admin role.
   const owners = await q(sql`select u.email from users u join roles r on r.id = u.role_id where r.is_admin`);

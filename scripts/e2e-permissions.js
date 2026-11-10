@@ -15,8 +15,8 @@ const run = Date.now().toString(36);
   // ── a viewer: full menu, locks, Permission Denied
   let v = await mk(); await login(v, "viewer@test.local");
   const items = (await v.locator("aside nav a").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(items) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "Data Sync", "Settings"]), `viewer: sees the full menu (${items.join(", ")})`);
-  ok((await v.getByTestId("nav-lock").count()) === 2, "viewer: Data Sync and Settings show a lock");
+  ok(JSON.stringify(items) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Data Sync", "Settings"]), `viewer: sees the full menu (${items.join(", ")})`);
+  ok((await v.getByTestId("nav-lock").count()) === 3, "viewer: GMV Max, Data Sync and Settings show a lock");
   await v.locator("aside a", { hasText: "Data Sync" }).click(); await v.waitForSelector("[data-testid=permission-denied]");
   const t = await v.getByTestId("permission-denied").innerText();
   ok(/Permission Denied/.test(t) && /Viewer/.test(t) && /Data Sync/.test(t) && /Needs:\s*Data Sync/i.test(t), "viewer: Data Sync shows Permission Denied with the role, the screen and what is needed");

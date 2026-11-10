@@ -84,6 +84,25 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
       return { items: list, fields: { ...obj(list[0]?.dimensions), ...obj(list[0]?.metrics) } };
     });
   }
+  // The allowed values of the report filters that describe a video's delivery state: asked with a wrong value, TikTok's message lists the right ones.
+  const fcAny = firstCampaign as { adv: string; id: string } | null;
+  const srAny = shopRow as { adv: string; store: string; bc: string } | null;
+  if (fcAny && srAny && (shopsOf.get(fcAny.adv) ?? []).length) {
+    await run("Creative status values", async () => {
+      const found: Record<string, string[]> = {};
+      for (const key of ["creative_delivery_statuses", "creative_types"]) {
+        try {
+          await adsCall<Record<string, unknown>>("/gmv_max/report/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: fcAny.adv, store_ids: shopsOf.get(fcAny.adv), dimensions: ["campaign_id", "item_group_id", "stat_time_day"], metrics: ["cost"], start_date: addDaysISO(todayKL(), -1), end_date: todayKL(), filtering: { campaign_ids: [fcAny.id], [key]: ["PROBE_VALUE"] }, page: 1, page_size: 1 } });
+          found[key] = ["(TikTok accepted any value)"];
+        } catch (e) {
+          const m = e instanceof Error ? e.message : "";
+          const list = m.match(/correct is ([A-Z0-9_, ]+)/i)?.[1] ?? m.match(/allowed values?[^:]*:\s*([A-Z0-9_, ]+)/i)?.[1];
+          found[key] = list ? list.split(",").map((x) => x.trim()).filter(Boolean) : [`(${m.replace(/^TikTok said no \(\d+\): /, "").slice(0, 160)})`];
+        }
+      }
+      return { items: [found], fields: found };
+    });
+  }
   // The video list and the boosts (read only): who made each video, whether it may be boosted, and what is boosted now.
   const sr = shopRow as { adv: string; store: string; bc: string } | null;
   if (sr) {

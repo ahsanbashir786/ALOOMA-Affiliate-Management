@@ -1,4 +1,4 @@
-import { ListChecks, Package, RefreshCw, Settings, Users, type LucideIcon } from "lucide-react";
+import { ListChecks, Package, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon; /** The permission that opens this screen. */ perm: PermissionKey; /** A screen with parts under different permissions opens with any of these (Settings: Connection and User Management). */ perms?: PermissionKey[] };
@@ -13,6 +13,10 @@ export const NAV: NavGroup[] = [
       { href: "/creators", label: "Affiliate Data", icon: Users, perm: "creators" },
       { href: "/products", label: "Product Analysis", icon: Package, perm: "products" },
     ],
+  },
+  {
+    label: "Advertising",
+    items: [{ href: "/ads", label: "GMV Max", icon: Rocket, perm: "ads" }],
   },
   {
     label: "System",

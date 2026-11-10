@@ -7,6 +7,7 @@ Five menu items, all built on the TikTok Data Sync. No uploaded files.
 | Execution Plan | `/execution` | The daily work: actions written from the product numbers, assigned and ticked off | [EXECUTION-PLAN.md](EXECUTION-PLAN.md) |
 | Affiliate Data | `/creators`, `/creators/<name>` | Every creator, a line per product, status and action, owner, contacted; creator profile and side panel | [CREATORS.md](CREATORS.md) |
 | Product Analysis | `/products`, `/products/<key>` | Is each of the 13 products growing or slipping, and why | [PRODUCTS.md](PRODUCTS.md) |
+| GMV Max | `/ads` | KPI totals (last 7 / 30 / 90 days against the period before) and **Videos Worth Boosting**: videos with ad spend ranked by ROI and orders (minimum ROI defaults to 1.2 × your own average), with creator, product, spend, sales, cost per order and click rate; pick a batch. Reads `ads_*` tables and `tt_videos` (creator, post date) | `ads` |
 | Data Sync | `/sync` | Tab **Affiliate**: orders, products, videos, LIVEs, samples, returns from TikTok Shop. Tab **Ads Management** (`?tab=ads`): GMV Max campaigns, creatives and daily results from TikTok Ads. Schedule and health for each | [TIKTOK-API.md](TIKTOK-API.md), [TIKTOK-ADS-API.md](TIKTOK-ADS-API.md) |
 | Settings | `/settings` | Tabs: **Connection** (Affiliate / TikTok Shop and Ad Management / GMV Max; `settings`), **User Management** (people, roles and the screen switches, dynamic, stored in `roles` / `role_permissions`; `users`), **Storage** and **System Alerts** (later). `/users` redirects here | `settings`, `users` |
 

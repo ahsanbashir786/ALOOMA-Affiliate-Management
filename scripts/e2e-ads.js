@@ -58,9 +58,19 @@ async function login(p, email) {
   ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "sync: no sideways scroll on desktop");
   await o.getByTestId("sync-tab-affiliate").click(); await o.waitForSelector("[data-testid=sync-hero], [data-testid=sync-offline]"); ok(true, "sync: the Affiliate tab still works");
 
+  // ── GMV Max screen
+  await o.goto(BASE + "/ads?roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-board]");
+  ok((await o.getByTestId("ads-row").count()) > 0, "gmv max: videos worth boosting are listed");
+  ok(/Ad Spend/.test(await o.locator("main").innerText()) && /ROI/.test(await o.locator("main").innerText()), "gmv max: the four totals are shown");
+  await o.getByTestId("ads-row").first().locator("input[type=checkbox]").check();
+  ok(/1 video selected/.test(await o.getByTestId("ads-selection").innerText()), "gmv max: picking a video builds a batch");
+  await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-board]"); ok(true, "gmv max: opens with the automatic rules");
+  ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "gmv max: no sideways scroll on desktop");
+
   // ── a viewer cannot use the connection
   const v = await mk(); await login(v, "viewer@test.local");
   await v.goto(BASE + "/settings"); await v.waitForSelector("[data-testid=permission-denied]"); ok(true, "viewer: Settings is Permission Denied");
+  await v.goto(BASE + "/ads"); await v.waitForSelector("[data-testid=permission-denied]"); ok(true, "viewer: GMV Max is Permission Denied");
   ok((await v.evaluate(async () => (await fetch("/api/tiktok-ads/test", { method: "POST" })).status)) === 403, "viewer: the Ads check is refused by the server");
   ok((await v.evaluate(async () => (await fetch("/api/tiktok-ads/sync", { method: "POST", body: "{}" })).status)) === 403, "viewer: an Ads sync is refused by the server");
   // a manager (Data Sync, not Settings) sees the tab but cannot connect
@@ -74,11 +84,12 @@ async function login(p, email) {
   await o.getByRole("button", { name: "Disconnect" }).click(); await o.getByRole("button", { name: "Yes, disconnect" }).click();
   await o.waitForFunction(() => /Not connected/.test(document.querySelector("[data-testid=tiktok-ads-status]")?.textContent ?? ""), null, { timeout: 15000 });
   ok(true, "ads: Disconnect forgets the login");
+  await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-not-connected]"); ok(true, "gmv max: without a connection it says to connect first");
   await o.goto(BASE + "/sync?tab=ads"); await o.waitForSelector("[data-testid=ads-offline]"); ok(true, "sync: without a connection the tab offers Open Connection");
 
   // ── mobile
   const mo = await mk({ width: 390, height: 844 }); await login(mo, "owner@test.local");
-  for (const path of ["/settings", "/settings?tab=connection&src=ads", "/sync?tab=ads"]) { await mo.goto(BASE + path); await mo.waitForSelector("h1"); await mo.waitForTimeout(500); ok(!(await mo.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `mobile: ${path} has no sideways scrolling`); }
+  for (const path of ["/settings", "/settings?tab=connection&src=ads", "/sync?tab=ads", "/ads"]) { await mo.goto(BASE + path); await mo.waitForSelector("h1"); await mo.waitForTimeout(500); ok(!(await mo.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `mobile: ${path} has no sideways scrolling`); }
   ok(errs.length === 0, "no browser errors"); if (errs.length) console.log(errs);
   console.log(`\n${pass} passed, ${fail} failed`); await b.close();
 })();
