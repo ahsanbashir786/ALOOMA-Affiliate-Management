@@ -89,7 +89,7 @@ export function TikTokAdsActions({ v }: { v: TikTokAdsView }) {
                       <details className="mt-1 text-[12.5px]">
                         <summary className="flex cursor-pointer items-center gap-1 text-ink-3 hover:text-brand">What TikTok sent <ChevronDown className="size-3.5" /></summary>
                         <p className="mt-1.5 flex flex-wrap gap-1.5">{c.fields.map((f) => <span key={f} className="rounded bg-surface-2 px-1.5 py-0.5 text-[11.5px] text-ink-2">{f}</span>)}</p>
-                        {c.sample && <pre className="mt-1.5 max-h-48 overflow-auto rounded-lg bg-surface-2 p-2.5 text-[11.5px] leading-snug break-all whitespace-pre-wrap text-ink-2">{c.sample}</pre>}
+                        {c.sample && <pre className="mt-1.5 max-h-72 overflow-auto rounded-lg bg-surface-2 p-2.5 text-[11.5px] leading-snug break-all whitespace-pre-wrap text-ink-2">{c.sample}</pre>}
                       </details>
                     )}
                   </div>

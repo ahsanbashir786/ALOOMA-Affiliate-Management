@@ -105,6 +105,8 @@ async function main() {
       if (productLevel && filt.campaign_ids!.length > maxCampaignIds) return reply(40002, null, "Invalid param: campaign_ids can hold at most " + maxCampaignIds + " ids");
       if (rejectProductDim && creativeLevel && dims.includes("item_group_id")) return reply(40002, null, "Invalid dimensions: item_group_id can not be used with item_id");
       if (oldestAllowed && start < oldestAllowed && (creativeLevel || productLevel)) return reply(40002, null, "The date range is out of the allowed limit");
+      if (mets.includes("PROBE_METRIC")) return reply(40002, null, "metrics.0: value is not one of the allowed values, value is PROBE_METRIC ,correct is cost, orders, gross_revenue, roi, creative_delivery_status, exploration_status (request X)");
+      if (dims.includes("PROBE_DIM")) return reply(40002, null, "dimensions.0: value is not one of the allowed values, value is PROBE_DIM ,correct is campaign_id, item_id, item_group_id, stat_time_day");
       const bad = mets.find((m) => !ACCEPTED.includes(m));
       if (bad) return reply(40002, null, "Invalid metric: " + bad);
       const lines: unknown[] = [];
@@ -173,8 +175,10 @@ async function main() {
 
   // ── the connection check ──
   const chk = await K.runAdsChecks({ cfg, f: fake, sleep });
-  check("check: ad accounts, shops, campaigns, results, status values, videos and boosts all answer", chk.checks.length === 7 && chk.checks.every((c) => c.ok), JSON.stringify(chk.checks.filter((c) => !c.ok)));
+  check("check: ad accounts, shops, campaigns, results, status values, allowed names, videos and boosts all answer", chk.checks.length === 8 && chk.checks.every((c) => c.ok), JSON.stringify(chk.checks.filter((c) => !c.ok)));
   check("accounts list: the login goes in the Access-Token header, never in the web address, and the app id and secret are sent", seen.filter((x) => x.path === "/oauth2/advertiser/get/").every((x) => x.headers["access-token"] === "AT123" && !x.q.access_token && x.q.app_id === "APP1" && x.q.secret === "s3cret"));
+  const allowed = chk.checks.find((c) => c.name.startsWith("Allowed report"));
+  check("check: TikTok's lists of allowed metrics and dimensions are read from its own message", !!allowed?.ok && /exploration_status/.test(allowed.sample ?? "") && /item_group_id/.test(allowed.sample ?? "") && /"product metrics"/.test(allowed.sample ?? ""), String(allowed?.sample).slice(0, 300));
   check("check: it lists the accounts and the field names TikTok sent", chk.accounts.length === 2 && chk.accounts[0].name === "ALOOMA" && !!chk.checks.find((c) => c.name.startsWith("Campaign results"))?.fields?.includes("cost"));
 
   // ── a full sync ──

@@ -1,4 +1,6 @@
 import "server-only";
+import { sql } from "drizzle-orm";
+import { rows } from "@/lib/sql";
 import { addDaysISO, todayKL } from "@/lib/time";
 import { AdsApiError, adsAuthorizedAdvertisers, adsCallPatient as adsCall, adsConfig, type AdsConfig, type Fetch } from "./client";
 import { GMV_MAX_PROMOTION_TYPES, arr, obj } from "./map";
@@ -19,11 +21,11 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
   const accounts: AdsChecks["accounts"] = [];
   const checks: AdsCheck[] = [];
   if (!cfg) return { checks: [{ name: "Setup", ok: false, message: "The TikTok Ads app ID and secret are not set on the server.", count: null, fields: null, sample: null }], accounts, at: new Date().toISOString() };
-  const run = async (name: string, job: () => Promise<{ items: unknown[]; fields?: unknown }>) => {
+  const run = async (name: string, job: () => Promise<{ items: unknown[]; fields?: unknown; sample?: string }>) => {
     await sleep(350); // stay under TikTok's rate limit
     try {
-      const { items, fields } = await job();
-      checks.push({ name, ok: true, message: "Answered", count: items.length, fields: names(fields ?? items[0]), sample: items[0] ? JSON.stringify(items[0], null, 2).slice(0, 1500) : null });
+      const { items, fields, sample } = await job();
+      checks.push({ name, ok: true, message: "Answered", count: items.length, fields: names(fields ?? items[0]), sample: sample ?? (items[0] ? JSON.stringify(items[0], null, 2).slice(0, 1500) : null) });
     } catch (e) { checks.push({ name, ok: false, message: short(e), count: null, fields: null, sample: null }); }
   };
   let ids: string[] = [];
@@ -101,6 +103,28 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
         }
       }
       return { items: [found], fields: found };
+    });
+  }
+  // The allowed report metrics and dimensions: asked with a wrong name, TikTok's message lists the right ones (as it did for the campaign types).
+  if (fcAny && srAny && (shopsOf.get(fcAny.adv) ?? []).length) {
+    await run("Allowed report metrics and dimensions", async () => {
+      const pair = (await rows<{ campaign_id: string; product_id: string }>(sql`select campaign_id, product_id from ads_product_daily where advertiser_id = ${fcAny.adv} and coalesce(cost, 0) > 0 order by day desc limit 1`))[0];
+      const levels: { level: string; dims: string[]; filtering: Record<string, unknown> }[] = [{ level: "product", dims: ["campaign_id", "item_group_id", "stat_time_day"], filtering: { campaign_ids: [fcAny.id] } }];
+      if (pair) levels.push({ level: "creative", dims: ["campaign_id", "item_group_id", "item_id", "stat_time_day"], filtering: { campaign_ids: [pair.campaign_id], item_group_ids: [pair.product_id] } });
+      const found: Record<string, string[]> = {};
+      for (const lv of levels) {
+        for (const kind of ["metrics", "dimensions"] as const) {
+          try {
+            await adsCall<Record<string, unknown>>("/gmv_max/report/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: fcAny.adv, store_ids: shopsOf.get(fcAny.adv), dimensions: kind === "dimensions" ? ["PROBE_DIM"] : lv.dims, metrics: kind === "metrics" ? ["PROBE_METRIC"] : ["cost"], start_date: addDaysISO(todayKL(), -1), end_date: todayKL(), filtering: lv.filtering, page: 1, page_size: 1 } });
+            found[`${lv.level} ${kind}`] = ["(TikTok accepted any name)"];
+          } catch (e) {
+            const m = e instanceof Error ? e.message : "";
+            const list = m.match(/correct is ([\s\S]+?)(?:\(request|$)/i)?.[1];
+            found[`${lv.level} ${kind}`] = list ? list.split(",").map((x) => x.trim()).filter(Boolean) : [`(${m.replace(/^TikTok said no \(\d+\): /, "").slice(0, 200)})`];
+          }
+        }
+      }
+      return { items: [found], fields: found, sample: JSON.stringify(found, null, 1).slice(0, 12000) };
     });
   }
   // The video list and the boosts (read only): who made each video, whether it may be boosted, and what is boosted now.
