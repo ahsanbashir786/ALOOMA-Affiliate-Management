@@ -143,7 +143,7 @@ export function AdsSyncBoard({ initial, connected, configured, canAdmin, canRun,
               <h3 className="text-[15px] font-semibold text-ink">Sync History</h3>
               <p className="text-[12.5px] text-ink-3">The latest runs, one line per dataset.</p>
             </div>
-            <button disabled={busy || !canRun} onClick={() => run(undefined, true)} title="Read the whole history again (the first 180 days)" className="rounded-lg border border-line-strong px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50">Re-Read History</button>
+            <button disabled={busy || !canRun} onClick={() => run(undefined, true)} title="Read the whole history again (campaigns and products up to a year, videos about six months)" className="rounded-lg border border-line-strong px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50">Re-Read History</button>
           </div>
           {ov.runs.length === 0 ? <p className="px-5 pb-6 text-[14px] text-ink-3">Nothing yet.</p> : (
             <ul className="divide-y divide-line" data-testid="ads-runs">

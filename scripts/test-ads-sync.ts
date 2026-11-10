@@ -29,6 +29,7 @@ async function main() {
   let renameMetrics = false;
   let maxCampaignIds = 10;
   let rejectProductDim = false;
+  let oldestAllowed = "";
   const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks"];
   const failAccount222 = true;
   let bump: Record<string, string> = {};
@@ -85,6 +86,7 @@ async function main() {
       if (productLevel && !filt.campaign_ids?.length) return reply(40002, null, "Item level report must have at least 1 campaign ID, please correct the campaign_id filter.");
       if (productLevel && filt.campaign_ids!.length > maxCampaignIds) return reply(40002, null, "Invalid param: campaign_ids can hold at most " + maxCampaignIds + " ids");
       if (rejectProductDim && creativeLevel && dims.includes("item_group_id")) return reply(40002, null, "Invalid dimensions: item_group_id can not be used with item_id");
+      if (oldestAllowed && start < oldestAllowed && (creativeLevel || productLevel)) return reply(40002, null, "The date range is out of the allowed limit");
       const bad = mets.find((m) => !ACCEPTED.includes(m));
       if (bad) return reply(40002, null, "Invalid metric: " + bad);
       const lines: unknown[] = [];
@@ -197,6 +199,14 @@ async function main() {
   const rc = await S.runAdsDataset("creative_daily", "manual", null, { ...deps, backfill: true });
   check("product dimension refused: creative results fall back and the product still comes from the request", rc.status === "ok" && (await count("ads_creative_daily")) === nDays * 4 && /Used dimensions campaign_id \+ item_id \+ stat_time_day/.test(rc.error ?? "") && (await q(sql`select 1 from ads_creative_daily where product_id = 'P1' limit 1`)).length === 1, `${rc.status} ${rc.error} ${await count("ads_creative_daily")}`);
   maxCampaignIds = 10; rejectProductDim = false;
+
+  // ── TikTok keeps product results only back to a date ──
+  oldestAllowed = "2026-10-01";
+  await q(sql`delete from ads_product_daily`);
+  const ro = await S.runAdsDataset("product_daily", "manual", null, { ...deps, backfill: true });
+  check("too old: product results keep what TikTok allows, stop at the edge and say so", ro.status === "ok" && /only keeps product results back to/.test(ro.error ?? "") && (await count("ads_product_daily")) === 60, `${ro.status} ${ro.error} ${await count("ads_product_daily")}`);
+  oldestAllowed = "";
+  await S.runAdsDataset("product_daily", "manual", null, { ...deps, backfill: true });
 
   // ── trouble ──
   renameMetrics = true;

@@ -38,7 +38,7 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 | Schedule | Off, every 30 min, 1 hour, 3 hours, 12 hours or daily (owner sets it). Runs inside the app. |
 | Never duplicates | Rows are inserted or updated by their key; identical rows are left alone. Running twice changes nothing. |
 | Restated numbers | TikTok adjusts ad numbers after the day ends. Every sync reads the **last 14 days** again, and once a day the **last 60 days**, so a corrected day is picked up. |
-| First sync | Reads history back 180 days in 30-day pieces, newest first, and stops after three empty months in a row. **Re-Read History** repeats it. If TikTok refuses a window as too old, the note says where its history stops. |
+| First sync | Reads campaign and product results back **one year**, and video results back **about six months** (what Ads Manager keeps), in 30-day pieces, newest first. Campaign results stop after three empty months in a row. If TikTok keeps less, the note says where its history stops. **Re-Read History** repeats it. If TikTok refuses a window as too old, the note says where its history stops. |
 | Steps in order | Accounts → shops → campaigns → results. If an early step fails (for example the login is refused), the later steps are skipped, not run on stale data. |
 | One account failing | If TikTok refuses one ad account for its own reasons, the others still sync and the card says which was skipped. |
 | Rate limit | The sync waits when TikTok says "too many requests" and tries again (up to six times); TikTok's own hiccups are retried three times. Sign-in problems are never retried. |

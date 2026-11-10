@@ -45,7 +45,10 @@ const WINDOW_DAYS = 30;
 export const RECENT_DAYS = 14;
 /** A full re-read of this many days happens once a day (or after a long gap). */
 export const REREAD_DAYS = 60;
-export const DEFAULT_HISTORY_DAYS = 180;
+/** How far back the first sync reads campaign and product results: a year, like the Ads Manager export. */
+export const DEFAULT_HISTORY_DAYS = 365;
+/** Video (creative) results: Ads Manager keeps about six months of them, so that is as far as the first sync goes. */
+export const CREATIVE_HISTORY_DAYS = 180;
 export const ADS_SYNC_CHOICES = [30, 60, 180, 720, 1440] as const;
 
 type Counter = { pages: number; seen: number; changed: number; skipped: number; skipExample?: string; note?: string; sample?: unknown };
@@ -151,15 +154,19 @@ export function backWindows(end: string, floor: string, days = WINDOW_DAYS): { s
 
 const CORE = ["cost", "orders", "gross_revenue", "roi"];
 const looksLikeBadParam = (e: unknown) => e instanceof AdsApiError && !e.isAuth && !e.isRateLimit && !e.isServer && /dimension|metric|param|invalid|field|filter/i.test(e.message);
+/** TikTok refuses a window older than it keeps. */
+const tooOld = (e: unknown, win: { end: string }, today: string) => e instanceof AdsApiError && /date|range|time|old|history|limit/i.test(e.message) && win.end < today;
 const chunk = <T,>(list: T[], n: number): T[][] => { const out: T[][] = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };
 
 type ReportReq = { adv: string; storeIds: string[]; dims: string[]; mets: string[]; filtering?: Record<string, unknown>; start: string; end: string };
 const reportQuery = (r: ReportReq) => ({ advertiser_id: r.adv, store_ids: r.storeIds, dimensions: r.dims, metrics: r.mets, start_date: r.start, end_date: r.end, ...(r.filtering ? { filtering: r.filtering } : {}) });
 
 /** Today, and the first day this run reads back to. */
-function runSpan(ctx: Ctx) {
+function runSpan(ctx: Ctx, maxDays?: number) {
   const today = ctx.deps.now ? ctx.deps.now().toISOString().slice(0, 10) : todayKL();
-  const floor = ctx.backfill ? ctx.historyFrom : ctx.full ? addDaysISO(today, -(REREAD_DAYS - 1)) : addDaysISO(today, -(RECENT_DAYS - 1));
+  const oldest = maxDays ? addDaysISO(today, -(maxDays - 1)) : "";
+  const history = oldest && ctx.historyFrom < oldest ? oldest : ctx.historyFrom;
+  const floor = ctx.backfill ? history : ctx.full ? addDaysISO(today, -(REREAD_DAYS - 1)) : addDaysISO(today, -(RECENT_DAYS - 1));
   return { today, floor, wins: backWindows(today, floor) };
 }
 
@@ -258,6 +265,7 @@ async function runProductDaily(ctx: Ctx, c: Counter) {
     let mets: string[] | null = null;
     let any = false;
     for (const win of wins) {
+     try {
       const camps = (await rows<{ campaign_id: string }>(sql`select distinct campaign_id from ads_campaign_daily where advertiser_id = ${adv} and day between ${win.start}::date and ${win.end}::date and coalesce(cost, 0) > 0 order by 1`)).map((r) => r.campaign_id);
       if (!camps.length) continue;
       any = true;
@@ -271,6 +279,7 @@ async function runProductDaily(ctx: Ctx, c: Counter) {
           for (const id of group) await read([id]);
         }
       }
+     } catch (e) { if (!tooOld(e, win, today)) throw e; c.note = [c.note, `TikTok only keeps product results back to about ${addDaysISO(win.end, 1)}`].filter(Boolean).join(" · "); break; }
     }
     if (!any) c.note = [c.note, "No campaign spent any money in this period, so there are no product results to read."].filter(Boolean).join(" · ");
   });
@@ -281,7 +290,7 @@ async function runProductDaily(ctx: Ctx, c: Counter) {
  * that spent money in the window (from Product Results). One row per video, per product, per campaign, per day.
  */
 async function runCreativeDaily(ctx: Ctx, c: Counter) {
-  const { today, wins } = runSpan(ctx);
+  const { today, wins } = runSpan(ctx, CREATIVE_HISTORY_DAYS);
   const byAdv = await storesByAccount(c);
   if (!byAdv.size) return;
   const dimSets = [["campaign_id", "item_group_id", "item_id", "stat_time_day"], ["campaign_id", "item_id", "stat_time_day"]];
@@ -291,6 +300,7 @@ async function runCreativeDaily(ctx: Ctx, c: Counter) {
     let mets: string[] | null = null;
     let any = false;
     for (const win of wins) {
+     try {
       const pairs = await rows<{ campaign_id: string; product_id: string }>(sql`select campaign_id, product_id from ads_product_daily where advertiser_id = ${adv} and day between ${win.start}::date and ${win.end}::date and coalesce(cost, 0) > 0 group by 1, 2 order by 1, 2`);
       for (const p of pairs) {
         any = true;
@@ -303,6 +313,7 @@ async function runCreativeDaily(ctx: Ctx, c: Counter) {
         }
         if (!done) throw new Error("TikTok refused the creative results request.");
       }
+     } catch (e) { if (!tooOld(e, win, today)) throw e; c.note = [c.note, `TikTok only keeps video results back to about ${addDaysISO(win.end, 1)}`].filter(Boolean).join(" · "); break; }
     }
     if (!any) c.note = [c.note, "No product spent any money in this period, so there are no creative results to read."].filter(Boolean).join(" · ");
   });
