@@ -156,17 +156,12 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   ok(errs.filter((e) => !/404/.test(e)).length === 0, "no browser errors (manager)"); if (errs.length) console.log(errs);
   await ctx.close();
 
-  // ── viewer
+  // ── a role with Execution Plan access (permission is the screen, nothing finer)
   ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } }); p = await ctx.newPage();
-  await login(p, "viewer@test.local"); await p.goto(BASE + "/execution"); await p.waitForSelector("[data-testid=scopes]");
-  ok(await p.getByTestId("scope-mine").getAttribute("aria-pressed") === "true", "team member: starts on My Work");
-  ok((await p.getByTestId("attention").count()) === 0 && (await p.getByTestId("pick").count()) === 0, "team member: no admin strip, no tick boxes");
-  await p.getByTestId("scope-all").click(); await p.waitForSelector("[data-testid=task-row]");
-  ok((await p.getByTestId("refresh-plan").count()) === 0, "team member: no Update Plan button");
-  await p.getByTestId("filter-person").selectOption({ label: "Unassigned" }); await p.waitForTimeout(300);
+  await login(p, "viewer@test.local"); await p.goto(BASE + "/execution"); await p.waitForSelector("[data-testid=task-row]");
+  ok((await p.getByTestId("refresh-plan").count()) === 1, "any role that may open Execution Plan can update the plan");
   await p.locator("[data-testid=task-row]").first().click(); await p.waitForSelector("[data-testid=task-panel]");
-  ok((await p.getByTestId("due-input").count()) === 0, "team member: cannot change dates");
-  ok(await p.getByTestId("set-pending").isDisabled(), "team member: cannot change an action that is not theirs");
+  ok((await p.getByTestId("due-input").count()) >= 1, "and can change dates");
   await ctx.close();
 
   // ── mobile

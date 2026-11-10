@@ -10,14 +10,14 @@ export const PERMISSIONS: Permission[] = [
   { key: "creators", group: "Affiliate Data", label: "Affiliate Data", help: "See every creator and their profile, record contacts, export to Excel" },
   { key: "products", group: "Product Analysis", label: "Product Analysis", help: "See how every product is doing and why" },
   { key: "sync", group: "Data Sync", label: "Data Sync", help: "See what is synced and run a sync" },
-  { key: "users", group: "Users & Roles", label: "Users & Roles", help: "Add people, create roles, choose which screens each role can open" },
-  { key: "settings", group: "Settings", label: "Settings", help: "Connect, check and disconnect TikTok Shop" },
+  { key: "users", group: "Settings", label: "Settings: User Management", help: "Add people, create roles, choose what each role can open" },
+  { key: "settings", group: "Settings", label: "Settings: Connection", help: "Connect, check and disconnect TikTok Shop and TikTok Ads" },
 ];
 
 export const PERMISSION_LABEL = Object.fromEntries(PERMISSIONS.map((p) => [p.key, p.label])) as Record<PermissionKey, string>;
 export const PERMISSION_GROUPS = [...new Set(PERMISSIONS.map((p) => p.group))];
 
-/** The only built-in role. Everything else is created from the Users & Roles screen. */
+/** The only built-in role. Everything else is created in Settings → User Management. */
 export const ADMIN_ROLE = { key: "admin", name: "Admin", description: "The owner. Can open every screen, always." };
 
 /** Turn one screen on or off for a role. */
@@ -33,6 +33,6 @@ export const SCREEN_PERMISSION: Record<string, PermissionKey> = {
   "/creators": "creators",
   "/products": "products",
   "/sync": "sync",
-  "/users": "users",
+  "/users": "users", // now a tab inside Settings; kept so the first-screen rule still works
   "/settings": "settings",
 };

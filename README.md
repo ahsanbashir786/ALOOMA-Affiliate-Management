@@ -9,11 +9,10 @@ A web app for running a TikTok Shop affiliate programme. Everything comes from t
 | **Execution Plan** | Actions written from the product numbers: win back creators who went quiet, ask for new videos, chase unposted samples, push LIVE, and more. Assign people, set dates, tick creators off, see team progress. |
 | **Affiliate Data** | Every creator with a line per product, status and action, owner, and contacted tracking. Creator profile and side panel. Excel export. |
 | **Product Analysis** | Is each of the 13 products growing or slipping, and why (new, recent or old content, LIVE, creators, samples, returns). |
-| **Data Sync** | Pulls orders, products, videos, LIVEs, sample requests and returns from TikTok on a schedule. Shows what is fresh and what failed. |
-| **Users & Roles** | Add people, give each a role, and choose which of the six screens every role can open. Admin always has everything. Screens without permission stay in the menu with a lock and show a Permission Denied page. |
-| **Settings** | The TikTok connection and connection test. |
+| **Data Sync** | Two tabs. **Affiliate** pulls orders, products, videos, LIVEs, sample requests and returns from TikTok Shop. **Ads Management** pulls GMV Max campaigns, creatives and daily results from TikTok Ads. Both run on a schedule and show what is fresh and what failed. |
+| **Settings** | **Connection** (two tabs: Affiliate / TikTok Shop, and Ad Management / GMV Max), **User Management** (people, roles and which screens each role can open; Admin always has everything; screens without permission stay in the menu with a lock and show a Permission Denied page), **Storage** and **System Alerts** (coming later). |
 
-Roles are made in the app (Users & Roles). The only built-in role is **Admin**, which always opens every screen. For any other role you choose which of the six screens it can open; that is the only permission.
+Roles are made in the app (Settings → User Management). The only built-in role is **Admin**, which always opens every screen. For any other role you choose which of the six screens it can open; that is the only permission.
 
 More: [System map](docs/SYSTEM-MAP.md) · [Execution Plan](docs/EXECUTION-PLAN.md) · [Affiliate Data](docs/CREATORS.md) · [Product Analysis](docs/PRODUCTS.md) · [TikTok connection](docs/TIKTOK-API.md) · [Deploy](docs/DEPLOY.md)
 
@@ -28,7 +27,7 @@ npm run db:migrate          # creates or upgrades the tables
 npm run dev                 # http://localhost:3000, create the first admin on /setup
 ```
 
-Then open **Settings**, connect TikTok, and press **Sync Now** in **Data Sync**.
+Then open **Settings → Connection**, connect TikTok Shop (and TikTok Ads, see [docs/TIKTOK-ADS-API.md](docs/TIKTOK-ADS-API.md)), and press **Sync Now** in **Data Sync**.
 
 Production: `npm run build && npm start` (behind HTTPS). On a VPS see [docs/DEPLOY.md](docs/DEPLOY.md). Always take a backup before `db:migrate` (`scripts/backup.sh`).
 

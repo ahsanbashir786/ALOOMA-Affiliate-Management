@@ -6,7 +6,7 @@ import { ChevronsLeft, ChevronsRight, Lock, X } from "lucide-react";
 import { can } from "@/lib/can";
 import type { PermissionKey } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import { NAV, type NavItem } from "./nav";
+import { NAV, navAllowed, type NavItem } from "./nav";
 
 type Props = {
   user: { name: string; email: string; roleName: string; isAdmin: boolean; permissions: PermissionKey[] };
@@ -57,7 +57,7 @@ export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapse
                   {items.map((item) => {
                     const active = isActive(item);
                     const Icon = item.icon;
-                    const allowed = can(user, item.perm);
+                    const allowed = navAllowed(user, item);
                     return (
                       <li key={item.href}>
                         <Link

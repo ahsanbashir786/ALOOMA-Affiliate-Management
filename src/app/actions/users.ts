@@ -128,7 +128,7 @@ export async function setRolePermission(roleId: string, permission: string, on: 
   const next = withDependencies(current, key, on);
   // Someone must always be able to manage users and roles: the Admin role does, and nobody can lock themselves out.
   const [mine] = await db.select({ roleId: users.roleId }).from(users).where(eq(users.id, me.id));
-  if (!on && key === "users" && mine?.roleId === r.id) return { error: "You have this role. Removing this permission would lock you out of Users & Roles." };
+  if (!on && key === "users" && mine?.roleId === r.id) return { error: "You have this role. Removing this permission would lock you out of User Management." };
   const add = next.filter((p) => !current.includes(p));
   const drop = current.filter((p) => !next.includes(p));
   for (const p of drop) await db.delete(rolePermissions).where(and(eq(rolePermissions.roleId, r.id), eq(rolePermissions.permission, p)));

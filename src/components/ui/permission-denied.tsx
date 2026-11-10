@@ -32,7 +32,7 @@ export function PermissionDenied({ need, screen, roleName, home, canManageRoles 
           <p className="mx-auto mt-4 max-w-sm text-[13.5px] text-ink-3">Ask an admin to give your role this permission, then refresh this page.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-2.5">
             {home && <Link href={home.href} className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-[14px] font-medium text-white hover:bg-brand-strong">Go to {home.label}<ArrowRight className="size-4" /></Link>}
-            {canManageRoles && <Link href="/users" className="inline-flex h-10 items-center rounded-lg border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink hover:bg-surface-2">Manage roles</Link>}
+            {canManageRoles && <Link href="/settings?tab=users" className="inline-flex h-10 items-center rounded-lg border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink hover:bg-surface-2">Manage roles</Link>}
           </div>
         </div>
       </div>

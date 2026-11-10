@@ -4,7 +4,7 @@ import { PermissionDenied } from "@/components/ui/permission-denied";
 import { SCREEN_PERMISSION, type PermissionKey } from "@/lib/permissions";
 import { NAV } from "@/components/shell/nav";
 
-const LABEL = new Map(NAV.flatMap((g) => g.items).map((i) => [i.href, i.label]));
+const LABEL = new Map([...NAV.flatMap((g) => g.items).map((i) => [i.href, i.label] as [string, string]), ["/users", "Settings"]]);
 
 /**
  * Opens a screen for someone allowed to, otherwise gives back the Permission Denied page to render instead.

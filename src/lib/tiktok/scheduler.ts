@@ -3,6 +3,8 @@ import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { refreshPlanAfterSync } from "@/lib/execution/refresh";
 import { connectionInfo, tiktokConfig } from "./client";
+import { adsConfig, adsConnectionInfo } from "@/lib/tiktok-ads/client";
+import { adsSchedulerDue, clearAdsInterrupted, getAdsSyncSettings, runAdsAll, type AdsDeps } from "@/lib/tiktok-ads/sync";
 import { CYCLE, clearInterrupted, getSyncSettings, isDue, runAll, type SyncDeps } from "./sync";
 
 let busy = false;
@@ -21,6 +23,20 @@ export async function schedulerTick(deps: SyncDeps = {}, nowMs = Date.now()): Pr
   return "ran";
 }
 
+let adsBusy = false;
+
+/** The same check for TikTok Ads (GMV Max): if it is connected and the interval has passed since the last cycle started, run every ads dataset. */
+export async function adsSchedulerTick(deps: AdsDeps = {}, nowMs = Date.now()): Promise<"ran" | "idle" | "off"> {
+  if (adsBusy) return "idle";
+  const cfg = deps.cfg === undefined ? adsConfig() : deps.cfg;
+  if (!cfg) return "off";
+  if (!(await getAdsSyncSettings()).enabled || !(await adsConnectionInfo()).connected) return "off";
+  if (!(await adsSchedulerDue(nowMs))) return "idle";
+  adsBusy = true;
+  try { await runAdsAll("schedule", null, deps); } finally { adsBusy = false; }
+  return "ran";
+}
+
 /** Starts the once-a-minute check inside the running server (one per process). */
 export function startScheduler() {
   const g = globalThis as unknown as { __ttScheduler?: boolean };
@@ -29,6 +45,10 @@ export function startScheduler() {
   const tick = () => { schedulerTick().then((r) => (r === "ran" ? refreshPlanAfterSync() : undefined)).catch(() => {}); };
   // A restart kills any sync in progress; clear its "running" marks first so the screen never waits for work that no longer exists.
   clearInterrupted().catch(() => {});
+  clearAdsInterrupted().catch(() => {});
+  const adsTick = () => { adsSchedulerTick().catch(() => {}); };
   setTimeout(tick, 20_000);
+  setTimeout(adsTick, 35_000);
   setInterval(tick, 60_000).unref?.();
+  setInterval(adsTick, 60_000).unref?.();
 }

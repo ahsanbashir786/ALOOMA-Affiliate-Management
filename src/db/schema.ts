@@ -540,3 +540,120 @@ export const epTaskCreators = pgTable("ep_task_creators", {
   contactedAt: tz("contacted_at"),
   contactedBy: uuid("contacted_by").references(() => users.id, { onDelete: "set null" }),
 }, (t) => [primaryKey({ columns: [t.taskId, t.username] }), index("ep_task_creators_rank").on(t.taskId, t.rank), index("ep_task_creators_user").on(t.username)]);
+
+// ───────── TikTok Ads (Business API) sync for GMV Max. Mirrors migrations/0020_ads_sync.sql ─────────
+export const adsSyncRuns = pgTable(
+  "ads_sync_runs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    dataset: text("dataset").notNull(),
+    startedAt: tz("started_at").notNull().defaultNow(),
+    finishedAt: tz("finished_at"),
+    status: text("status").notNull().default("running"),
+    trigger: text("trigger").notNull().default("manual"),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    pages: integer("pages").notNull().default(0),
+    rowsSeen: integer("rows_seen").notNull().default(0),
+    rowsChanged: integer("rows_changed").notNull().default(0),
+    error: text("error"),
+  },
+  (t) => [index("ads_sync_runs_dataset_started").on(t.dataset, t.startedAt)],
+);
+
+export const adsSyncState = pgTable("ads_sync_state", {
+  dataset: text("dataset").primaryKey(),
+  watermark: tz("watermark"),
+  lastSuccessAt: tz("last_success_at"),
+  lastError: text("last_error"),
+  lastErrorAt: tz("last_error_at"),
+  records: integer("records").notNull().default(0),
+  sample: jsonb("sample"),
+  updatedAt: tz("updated_at").notNull().defaultNow(),
+});
+
+export const adsAdvertisers = pgTable("ads_advertisers", {
+  advertiserId: text("advertiser_id").primaryKey(),
+  name: text("name"),
+  currency: text("currency"),
+  timezone: text("timezone"),
+  status: text("status"),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});
+
+export const adsStores = pgTable("ads_stores", {
+  advertiserId: text("advertiser_id").notNull(),
+  storeId: text("store_id").notNull(),
+  storeName: text("store_name"),
+  storeCode: text("store_code"),
+  bcId: text("bc_id"),
+  available: boolean("available"),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.storeId] })]);
+
+export const adsCampaigns = pgTable("ads_campaigns", {
+  advertiserId: text("advertiser_id").notNull(),
+  campaignId: text("campaign_id").notNull(),
+  storeId: text("store_id"),
+  name: text("name"),
+  status: text("status"),
+  promotionType: text("promotion_type"),
+  budget: numeric("budget", { precision: 14, scale: 2 }),
+  roasTarget: numeric("roas_target", { precision: 12, scale: 4 }),
+  createdAt: tz("created_at"),
+  modifiedAt: tz("modified_at"),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId] }), index("ads_campaigns_status").on(t.status)]);
+
+export const adsCampaignDaily = pgTable("ads_campaign_daily", {
+  advertiserId: text("advertiser_id").notNull(),
+  campaignId: text("campaign_id").notNull(),
+  day: date("day").notNull(),
+  cost: numeric("cost", { precision: 14, scale: 2 }),
+  netCost: numeric("net_cost", { precision: 14, scale: 2 }),
+  orders: integer("orders"),
+  grossRevenue: numeric("gross_revenue", { precision: 14, scale: 2 }),
+  roi: numeric("roi", { precision: 14, scale: 4 }),
+  costPerOrder: numeric("cost_per_order", { precision: 14, scale: 2 }),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.day] }), index("ads_campaign_daily_day").on(t.day)]);
+
+export const adsCreativeDaily = pgTable("ads_creative_daily", {
+  advertiserId: text("advertiser_id").notNull(),
+  campaignId: text("campaign_id").notNull(),
+  creativeId: text("creative_id").notNull(),
+  day: date("day").notNull(),
+  title: text("title"),
+  accountName: text("account_name"),
+  contentType: text("content_type"),
+  cost: numeric("cost", { precision: 14, scale: 2 }),
+  orders: integer("orders"),
+  grossRevenue: numeric("gross_revenue", { precision: 14, scale: 2 }),
+  roi: numeric("roi", { precision: 14, scale: 4 }),
+  views: bigint("views", { mode: "number" }),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.creativeId, t.day] }), index("ads_creative_daily_day").on(t.day), index("ads_creative_daily_creative").on(t.creativeId)]);
+
+export const adsProductDaily = pgTable("ads_product_daily", {
+  advertiserId: text("advertiser_id").notNull(),
+  campaignId: text("campaign_id").notNull(),
+  productId: text("product_id").notNull(),
+  day: date("day").notNull(),
+  title: text("title"),
+  cost: numeric("cost", { precision: 14, scale: 2 }),
+  orders: integer("orders"),
+  grossRevenue: numeric("gross_revenue", { precision: 14, scale: 2 }),
+  roi: numeric("roi", { precision: 14, scale: 4 }),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.productId, t.day] }), index("ads_product_daily_day").on(t.day)]);

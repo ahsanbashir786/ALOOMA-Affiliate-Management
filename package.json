@@ -12,6 +12,7 @@
     "db:migrate": "node --env-file=.env scripts/migrate.mjs",
     "test:tiktok": "tsx --conditions=react-server scripts/test-tiktok.ts",
     "test:sync": "tsx --conditions=react-server scripts/test-sync.ts",
+    "test:ads": "tsx --conditions=react-server scripts/test-ads-sync.ts",
     "test:creators": "tsx --conditions=react-server scripts/test-creators.ts",
     "test:products": "tsx --conditions=react-server scripts/test-products.ts",
     "diag:creator": "tsx --env-file=.env --conditions=react-server scripts/diag-creator.ts",

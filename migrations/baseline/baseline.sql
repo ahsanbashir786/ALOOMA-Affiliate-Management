@@ -22,6 +22,177 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: ads_advertisers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_advertisers (
+    advertiser_id text NOT NULL,
+    name text,
+    currency text,
+    timezone text,
+    status text,
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_campaign_daily; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_campaign_daily (
+    advertiser_id text NOT NULL,
+    campaign_id text NOT NULL,
+    day date NOT NULL,
+    cost numeric(14,2),
+    net_cost numeric(14,2),
+    orders integer,
+    gross_revenue numeric(14,2),
+    roi numeric(14,4),
+    cost_per_order numeric(14,2),
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_campaigns; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_campaigns (
+    advertiser_id text NOT NULL,
+    campaign_id text NOT NULL,
+    store_id text,
+    name text,
+    status text,
+    promotion_type text,
+    budget numeric(14,2),
+    roas_target numeric(12,4),
+    created_at timestamp with time zone,
+    modified_at timestamp with time zone,
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_creative_daily; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_creative_daily (
+    advertiser_id text NOT NULL,
+    campaign_id text NOT NULL,
+    creative_id text NOT NULL,
+    day date NOT NULL,
+    title text,
+    account_name text,
+    content_type text,
+    cost numeric(14,2),
+    orders integer,
+    gross_revenue numeric(14,2),
+    roi numeric(14,4),
+    views bigint,
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_product_daily; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_product_daily (
+    advertiser_id text NOT NULL,
+    campaign_id text NOT NULL,
+    product_id text NOT NULL,
+    day date NOT NULL,
+    title text,
+    cost numeric(14,2),
+    orders integer,
+    gross_revenue numeric(14,2),
+    roi numeric(14,4),
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_stores; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_stores (
+    advertiser_id text NOT NULL,
+    store_id text NOT NULL,
+    store_name text,
+    store_code text,
+    bc_id text,
+    available boolean,
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_sync_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_sync_runs (
+    id bigint NOT NULL,
+    dataset text NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone,
+    status text DEFAULT 'running'::text NOT NULL,
+    trigger text DEFAULT 'manual'::text NOT NULL,
+    user_id uuid,
+    pages integer DEFAULT 0 NOT NULL,
+    rows_seen integer DEFAULT 0 NOT NULL,
+    rows_changed integer DEFAULT 0 NOT NULL,
+    error text
+);
+
+
+--
+-- Name: ads_sync_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ads_sync_runs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: ads_sync_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ads_sync_runs_id_seq OWNED BY public.ads_sync_runs.id;
+
+
+--
+-- Name: ads_sync_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_sync_state (
+    dataset text NOT NULL,
+    watermark timestamp with time zone,
+    last_success_at timestamp with time zone,
+    last_error text,
+    last_error_at timestamp with time zone,
+    records integer DEFAULT 0 NOT NULL,
+    sample jsonb,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: commitment_changes; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -741,10 +912,17 @@ CREATE TABLE public.users (
     name text NOT NULL,
     password_hash text NOT NULL,
     active boolean DEFAULT true NOT NULL,
-    last_login_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    role_id uuid NOT NULL
+    role_id uuid NOT NULL,
+    last_login_at timestamp without time zone
 );
+
+
+--
+-- Name: ads_sync_runs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_sync_runs ALTER COLUMN id SET DEFAULT nextval('public.ads_sync_runs_id_seq'::regclass);
 
 
 --
@@ -787,6 +965,70 @@ ALTER TABLE ONLY public.staff_events ALTER COLUMN id SET DEFAULT nextval('public
 --
 
 ALTER TABLE ONLY public.tt_sync_runs ALTER COLUMN id SET DEFAULT nextval('public.tt_sync_runs_id_seq'::regclass);
+
+
+--
+-- Name: ads_advertisers ads_advertisers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_advertisers
+    ADD CONSTRAINT ads_advertisers_pkey PRIMARY KEY (advertiser_id);
+
+
+--
+-- Name: ads_campaign_daily ads_campaign_daily_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_campaign_daily
+    ADD CONSTRAINT ads_campaign_daily_pkey PRIMARY KEY (advertiser_id, campaign_id, day);
+
+
+--
+-- Name: ads_campaigns ads_campaigns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_campaigns
+    ADD CONSTRAINT ads_campaigns_pkey PRIMARY KEY (advertiser_id, campaign_id);
+
+
+--
+-- Name: ads_creative_daily ads_creative_daily_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_creative_daily
+    ADD CONSTRAINT ads_creative_daily_pkey PRIMARY KEY (advertiser_id, campaign_id, creative_id, day);
+
+
+--
+-- Name: ads_product_daily ads_product_daily_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_product_daily
+    ADD CONSTRAINT ads_product_daily_pkey PRIMARY KEY (advertiser_id, campaign_id, product_id, day);
+
+
+--
+-- Name: ads_stores ads_stores_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_stores
+    ADD CONSTRAINT ads_stores_pkey PRIMARY KEY (advertiser_id, store_id);
+
+
+--
+-- Name: ads_sync_runs ads_sync_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_sync_runs
+    ADD CONSTRAINT ads_sync_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ads_sync_state ads_sync_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_sync_state
+    ADD CONSTRAINT ads_sync_state_pkey PRIMARY KEY (dataset);
 
 
 --
@@ -1062,6 +1304,48 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: ads_campaign_daily_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_campaign_daily_day ON public.ads_campaign_daily USING btree (day);
+
+
+--
+-- Name: ads_campaigns_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_campaigns_status ON public.ads_campaigns USING btree (status);
+
+
+--
+-- Name: ads_creative_daily_creative; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_creative_daily_creative ON public.ads_creative_daily USING btree (creative_id);
+
+
+--
+-- Name: ads_creative_daily_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_creative_daily_day ON public.ads_creative_daily USING btree (day);
+
+
+--
+-- Name: ads_product_daily_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_product_daily_day ON public.ads_product_daily USING btree (day);
+
+
+--
+-- Name: ads_sync_runs_dataset_started; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_sync_runs_dataset_started ON public.ads_sync_runs USING btree (dataset, started_at DESC);
+
+
+--
 -- Name: commitment_changes_commitment_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1234,6 +1518,14 @@ CREATE INDEX tt_videos_creator ON public.tt_videos USING btree (creator);
 --
 
 CREATE INDEX tt_videos_posted ON public.tt_videos USING btree (posted_at);
+
+
+--
+-- Name: ads_sync_runs ads_sync_runs_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_sync_runs
+    ADD CONSTRAINT ads_sync_runs_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -1431,8 +1723,6 @@ ALTER TABLE ONLY public.users
 --
 -- PostgreSQL database dump complete
 --
-
-
 
 SET search_path TO public;
 

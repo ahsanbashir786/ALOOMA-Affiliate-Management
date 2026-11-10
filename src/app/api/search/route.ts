@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/can";
 import { rows } from "@/lib/sql";
-import { NAV } from "@/components/shell/nav";
+import { NAV, navAllowed } from "@/components/shell/nav";
 import { PRODUCTS } from "@/lib/products/catalog";
 
 export const runtime = "nodejs";
@@ -13,8 +13,7 @@ const HELP: Record<string, string> = {
   "/creators": "Every creator, their sales and follow-ups",
   "/products": "How each product is doing and why",
   "/sync": "What is synced from TikTok, and when",
-  "/users": "People, roles and which screens they open",
-  "/settings": "Connect and check TikTok Shop",
+  "/settings": "TikTok connections, people and roles",
 };
 
 /** Quick search: pages (all shown, locked ones marked), products and creators the person is allowed to see. Read-only. */
@@ -25,7 +24,7 @@ export async function GET(req: Request) {
   const q = raw.toLowerCase().replace(/^@/, "");
   const pages = NAV.flatMap((g) => g.items)
     .filter((i) => !q || i.label.toLowerCase().includes(q) || (HELP[i.href] ?? "").toLowerCase().includes(q))
-    .map((i) => ({ label: i.label, href: i.href, help: HELP[i.href] ?? "", locked: !can(user, i.perm) }));
+    .map((i) => ({ label: i.label, href: i.href, help: HELP[i.href] ?? "", locked: !navAllowed(user, i) }));
   const products = q && can(user, "products")
     ? PRODUCTS.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5).map((p) => ({ key: p.key, name: p.name }))
     : [];
