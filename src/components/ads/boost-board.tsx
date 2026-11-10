@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Check, Copy, Info, Rocket, Target } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Copy, Info, Rocket, Sparkles, Target } from "lucide-react";
 import { Person } from "@/components/execution/ui";
 import { cn } from "@/lib/utils";
+import { minBatchTotal, suggestBudgets } from "@/lib/ads/budget";
 import type { BoostData, BoostFilters, Kpi } from "@/lib/ads/boost";
 
 const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
@@ -32,8 +33,13 @@ function Tile({ label, value, delta, hint }: { label: string; value: string; del
 export function BoostBoard({ data, filters, connected }: { data: BoostData; filters: BoostFilters; connected: boolean }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
+  const [plan, setPlan] = useState(false);
+  const [edits, setEdits] = useState<Record<string, number>>({});
   const key = (s: { creativeId: string; productId: string }) => `${s.creativeId}|${s.productId}`;
   const chosen = useMemo(() => data.suggestions.filter((s) => picked.has(key(s))), [data.suggestions, picked]);
+  const suggested = useMemo(() => suggestBudgets(chosen.map((s) => ({ id: key(s), roi: s.roi, orders: s.orders }))), [chosen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const budgetOf = (s: { creativeId: string; productId: string }) => edits[key(s)] ?? suggested.budgets[key(s)] ?? 0;
+  const planTotal = chosen.reduce((a, s) => a + budgetOf(s), 0);
   const sum = chosen.reduce((a, s) => ({ cost: a.cost + s.cost, rev: a.rev + s.revenue }), { cost: 0, rev: 0 });
 
   if (!connected)
@@ -142,10 +148,33 @@ export function BoostBoard({ data, filters, connected }: { data: BoostData; filt
         )}
       </section>
 
+      {plan && chosen.length > 0 && (
+        <section className="rounded-2xl border border-brand/30 bg-surface p-5" data-testid="ads-plan" aria-label="Suggested batch budget">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[16px] font-semibold text-ink">Suggested Batch Budget</h2>
+              <p className="mt-0.5 max-w-2xl text-[13px] text-ink-3">The lowest total TikTok normally accepts for {chosen.length} video{chosen.length === 1 ? "" : "s"} is about {rm(minBatchTotal(chosen.length))}. It is split unevenly: more for the videos with the best ROI and most orders. You can change any amount.</p>
+            </div>
+            <div className="text-right"><p className="tnum text-[22px] font-semibold text-ink" data-testid="ads-plan-total">RM {planTotal.toFixed(2)}</p><p className="text-[12.5px] text-ink-3">total for one day</p></div>
+          </div>
+          <ul className="mt-3 divide-y divide-line">
+            {chosen.map((s) => (
+              <li key={key(s)} className="flex items-center gap-3 py-2">
+                <span className="min-w-0 flex-1"><span className="block truncate text-[13.5px] font-medium text-ink">{s.title || `Video ${s.creativeId.slice(-8)}`}</span><span className="block truncate text-[12px] text-ink-3">{s.creator ? `@${s.creator} · ` : ""}ROI {s.roi.toFixed(1)}× · {s.orders} orders</span></span>
+                <label className="flex items-center gap-1.5 text-[12.5px] text-ink-3">RM<input type="number" min={1} step={0.5} value={budgetOf(s)} onChange={(e) => setEdits((x) => ({ ...x, [key(s)]: Math.max(0, Number(e.target.value) || 0) }))} className="h-9 w-24 rounded-lg border border-line-strong bg-surface px-2 text-right text-[14px] text-ink focus:border-brand focus:outline-none" aria-label={`Budget for ${s.title ?? s.creativeId}`} /></label>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-ink-3"><Info className="mt-0.5 size-3.5 shrink-0" />A guide only for now. Nothing is sent to TikTok yet.</p>
+        </section>
+      )}
+
       <div className={cn("sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-2xl border bg-surface px-4 py-3 shadow-pop transition-colors", chosen.length ? "border-brand/40" : "border-line")} data-testid="ads-selection">
         <span className="text-[14px] font-medium text-ink">{chosen.length ? `${chosen.length} video${chosen.length === 1 ? "" : "s"} selected` : "Select videos to build a boost batch"}</span>
         {chosen.length > 0 && <span className="text-[13px] text-ink-3">spent {rm(sum.cost)} · sales {rm(sum.rev)} · ROI {(sum.cost > 0 ? sum.rev / sum.cost : 0).toFixed(1)}×</span>}
         <span className="ml-auto flex flex-wrap items-center gap-2">
+          <button onClick={() => { const top = data.suggestions.slice(0, 10); setPicked(new Set(top.map(key))); setEdits({}); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2" data-testid="ads-pick-top"><Sparkles className="size-4" />Pick Top 10</button>
+          <button disabled={!chosen.length} onClick={() => { setEdits({}); setPlan((p) => !p); }} className={cn("inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13.5px] font-medium disabled:opacity-50", plan ? "border-brand/40 bg-brand-soft text-brand-strong" : "border-line-strong text-ink hover:bg-surface-2")} data-testid="ads-suggest-budget">Suggest Budget</button>
           <button disabled={!chosen.length} onClick={() => { void navigator.clipboard?.writeText(chosen.map((s) => s.creativeId).join("\n")); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2 disabled:opacity-50">{copied ? <Check className="size-4" /> : <Copy className="size-4" />}{copied ? "Copied" : "Copy Video IDs"}</button>
           <button disabled title="Next step: create the boost in TikTok from here, with a confirm box and a spending limit" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-soft px-3 text-[13.5px] font-medium text-brand-strong opacity-70"><Rocket className="size-4" />Create Boost In TikTok · Coming Next</button>
         </span>

@@ -64,6 +64,10 @@ async function login(p, email) {
   ok(/Ad Spend/.test(await o.locator("main").innerText()) && /ROI/.test(await o.locator("main").innerText()), "gmv max: the four totals are shown");
   await o.getByTestId("ads-row").first().locator("input[type=checkbox]").check();
   ok(/1 video selected/.test(await o.getByTestId("ads-selection").innerText()), "gmv max: picking a video builds a batch");
+  await o.getByTestId("ads-pick-top").click(); await o.getByTestId("ads-suggest-budget").click(); await o.waitForSelector("[data-testid=ads-plan]");
+  ok(/RM 35\.00/.test(await o.getByTestId("ads-plan-total").innerText()), "gmv max: a batch of up to 10 videos gets the RM 35 minimum, split by video");
+  const first = o.getByTestId("ads-plan").locator("input[type=number]").first(); await first.fill("20");
+  ok(!/RM 35\.00/.test(await o.getByTestId("ads-plan-total").innerText()), "gmv max: changing one amount changes the total");
   await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-board]"); ok(true, "gmv max: opens with the automatic rules");
   ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "gmv max: no sideways scroll on desktop");
 
