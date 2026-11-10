@@ -114,17 +114,21 @@ export async function adsCall<T = Record<string, unknown>>(
   return (await send(url, { method, headers: { "Access-Token": at, "content-type": "application/json" }, body: o.body === undefined ? undefined : JSON.stringify(o.body) }, o.f ?? fetch)) as T;
 }
 
-/** Asks TikTok which advertiser accounts this login covers, and remembers the answer. Falls back to the list saved at connect time. */
+/**
+ * Asks TikTok which advertiser accounts this login covers, and remembers the answer. The login goes in the Access-Token header
+ * (never in the web address, where it would end up in logs). If this one call fails for any reason, the list saved at connect time is used:
+ * a login that really is refused shows up on the very next call, with TikTok's own message.
+ */
 export async function adsAuthorizedAdvertisers(cfg: AdsConfig, f: Fetch = fetch): Promise<string[]> {
   const { token: at, stored } = await token(cfg);
   try {
-    const d = (await send(`${API_BASE}/oauth2/advertiser/get/?${queryString({ app_id: cfg.appId, secret: cfg.appSecret, access_token: at })}`, { method: "GET" }, f)) as { list?: { advertiser_id?: unknown }[] };
+    const d = (await send(`${API_BASE}/oauth2/advertiser/get/?${queryString({ app_id: cfg.appId, secret: cfg.appSecret })}`, { method: "GET", headers: { "Access-Token": at } }, f)) as { list?: { advertiser_id?: unknown }[] };
     const ids = (d.list ?? []).map((x) => (x.advertiser_id == null ? "" : String(x.advertiser_id))).filter(Boolean);
     if (ids.length) {
       if (ids.join(",") !== stored.advertiserIds.join(",")) await save({ ...stored, advertiserIds: ids });
       return ids;
     }
-  } catch (e) { if (e instanceof AdsApiError && e.isAuth) throw e; }
+  } catch { /* use the saved list */ }
   return stored.advertiserIds;
 }
 

@@ -24,6 +24,7 @@ const server = http.createServer(async (req, res) => {
   }
   const body = await read(req);
   if (p === "/oauth2/access_token/") return body.auth_code === "GOOD" ? reply(res, 0, { access_token: "AT123", advertiser_ids: ["111"], scope: [1, 2, 3] }) : reply(res, 40002, null, "auth_code is invalid");
+  if (p === "/oauth2/advertiser/get/" && req.headers["access-token"] !== "AT123") return reply(res, 40105, null, "The access_token is empty.");
   if (p === "/oauth2/advertiser/get/") return reply(res, 0, { list: [{ advertiser_id: "111", advertiser_name: "ALOOMA Malaysia" }] });
   if (req.headers["access-token"] !== "AT123") return reply(res, 40105, null, "Access token is invalid or expired");
   const q = Object.fromEntries(u.searchParams.entries());

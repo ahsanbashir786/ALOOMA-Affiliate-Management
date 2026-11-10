@@ -43,6 +43,11 @@ async function main() {
     let body: unknown = null; try { body = init?.body ? JSON.parse(String(init.body)) : null; } catch { /* none */ }
     seen.push({ path: p, headers, q: qq, body });
     if (p === "/oauth2/access_token/") { const b = body as Record<string, string>; return b.auth_code === "GOOD" ? reply(0, { access_token: "AT123", advertiser_ids: ["111", "222"], scope: [1, 2] }) : reply(40002, null, "auth_code is invalid"); }
+    if (p === "/oauth2/advertiser/get/") {
+      if (qq.access_token) return reply(40105, null, "The access_token must not be in the web address");
+      if (headers["access-token"] !== "AT123") return reply(40105, null, "The access_token is empty.");
+      if (broken === "auth") return reply(40105, null, "Access token is invalid or expired. Please re-authorize.");
+    }
     if (p === "/oauth2/advertiser/get/") return reply(0, { list: [{ advertiser_id: "111", advertiser_name: "ALOOMA" }, { advertiser_id: "222", advertiser_name: "ALOOMA 2" }] });
     if (broken === "auth") return reply(40105, null, "Access token is invalid or expired. Please re-authorize.");
     if (headers["access-token"] !== "AT123") return reply(40105, null, "Access token is invalid");
@@ -120,6 +125,7 @@ async function main() {
   // ── the connection check ──
   const chk = await K.runAdsChecks({ cfg, f: fake, sleep });
   check("check: ad accounts, shops, campaigns and results all answer", chk.checks.length === 4 && chk.checks.every((c) => c.ok), JSON.stringify(chk.checks.filter((c) => !c.ok)));
+  check("accounts list: the login goes in the Access-Token header, never in the web address, and the app id and secret are sent", seen.filter((x) => x.path === "/oauth2/advertiser/get/").every((x) => x.headers["access-token"] === "AT123" && !x.q.access_token && x.q.app_id === "APP1" && x.q.secret === "s3cret"));
   check("check: it lists the accounts and the field names TikTok sent", chk.accounts.length === 2 && chk.accounts[0].name === "ALOOMA" && !!chk.checks.find((c) => c.name.startsWith("Campaign results"))?.fields?.includes("cost"));
 
   // ── a full sync ──
