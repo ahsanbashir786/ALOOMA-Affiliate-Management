@@ -16,7 +16,7 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
   if (denied) return denied;
   const sp = await searchParams;
   const days = ([7, 30, 90] as const).find((d) => d === Number(one(sp.days))) ?? DEFAULT_FILTERS.days;
-  const f: BoostFilters = { days, minRoi: one(sp.roi) ? int(one(sp.roi), 0, 1, 200) : null, minOrders: int(one(sp.orders), DEFAULT_FILTERS.minOrders, 1, 1000), maxAgeDays: int(one(sp.age), DEFAULT_FILTERS.maxAgeDays, 7, 1000), product: one(sp.product) || null };
+  const f: BoostFilters = { days, minRoi: one(sp.roi) ? int(one(sp.roi), 0, 1, 200) : null, minOrders: int(one(sp.orders), DEFAULT_FILTERS.minOrders, 1, 1000), maxAgeDays: int(one(sp.age), DEFAULT_FILTERS.maxAgeDays, 7, 1000), product: one(sp.product) || null, delivery: (['idle', 'on'] as const).find((d) => d === one(sp.delivery)) ?? 'any' };
   const [data, conn] = await Promise.all([boostData(f), adsConnectionInfo()]);
   return (
     <div className="space-y-6">

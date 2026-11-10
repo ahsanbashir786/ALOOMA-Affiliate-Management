@@ -7,6 +7,7 @@ import { Person } from "@/components/execution/ui";
 import { cn } from "@/lib/utils";
 import { minBatchTotal, suggestBudgets } from "@/lib/ads/budget";
 import type { BoostData, BoostFilters, Kpi } from "@/lib/ads/boost";
+import { STATUS_LABEL } from "@/lib/ads/status";
 
 const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -75,7 +76,7 @@ export function BoostBoard({ data, filters, connected }: { data: BoostData; filt
       </section>
       <p className="-mt-2 text-[12.5px] text-ink-3">Last {data.days} days ({day(data.from)} – {day(data.today)}){data.freshest ? ` · video results up to ${day(data.freshest)}` : ""}</p>
 
-      <form method="get" className="grid gap-3 rounded-2xl border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto] lg:items-end" data-testid="ads-filters">
+      <form method="get" className="grid gap-3 rounded-2xl border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[repeat(6,minmax(0,1fr))_auto] lg:items-end" data-testid="ads-filters">
         <label className="text-[12.5px] font-medium text-ink-2">Period
           <select name="days" defaultValue={filters.days} className={cn(input, "mt-1")}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select>
         </label>
@@ -88,6 +89,9 @@ export function BoostBoard({ data, filters, connected }: { data: BoostData; filt
         <label className="text-[12.5px] font-medium text-ink-2">Posted within (days)
           <input name="age" type="number" min={7} defaultValue={filters.maxAgeDays} className={cn(input, "mt-1")} />
         </label>
+        <label className="text-[12.5px] font-medium text-ink-2">Delivery
+          <select name="delivery" defaultValue={filters.delivery} className={cn(input, "mt-1")}><option value="any">Any (can be boosted)</option><option value="idle">Not delivering now</option><option value="on">Delivering now</option></select>
+        </label>
         <label className="text-[12.5px] font-medium text-ink-2">Product
           <select name="product" defaultValue={filters.product ?? ""} className={cn(input, "mt-1")}><option value="">All products</option>{data.products.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select>
         </label>
@@ -99,6 +103,7 @@ export function BoostBoard({ data, filters, connected }: { data: BoostData; filt
           <div>
             <h2 className="text-[16px] font-semibold text-ink">Videos Worth Boosting</h2>
             <p className="mt-0.5 text-[13px] text-ink-3" data-testid="ads-summary">{data.suggestions.length} of {data.considered.toLocaleString("en-MY")} videos with ad spend · ROI at least {data.minRoiUsed}× (your average is {data.accountRoi ? `${data.accountRoi.toFixed(1)}×` : "–"}) and at least {filters.minOrders} orders</p>
+            {data.blocked > 0 && <p className="mt-0.5 text-[12.5px] text-ink-3" data-testid="ads-blocked">{data.blocked.toLocaleString("en-MY")} video{data.blocked === 1 ? "" : "s"} left out because TikTok will not boost them ({Object.entries(data.blockedByStatus).map(([k, n]) => `${n.toLocaleString("en-MY")} ${(STATUS_LABEL[k] ?? k).toLowerCase()}`).join(", ")}).</p>}
           </div>
           <details className="max-w-sm text-[12.5px] text-ink-3"><summary className="flex cursor-pointer items-center gap-1 hover:text-brand"><Info className="size-3.5" />How videos are chosen</summary>
             <p className="mt-1.5 leading-relaxed">Videos that already sell well through GMV Max (ROI and orders in the period), that are not too old, ranked by ROI and number of orders. A video that has had little spend compared with the others has room to grow. Whether TikTok accepts a boost for a video is checked by TikTok when you boost it.</p>
@@ -108,11 +113,11 @@ export function BoostBoard({ data, filters, connected }: { data: BoostData; filt
           <p className="px-5 pb-8 text-[14px] text-ink-3" data-testid="ads-empty">No video passes these rules. Lower the minimum ROI or orders, or widen the period.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse text-[13.5px]" data-testid="ads-table">
+            <table className="w-full min-w-[1060px] border-collapse text-[13.5px]" data-testid="ads-table">
               <thead>
                 <tr className="border-y border-line bg-surface-2/60 text-left text-[12px] font-semibold tracking-wide text-ink-3 uppercase">
                   <th className="w-10 px-4 py-2.5"><span className="sr-only">Select</span></th>
-                  <th className="py-2.5 pr-3">Video</th><th className="py-2.5 pr-3">Product</th>
+                  <th className="py-2.5 pr-3">Video</th><th className="py-2.5 pr-3">Product</th><th className="py-2.5 pr-3">Delivery</th>
                   <th className="py-2.5 pr-3 text-right">Spend</th><th className="py-2.5 pr-3 text-right">Orders</th><th className="py-2.5 pr-3 text-right">Sales</th><th className="py-2.5 pr-3 text-right">ROI</th><th className="py-2.5 pr-3 text-right">Cost / Order</th><th className="py-2.5 pr-4 text-right">Click Rate</th>
                 </tr>
               </thead>
@@ -133,6 +138,7 @@ export function BoostBoard({ data, filters, connected }: { data: BoostData; filt
                         </div>
                       </td>
                       <td className="py-3 pr-3 text-ink-2"><span className="block max-w-[200px] truncate" title={s.productLabel}>{s.productLabel}</span>{s.account && <span className="text-[12px] text-ink-3">{s.account}</span>}</td>
+                      <td className="py-3 pr-3"><span className={cn("inline-flex rounded-full px-2 py-0.5 text-[12px] font-medium", s.status === "DELIVERING" ? "bg-good-soft text-good" : s.status === "LEARNING" || s.status === "IN_QUEUE" ? "bg-brand-soft text-brand-strong" : "bg-surface-2 text-ink-2")} data-testid="ads-status">{s.statusLabel ?? "Unknown"}</span></td>
                       <td className="tnum py-3 pr-3 text-right text-ink">{rm(s.cost)}</td>
                       <td className="tnum py-3 pr-3 text-right text-ink">{s.orders.toLocaleString("en-MY")}</td>
                       <td className="tnum py-3 pr-3 text-right text-ink">{rm(s.revenue)}</td>

@@ -64,6 +64,14 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 | Boosts | `GET /campaign/gmv_max/session/list/` |
 | Later: create / change / stop a boost | `POST /campaign/gmv_max/session/create/` (`advertiser_id`, `campaign_id`, `store_id`, `session` with `budget`, `product_list[{spu_id}]`, `item_id`, schedule), `…/update/`, `…/delete/` |
 
+## Delivery status of a video (what can be boosted)
+
+The creative-level report returns `creative_delivery_status` for each video. Values seen on your account: `DELIVERING`, `LEARNING`, `IN_QUEUE`, `NOT_DELIVERYING` (TikTok's own spelling), `NOT_ACTIVE`, `AUTHORIZATION_NEEDED`, `UNAVAILABLE`, `REJECTED` (and `EXCLUDED` in TikTok's documentation). TikTok's rule for a creative boost: the status cannot be `AUTHORIZATION_NEEDED`, `EXCLUDED`, `REJECTED` or `UNAVAILABLE`. The GMV Max screen leaves those videos out and says how many. The status is stored per video and day in `ads_creative_daily.delivery_status`; normal syncs read the last 14 days, so press **Re-Read History** once to fill older days.
+
+## Creating a creative boost (not built yet)
+
+`POST /campaign/gmv_max/session/create/` with `bid_type` `CREATIVE_NO_BID`: **one video per boost** (`item_id`), its product (`product_list[0].spu_id`), a daily `budget` (documented minimum 10 USD) and a schedule (`SCHEDULE_FROM_NOW`, or `SCHEDULE_START_END` with an end time in **UTC+0**). Conditions: the campaign is active (`STATUS_DELIVERY_OK`), the product has no max delivery session, fewer than 100 boosted videos in the campaign, no overlapping boost for the video, and the video's delivery status is allowed. The batch of several chosen videos made in Ads Manager is not in the public API.
+
 ## Safety
 
 | Point | How |

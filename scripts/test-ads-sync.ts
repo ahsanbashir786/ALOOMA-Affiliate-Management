@@ -114,7 +114,7 @@ async function main() {
           const items = creativeLevel ? ["V1", "V22"] : productLevel ? ["P1"] : [""];
           for (const it of items) {
             const v = val(camp, d, it) as Record<string, string>;
-            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it; v.creative_delivery_status = it === "V1" ? "PERFORMING" : "UNDERPERFORMING";
+            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it; v.creative_delivery_status = it === "V1" ? "DELIVERING" : "AUTHORIZATION_NEEDED";
             if (bump[`${camp}|${d}`] && !it) v.gross_revenue = bump[`${camp}|${d}`];
             const m: Record<string, string> = Object.fromEntries(mets.map((k) => [renameMetrics ? "x_" + k : k, v[k] ?? ""]));
             const dm: Record<string, string> = { stat_time_day: d + " 00:00:00" };
@@ -200,10 +200,27 @@ async function main() {
   check("creative results: the extra numbers TikTok accepts are saved (title, impressions, clicks, cost per order)", cr.title === "Video V1" && cr.imp === 1000 && cr.clk === 50 && cr.cpo === 10, JSON.stringify(cr));
   const support = (await q(sql`select value from settings where key = 'tiktok_ads_metrics'`))[0]?.value as Record<string, string[]> | undefined;
   const dl = (await q(sql`select delivery_status from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
-  check("creative results: the delivery status TikTok gives (Performing / Underperforming…) is saved", dl.delivery_status === "PERFORMING", JSON.stringify(dl));
+  check("creative results: the delivery status TikTok gives (Delivering, Learning, Authorization needed…) is saved", dl.delivery_status === "DELIVERING", JSON.stringify(dl));
   await q(sql`update settings set value = jsonb_set(value, '{_sig}', '["old"]'::jsonb) where key = 'tiktok_ads_metrics'`);
   const probesBefore = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
   await S.runAdsDataset("product_daily", "manual", null, deps);
+  // ── which videos the GMV Max screen suggests (own rows, so the dates are always the last few days) ──
+  const BD = await import("../src/lib/ads/boost");
+  const ST = await import("../src/lib/ads/status");
+  const { todayKL } = await import("../src/lib/time");
+  await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`);
+  const mk = (id: string, status: string | null, rev: number) => q(sql`insert into ads_creative_daily (advertiser_id, campaign_id, product_id, creative_id, day, cost, orders, gross_revenue, delivery_status) select 'BT', 'BC', 'BP', ${id}, (${todayKL()}::date - g), 10, 3, ${rev}, ${status} from generate_series(0, 4) g`);
+  await mk("bt-A", "DELIVERING", 150); await mk("bt-B", "AUTHORIZATION_NEEDED", 150); await mk("bt-C", "NOT_DELIVERYING", 150); await mk("bt-D", "DELIVERING", 20); await mk("bt-E", null, 150); await mk("bt-F", "REJECTED", 150);
+  const bf = { days: 7 as const, minRoi: 5, minOrders: 10, maxAgeDays: 365, product: null };
+  const all = await BD.boostData({ ...bf, delivery: "any" });
+  const ids = new Set(all.suggestions.filter((x) => x.creativeId.startsWith("bt-")).map((x) => x.creativeId));
+  check("gmv max: videos TikTok will not boost (authorization needed, rejected…) are left out, and counted", !ids.has("bt-B") && !ids.has("bt-F") && all.blocked >= 2 && (all.blockedByStatus.AUTHORIZATION_NEEDED ?? 0) >= 1 && (all.blockedByStatus.REJECTED ?? 0) >= 1, JSON.stringify([[...ids], all.blockedByStatus]));
+  check("gmv max: good videos are suggested; a video with poor ROI is not; a video with no status yet is still allowed", ids.has("bt-A") && ids.has("bt-C") && ids.has("bt-E") && !ids.has("bt-D"), JSON.stringify([...ids]));
+  const idle = new Set((await BD.boostData({ ...bf, delivery: "idle" })).suggestions.map((x) => x.creativeId)), on = new Set((await BD.boostData({ ...bf, delivery: "on" })).suggestions.map((x) => x.creativeId));
+  check("gmv max: 'not delivering now' keeps idle videos only; 'delivering now' keeps running ones only", idle.has("bt-C") && idle.has("bt-E") && !idle.has("bt-A") && on.has("bt-A") && !on.has("bt-C") && !on.has("bt-E"));
+  check("gmv max: statuses are read in plain words, TikTok's own spelling included", ST.STATUS_LABEL.NOT_DELIVERYING === "Not delivering" && ST.isBlocked("UNAVAILABLE") && !ST.isBlocked("LEARNING") && !ST.isBlocked(null));
+  await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`);
+
   check("metric discovery: a changed list of names is asked about again, an unchanged one is not", seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length > probesBefore);
   const probesMid = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
   await S.runAdsDataset("product_daily", "manual", null, deps);
