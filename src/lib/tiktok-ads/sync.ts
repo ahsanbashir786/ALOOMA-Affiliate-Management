@@ -134,7 +134,7 @@ async function runStores(ctx: Ctx, c: Counter) {
 
 async function runCampaigns(ctx: Ctx, c: Counter) {
   await eachAccount(await advertiserIds(ctx), c, async (id) => {
-    for await (const { items, page } of pages(ctx, "/gmv_max/campaign/get/", { advertiser_id: id, filtering: { gmv_max_promotion_types: ["PRODUCT_SHOPPING", "LIVE"] } })) {
+    for await (const { items, page } of pages(ctx, "/gmv_max/campaign/get/", { advertiser_id: id, filtering: { gmv_max_promotion_types: M.GMV_MAX_PROMOTION_TYPES } })) {
       c.pages = Math.max(c.pages, page);
       items.forEach((o) => remember(c, o));
       await save(ctx, c, "ads_campaigns", items.map((o) => M.campaign(o, id)).filter((r) => r.campaign_id));

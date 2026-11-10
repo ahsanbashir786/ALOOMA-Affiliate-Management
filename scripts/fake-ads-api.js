@@ -11,8 +11,8 @@ const reply = (res, code, data, message = "OK") => { res.writeHead(200, { "conte
 const read = (req) => new Promise((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { try { r(JSON.parse(b || "{}")); } catch { r({}); } }); });
 const val = (camp, day, item) => { const n = ((Date.parse(day + "T00:00:00Z") / 86400000) % 7) + (camp === "C2" ? 3 : 1) + (item ? item.length : 0); return { cost: (n * 10).toFixed(2), net_cost: (n * 9).toFixed(2), orders: String(n), cost_per_order: "10.00", gross_revenue: (n * 40).toFixed(2), roi: (4 + n / 10).toFixed(2) }; };
 const CAMPAIGNS = [
-  { campaign_id: "C1", campaign_name: "Pillow GMV Max", operation_status: "ENABLE", store_id: "S1", gmv_max_promotion_type: "PRODUCT_SHOPPING", budget: "200.00", roas_bid: "4.5", create_time: "2026-08-20 10:00:00" },
-  { campaign_id: "C2", campaign_name: "LIVE GMV Max", operation_status: "DISABLE", store_id: "S1", gmv_max_promotion_type: "LIVE", budget: "100", roas_bid: "3", create_time: "2026-09-01 10:00:00" },
+  { campaign_id: "C1", campaign_name: "Pillow GMV Max", operation_status: "ENABLE", store_id: "S1", gmv_max_promotion_type: "PRODUCT_GMV_MAX", budget: "200.00", roas_bid: "4.5", create_time: "2026-08-20 10:00:00" },
+  { campaign_id: "C2", campaign_name: "LIVE GMV Max", operation_status: "DISABLE", store_id: "S1", gmv_max_promotion_type: "LIVE_GMV_MAX", budget: "100", roas_bid: "3", create_time: "2026-09-01 10:00:00" },
 ];
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://127.0.0.1:${PORT}`);
@@ -30,6 +30,7 @@ const server = http.createServer(async (req, res) => {
   const q = Object.fromEntries(u.searchParams.entries());
   if (p === "/advertiser/info/") return reply(res, 0, { list: [{ advertiser_id: "111", name: "ALOOMA Malaysia", currency: "MYR", timezone: "Asia/Kuala_Lumpur", status: "STATUS_ENABLE" }] });
   if (p === "/gmv_max/store/list/") return reply(res, 0, { store_list: [{ store_id: "S1", store_name: "ALOOMA MY", store_code: "MY-1", store_authorized_bc_id: "B1", is_gmv_max_available: true }] });
+  if (p === "/gmv_max/campaign/get/") { const t = JSON.parse(q.filtering || "{}").gmv_max_promotion_types || []; if (!t.length || t.some((x) => !["LIVE_GMV_MAX", "PRODUCT_GMV_MAX"].includes(x))) return reply(res, 40002, null, "filtering: gmv_max_promotion_types: value is not one of the allowed values, correct is LIVE_GMV_MAX, PRODUCT_GMV_MAX"); }
   if (p === "/gmv_max/campaign/get/") return reply(res, 0, { list: CAMPAIGNS, page_info: { page: 1, page_size: 50, total_number: CAMPAIGNS.length, total_page: 1 } });
   if (p === "/gmv_max/report/get/") {
     const dims = JSON.parse(q.dimensions), mets = JSON.parse(q.metrics);

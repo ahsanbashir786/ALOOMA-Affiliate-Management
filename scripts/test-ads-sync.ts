@@ -58,10 +58,13 @@ async function main() {
       return reply(0, { store_list: [{ store_id: "S1", store_name: "ALOOMA MY", store_code: "MY-1", store_authorized_bc_id: "B1", is_gmv_max_available: true }] });
     }
     if (p === "/gmv_max/campaign/get/") {
+      const types = (JSON.parse(qq.filtering ?? "{}").gmv_max_promotion_types ?? []) as string[];
+      const badType = types.findIndex((t) => !["LIVE_GMV_MAX", "PRODUCT_GMV_MAX"].includes(t));
+      if (!types.length || badType >= 0) return reply(40002, null, `filtering: gmv_max_promotion_types.${Math.max(badType, 0)}: value is not one of the allowed values, value is ${types[Math.max(badType, 0)]} ,correct is LIVE_GMV_MAX, PRODUCT_GMV_MAX`);
       if (qq.advertiser_id !== "111") return reply(0, { list: [], page_info: { page: 1, page_size: 50, total_number: 0, total_page: 1 } });
-      const all = [{ campaign_id: "C1", campaign_name: "Pillow GMV Max", operation_status: "ENABLE", store_id: "S1", gmv_max_promotion_type: "PRODUCT_SHOPPING", budget: "200.00", roas_bid: "4.5", create_time: "2026-08-20 10:00:00", modify_time: "2026-11-01 09:00:00" },
-        { campaign_id: "C2", campaign_name: "LIVE GMV Max", operation_status: "DISABLE", store_id: "S1", gmv_max_promotion_type: "LIVE", budget: "100", roas_bid: "3", create_time: "2026-09-01 10:00:00" },
-        { campaign_id: "C3", campaign_name: "Old", operation_status: "ENABLE", store_id: "S1", gmv_max_promotion_type: "PRODUCT_SHOPPING", budget: "50" }];
+      const all = [{ campaign_id: "C1", campaign_name: "Pillow GMV Max", operation_status: "ENABLE", store_id: "S1", gmv_max_promotion_type: "PRODUCT_GMV_MAX", budget: "200.00", roas_bid: "4.5", create_time: "2026-08-20 10:00:00", modify_time: "2026-11-01 09:00:00" },
+        { campaign_id: "C2", campaign_name: "LIVE GMV Max", operation_status: "DISABLE", store_id: "S1", gmv_max_promotion_type: "LIVE_GMV_MAX", budget: "100", roas_bid: "3", create_time: "2026-09-01 10:00:00" },
+        { campaign_id: "C3", campaign_name: "Old", operation_status: "ENABLE", store_id: "S1", gmv_max_promotion_type: "PRODUCT_GMV_MAX", budget: "50" }];
       const page = Number(qq.page), asked = Number(qq.page_size);
       if (asked > 50) return reply(40002, null, "page_size is invalid: it must be 1 to 50"); // forces the page size to step down
       const size = 2; // a server that gives fewer per page than asked: the walk must follow page_info, not the asked size
@@ -137,7 +140,7 @@ async function main() {
   check("sync: one account TikTok refuses does not stop the others, and it is reported", /1 of 2 account.*skipped/.test(String(r1.find((r) => r.dataset === "stores")?.error)), String(r1.find((r) => r.dataset === "stores")?.error));
   check("sync: all campaigns saved across pages (page size stepped down, rate limit waited out)", (await count("ads_campaigns")) === 3, `${await count("ads_campaigns")} ${JSON.stringify(r1.find((r) => r.dataset === "campaigns"))}`);
   const camp = (await q(sql`select name, status, promotion_type, budget::float8 as budget, roas_target::float8 as roas, store_id from ads_campaigns where campaign_id = 'C1'`))[0];
-  check("sync: campaign fields are mapped", camp.name === "Pillow GMV Max" && camp.status === "ENABLE" && camp.promotion_type === "PRODUCT_SHOPPING" && camp.budget === 200 && camp.roas === 4.5 && camp.store_id === "S1");
+  check("sync: campaign fields are mapped", camp.name === "Pillow GMV Max" && camp.status === "ENABLE" && camp.promotion_type === "PRODUCT_GMV_MAX" && camp.budget === 200 && camp.roas === 4.5 && camp.store_id === "S1");
   const nDays = Math.round((Date.parse(TODAY) - Date.parse(FIRST_AD_DAY)) / 86400_000) + 1;
   check("history: the first sync reads back to the first ad day, then stops after empty months", (await count("ads_campaign_daily")) === nDays * 2, `${await count("ads_campaign_daily")} vs ${nDays * 2}`);
   const first = (await q(sql`select min(day)::text as a, max(day)::text as b from ads_campaign_daily`))[0];

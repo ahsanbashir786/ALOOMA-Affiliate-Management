@@ -1,7 +1,7 @@
 import "server-only";
 import { addDaysISO, todayKL } from "@/lib/time";
 import { AdsApiError, adsAuthorizedAdvertisers, adsCallPatient as adsCall, adsConfig, type AdsConfig, type Fetch } from "./client";
-import { arr, obj } from "./map";
+import { GMV_MAX_PROMOTION_TYPES, arr, obj } from "./map";
 
 export type AdsCheck = { name: string; ok: boolean; message: string; count: number | null; /** The field names TikTok sent (names only). */ fields: string[] | null; /** The first record, as text, so we can see what the data looks like. */ sample: string | null };
 export type AdsChecks = { checks: AdsCheck[]; accounts: { id: string; name: string | null; currency: string | null }[]; at: string };
@@ -36,27 +36,42 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
     if (!accounts.length) for (const id of ids) accounts.push({ id, name: null, currency: null });
     return { items: list.length ? list : ids.map((id) => ({ advertiser_id: id })) };
   });
-  const adv = ids[0];
-  let storeIds: string[] = [];
-  if (adv) {
-    await run("GMV Max shops", async () => {
-      const d = await adsCall<Record<string, unknown>>("/gmv_max/store/list/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: adv } });
-      const list = arr(d.store_list ?? d.stores ?? d.list);
-      storeIds = list.map((s) => String(s.store_id ?? "")).filter(Boolean);
-      return { items: list };
-    });
-    await run("GMV Max campaigns", async () => {
-      const d = await adsCall<Record<string, unknown>>("/gmv_max/campaign/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: adv, filtering: { gmv_max_promotion_types: ["PRODUCT_SHOPPING", "LIVE"] }, page: 1, page_size: 10 } });
-      return { items: arr(d.list) };
-    });
-    if (storeIds.length) {
-      await run("Campaign results (last 7 days)", async () => {
-        const end = todayKL();
-        const d = await adsCall<Record<string, unknown>>("/gmv_max/report/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: adv, store_ids: storeIds, dimensions: ["campaign_id", "stat_time_day"], metrics: ["cost", "orders", "gross_revenue", "roi"], start_date: addDaysISO(end, -6), end_date: end, page: 1, page_size: 10 } });
-        const list = arr(d.list);
-        return { items: list, fields: { ...obj(list[0]?.dimensions), ...obj(list[0]?.metrics) } };
-      });
+  // Every ad account is looked at: the shop (and the ads) may sit on any one of them.
+  const shopsOf = new Map<string, string[]>();
+  await run("GMV Max shops", async () => {
+    const all: Record<string, unknown>[] = [];
+    const bad: string[] = [];
+    for (const id of ids) {
+      try {
+        const d = await adsCall<Record<string, unknown>>("/gmv_max/store/list/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: id } });
+        const list = arr(d.store_list ?? d.stores ?? d.list);
+        shopsOf.set(id, list.map((s) => String(s.store_id ?? "")).filter(Boolean));
+        all.push(...list.map((s) => ({ advertiser_id: id, ...s })));
+      } catch (e) { bad.push(`${id}: ${short(e)}`); }
     }
+    if (!all.length && bad.length) throw new Error(bad[0]);
+    return { items: all };
+  });
+  await run("GMV Max campaigns", async () => {
+    const all: Record<string, unknown>[] = [];
+    let firstError: unknown = null;
+    for (const id of ids) {
+      try {
+        const d = await adsCall<Record<string, unknown>>("/gmv_max/campaign/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: id, filtering: { gmv_max_promotion_types: GMV_MAX_PROMOTION_TYPES }, page: 1, page_size: 10 } });
+        all.push(...arr(d.list).map((c) => ({ advertiser_id: id, ...c })));
+      } catch (e) { firstError ??= e; }
+    }
+    if (!all.length && firstError) throw firstError;
+    return { items: all };
+  });
+  const withShop = ids.find((id) => (shopsOf.get(id) ?? []).length);
+  if (withShop) {
+    await run("Campaign results (last 7 days)", async () => {
+      const end = todayKL();
+      const d = await adsCall<Record<string, unknown>>("/gmv_max/report/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: withShop, store_ids: shopsOf.get(withShop), dimensions: ["campaign_id", "stat_time_day"], metrics: ["cost", "orders", "gross_revenue", "roi"], start_date: addDaysISO(end, -6), end_date: end, page: 1, page_size: 10 } });
+      const list = arr(d.list);
+      return { items: list, fields: { ...obj(list[0]?.dimensions), ...obj(list[0]?.metrics) } };
+    });
   }
   return { checks, accounts, at: new Date().toISOString() };
 }

@@ -4,6 +4,8 @@
 import { day as dayOf, int, num, str, ts, type Row } from "@/lib/tiktok/map";
 export type { Row };
 type R = Record<string, unknown>;
+/** The two kinds of GMV Max campaign, as TikTok names them (TikTok's own error message listed these as the allowed values). */
+export const GMV_MAX_PROMOTION_TYPES = ["PRODUCT_GMV_MAX", "LIVE_GMV_MAX"];
 export const obj = (v: unknown): R => (v && typeof v === "object" && !Array.isArray(v) ? (v as R) : {});
 export const arr = (v: unknown): R[] => (Array.isArray(v) ? (v as R[]) : []);
 /** The first of these names that holds a value. */
