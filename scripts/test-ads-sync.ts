@@ -27,6 +27,9 @@ async function main() {
   let broken: "none" | "auth" = "none";
   let rateOnce = true;
   let renameMetrics = false;
+  let maxCampaignIds = 10;
+  let rejectProductDim = false;
+  const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks"];
   const failAccount222 = true;
   let bump: Record<string, string> = {};
   const seen: { path: string; headers: Record<string, string>; q: Record<string, string>; body: unknown }[] = [];
@@ -75,21 +78,29 @@ async function main() {
       const start = qq.start_date, end = qq.end_date;
       if (end > TODAY) return reply(40002, null, "end_date can not be in the future");
       if (!JSON.parse(qq.store_ids).includes("S1")) return reply(40002, null, "Invalid store_ids");
-      if (dims.includes("item_id") && dims.includes("campaign_id")) return reply(40002, null, "Invalid dimensions: item_id can not be combined with campaign_id");
-      if (mets.includes("title") || mets.includes("product_name")) return reply(40002, null, "Invalid metric: title");
+      // TikTok's real rules (its own messages): product and creative results need the campaign (and product) named in the filter.
+      const filt = (qq.filtering ? JSON.parse(qq.filtering) : {}) as { campaign_ids?: string[]; item_group_ids?: string[] };
+      const creativeLevel = dims.includes("item_id"), productLevel = dims.includes("item_group_id") && !creativeLevel;
+      if (creativeLevel && (!filt.campaign_ids?.length || !filt.item_group_ids?.length)) return reply(40002, null, "Creative level report must have at least 1 campaign ID and 1 item group ID, please correct the filters.");
+      if (productLevel && !filt.campaign_ids?.length) return reply(40002, null, "Item level report must have at least 1 campaign ID, please correct the campaign_id filter.");
+      if (productLevel && filt.campaign_ids!.length > maxCampaignIds) return reply(40002, null, "Invalid param: campaign_ids can hold at most " + maxCampaignIds + " ids");
+      if (rejectProductDim && creativeLevel && dims.includes("item_group_id")) return reply(40002, null, "Invalid dimensions: item_group_id can not be used with item_id");
+      const bad = mets.find((m) => !ACCEPTED.includes(m));
+      if (bad) return reply(40002, null, "Invalid metric: " + bad);
       const lines: unknown[] = [];
       for (let d = start; d <= end; d = addDays(d, 1)) {
         if (d < FIRST_AD_DAY) continue;
-        for (const camp of ["C1", "C2"]) {
-          const items = dims.includes("item_id") ? ["V1", "V22"] : dims.includes("item_group_id") ? ["P1"] : [""];
+        for (const camp of filt.campaign_ids ?? ["C1", "C2"]) {
+          const items = creativeLevel ? ["V1", "V22"] : productLevel ? ["P1"] : [""];
           for (const it of items) {
-            const v = val(camp, d, it);
+            const v = val(camp, d, it) as Record<string, string>;
+            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it;
             if (bump[`${camp}|${d}`] && !it) v.gross_revenue = bump[`${camp}|${d}`];
-            const m: Record<string, string> = Object.fromEntries(mets.map((k) => [renameMetrics ? "x_" + k : k, (v as Record<string, string>)[k] ?? ""]));
+            const m: Record<string, string> = Object.fromEntries(mets.map((k) => [renameMetrics ? "x_" + k : k, v[k] ?? ""]));
             const dm: Record<string, string> = { stat_time_day: d + " 00:00:00" };
             if (dims.includes("campaign_id")) dm.campaign_id = camp;
-            if (dims.includes("item_id")) dm.item_id = it;
-            if (dims.includes("item_group_id")) dm.item_group_id = it;
+            if (creativeLevel) dm.item_id = it;
+            if (dims.includes("item_group_id")) dm.item_group_id = creativeLevel ? filt.item_group_ids![0] : it;
             lines.push({ dimensions: dm, metrics: m });
           }
         }
@@ -148,8 +159,15 @@ async function main() {
   const cd = (await q(sql`select cost::float8 as cost, orders, gross_revenue::float8 as rev, roi::float8 as roi from ads_campaign_daily where campaign_id = 'C1' and day = '2026-11-10'`))[0];
   const exp = (() => { const n = (Date.parse("2026-11-10T00:00:00Z") / 86400_000) % 7 + 1; return { cost: n * 10, orders: n, rev: n * 40 }; })();
   check("results: numbers sent as text are saved as numbers", cd.cost === exp.cost && cd.orders === exp.orders && cd.rev === exp.rev && cd.roi === 4, JSON.stringify(cd));
-  check("creative results: the second dimension choice worked after TikTok refused the first, and the plainer metrics after the richer ones", (await count("ads_creative_daily")) === nDays * 2 && (await q(sql`select 1 from ads_creative_daily where creative_id = 'V1' and campaign_id = '-' limit 1`)).length === 1, String(await count("ads_creative_daily")));
-  check("product results saved", (await count("ads_product_daily")) === nDays * 2);
+  check("product results: asked per campaign (TikTok refuses them otherwise), one row per campaign, product and day", (await count("ads_product_daily")) === nDays * 2 && (await q(sql`select 1 from ads_product_daily where campaign_id = 'C1' and product_id = 'P1' and day = '2026-11-10'`)).length === 1, String(await count("ads_product_daily")));
+  check("creative results: asked per campaign and product (TikTok refuses them otherwise), one row per video, product, campaign and day", (await count("ads_creative_daily")) === nDays * 4 && (await q(sql`select 1 from ads_creative_daily where creative_id = 'V1' and campaign_id = 'C1' and product_id = 'P1' limit 1`)).length === 1, String(await count("ads_creative_daily")));
+  const cr = (await q(sql`select title, impressions::int as imp, clicks::int as clk, cost_per_order::float8 as cpo from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
+  check("creative results: the extra numbers TikTok accepts are saved (title, impressions, clicks, cost per order)", cr.title === "Video V1" && cr.imp === 1000 && cr.clk === 50 && cr.cpo === 10, JSON.stringify(cr));
+  const support = (await q(sql`select value from settings where key = 'tiktok_ads_metrics'`))[0]?.value as Record<string, string[]> | undefined;
+  check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title"].sort()) && !(support?.product ?? []).includes("tt_account_name"), JSON.stringify(support));
+  const realReports = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size !== "1");
+  check("requests: after discovery every report asks only for metrics TikTok accepts", realReports.every((x) => (JSON.parse(x.q.metrics) as string[]).every((m) => ACCEPTED.includes(m))));
+  check("requests: product and creative requests always name their campaign (and product)", realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_id")).every((x) => { const f = JSON.parse(x.q.filtering); return f.campaign_ids.length === 1 && f.item_group_ids.length === 1; }) && realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_group_id") && !JSON.parse(x.q.dimensions).includes("item_id")).every((x) => JSON.parse(x.q.filtering).campaign_ids.length >= 1));
   const reqs = seen.filter((s) => s.path === "/gmv_max/report/get/");
   check("requests: every call carries the login in the Access-Token header", seen.filter((s) => !s.path.startsWith("/oauth2/")).every((s) => s.headers["access-token"] === "AT123"));
   check("requests: the last day asked for is never in the future", reqs.every((r) => r.q.end_date <= TODAY));
@@ -160,15 +178,25 @@ async function main() {
   check("overview: accounts, shops and active campaigns", ov1.accounts.length === 2 && ov1.shops === 1 && ov1.activeCampaigns === 2 && !ov1.needsReconnect);
 
   // ── idempotent, and TikTok restating a recent day ──
+  const seenBefore = seen.length;
   const r2 = await S.runAdsAll("schedule", null, deps);
   check("again: running the sync twice changes nothing and duplicates nothing", r2.every((r) => r.status === "ok") && r2.filter((r) => ["campaign_daily", "creative_daily", "product_daily", "campaigns", "advertisers", "stores"].includes(r.dataset)).every((r) => r.changed === 0) && (await count("ads_campaign_daily")) === nDays * 2, JSON.stringify(r2.map((r) => [r.dataset, r.changed])));
-  const recentReq = seen.filter((s) => s.path === "/gmv_max/report/get/").slice(-6);
-  check("again: a normal sync reads only the recent days again, not the whole history", recentReq.every((r) => r.q.start_date >= addDays(TODAY, -13)), JSON.stringify(recentReq.map((r) => r.q.start_date)));
+  const recentReq = seen.slice(seenBefore).filter((s) => s.path === "/gmv_max/report/get/");
+  check("again: a normal sync reads only the recent days again, not the whole history", recentReq.length >= 3 && recentReq.every((r) => r.q.start_date >= addDays(TODAY, -13)), JSON.stringify(recentReq.map((r) => r.q.start_date)));
   bump["C1|2026-11-08"] = "999.00";
   const r3 = await S.runAdsDataset("campaign_daily", "schedule", null, deps);
   const restated = (await q(sql`select gross_revenue::float8 as rev from ads_campaign_daily where campaign_id = 'C1' and day = '2026-11-08'`))[0];
   check("restated day: TikTok changes a recent day's sales, the next sync picks it up (one row changed)", r3.changed === 1 && restated.rev === 999, `${r3.changed} ${restated.rev}`);
   bump = {};
+
+  // ── TikTok does not take a list of campaigns, and does not take the product dimension together with the video ──
+  maxCampaignIds = 1; rejectProductDim = true;
+  await q(sql`delete from ads_product_daily`); await q(sql`delete from ads_creative_daily`); await q(sql`delete from ads_sync_state where dataset in ('product_daily', 'creative_daily')`);
+  const rp = await S.runAdsDataset("product_daily", "manual", null, { ...deps, backfill: true });
+  check("campaign list refused: product results fall back to one campaign at a time and still load everything", rp.status === "ok" && (await count("ads_product_daily")) === nDays * 2, `${rp.status} ${rp.error} ${await count("ads_product_daily")}`);
+  const rc = await S.runAdsDataset("creative_daily", "manual", null, { ...deps, backfill: true });
+  check("product dimension refused: creative results fall back and the product still comes from the request", rc.status === "ok" && (await count("ads_creative_daily")) === nDays * 4 && /Used dimensions campaign_id \+ item_id \+ stat_time_day/.test(rc.error ?? "") && (await q(sql`select 1 from ads_creative_daily where product_id = 'P1' limit 1`)).length === 1, `${rc.status} ${rc.error} ${await count("ads_creative_daily")}`);
+  maxCampaignIds = 10; rejectProductDim = false;
 
   // ── trouble ──
   renameMetrics = true;

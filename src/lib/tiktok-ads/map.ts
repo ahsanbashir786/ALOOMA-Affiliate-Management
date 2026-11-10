@@ -54,24 +54,41 @@ export function campaignDaily(l: ReportLine, advertiserId: string): Row | null {
 
 /** When TikTok splits a result by creative or product but not by campaign, the campaign is "-" (a key can never be empty). */
 export const NO_CAMPAIGN = "-";
+/** Metric names tried for the extra ad numbers (the first one TikTok accepts is used). */
+export const FUNNEL_METRICS = {
+  impressions: ["product_impressions", "impressions", "ad_impressions"],
+  clicks: ["product_clicks", "clicks", "ad_clicks"],
+  click_rate: ["product_click_rate", "ad_click_rate", "click_rate", "ctr"],
+  conversion_rate: ["ad_conversion_rate", "conversion_rate", "cvr"],
+  view_rate_2s: ["ad_video_view_rate_2s", "video_view_rate_2s"],
+  view_rate_6s: ["ad_video_view_rate_6s", "video_view_rate_6s"],
+} as const;
+/** Every optional metric worth asking for. Which of them TikTok accepts is found out once per account (see discovery in sync.ts). */
+export const OPTIONAL_METRICS = ["cost_per_order", "title", "tt_account_name", "shop_content_type", "product_name", ...Object.values(FUNNEL_METRICS).flat()];
+const funnel = (m: R) => ({
+  impressions: int(dec(pick(m, ...FUNNEL_METRICS.impressions))), clicks: int(dec(pick(m, ...FUNNEL_METRICS.clicks))),
+  click_rate: dec(pick(m, ...FUNNEL_METRICS.click_rate)), conversion_rate: dec(pick(m, ...FUNNEL_METRICS.conversion_rate)),
+});
 
-export function creativeDaily(l: ReportLine, advertiserId: string): Row | null {
-  const d = reportDay(l.dims), cid = str(l.dims.campaign_id) ?? NO_CAMPAIGN, id = str(pick(l.dims, "item_id", "creative_id", "video_id"));
+/** One video's result for one product in one campaign on one day. `product` is the product the request was filtered to (used when TikTok does not repeat it in the line). */
+export function creativeDaily(l: ReportLine, advertiserId: string, scope?: { campaign?: string; product?: string }): Row | null {
+  const d = reportDay(l.dims), cid = str(l.dims.campaign_id) ?? scope?.campaign ?? NO_CAMPAIGN, id = str(pick(l.dims, "item_id", "creative_id", "video_id"));
+  const pid = str(pick(l.dims, "item_group_id", "product_id", "spu_id")) ?? scope?.product ?? "-";
   if (!id || bad(d)) return null;
   return {
-    advertiser_id: advertiserId, campaign_id: cid, creative_id: id, day: d,
+    advertiser_id: advertiserId, campaign_id: cid, product_id: pid, creative_id: id, day: d,
     title: str(pick(l.mets, "title", "video_title")) ?? str(pick(l.dims, "title")),
     account_name: str(pick(l.mets, "tt_account_name", "account_name")),
     content_type: str(pick(l.mets, "shop_content_type", "content_type")),
-    cost: dec(l.mets.cost), orders: int(dec(l.mets.orders)), gross_revenue: dec(l.mets.gross_revenue), roi: dec(l.mets.roi),
-    views: int(dec(pick(l.mets, "video_views", "views", "impressions"))), raw: raw(l),
+    cost: dec(l.mets.cost), orders: int(dec(l.mets.orders)), gross_revenue: dec(l.mets.gross_revenue), roi: dec(l.mets.roi), cost_per_order: dec(l.mets.cost_per_order),
+    ...funnel(l.mets), view_rate_2s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_2s)), view_rate_6s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_6s)), raw: raw(l),
   };
 }
 
-export function productDaily(l: ReportLine, advertiserId: string): Row | null {
-  const d = reportDay(l.dims), cid = str(l.dims.campaign_id) ?? NO_CAMPAIGN, id = str(pick(l.dims, "item_group_id", "product_id", "spu_id"));
+export function productDaily(l: ReportLine, advertiserId: string, scope?: { campaign?: string }): Row | null {
+  const d = reportDay(l.dims), cid = str(l.dims.campaign_id) ?? scope?.campaign ?? NO_CAMPAIGN, id = str(pick(l.dims, "item_group_id", "product_id", "spu_id"));
   if (!id || bad(d)) return null;
-  return { advertiser_id: advertiserId, campaign_id: cid, product_id: id, day: d, title: str(pick(l.mets, "product_name", "title")), cost: dec(l.mets.cost), orders: int(dec(l.mets.orders)), gross_revenue: dec(l.mets.gross_revenue), roi: dec(l.mets.roi), raw: raw(l) };
+  return { advertiser_id: advertiserId, campaign_id: cid, product_id: id, day: d, title: str(pick(l.mets, "product_name", "title")), cost: dec(l.mets.cost), orders: int(dec(l.mets.orders)), gross_revenue: dec(l.mets.gross_revenue), roi: dec(l.mets.roi), cost_per_order: dec(l.mets.cost_per_order), ...funnel(l.mets), raw: raw(l) };
 }
 
 /** True when a batch of report lines holds at least one number we could read. If TikTok renamed its fields, this catches it instead of saving empty rows. */

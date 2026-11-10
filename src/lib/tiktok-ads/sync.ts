@@ -20,8 +20,8 @@ export const ADS_DATASETS: { key: AdsDatasetKey; label: string; table: string; i
   { key: "stores", label: "Shops", table: "ads_stores", icon: "store", what: "shops" },
   { key: "campaigns", label: "GMV Max Campaigns", table: "ads_campaigns", icon: "target", what: "campaigns" },
   { key: "campaign_daily", label: "Campaign Results", table: "ads_campaign_daily", icon: "chart", what: "campaign-days" },
-  { key: "creative_daily", label: "Creative Results", table: "ads_creative_daily", icon: "video", what: "creative-days" },
   { key: "product_daily", label: "Product Results", table: "ads_product_daily", icon: "package", what: "product-days" },
+  { key: "creative_daily", label: "Creative Results", table: "ads_creative_daily", icon: "video", what: "creative-days" },
 ];
 
 type Table = Parameters<typeof upsertRows>[0];
@@ -31,8 +31,8 @@ const TABLES: Record<string, Table> = {
   ads_stores: { name: "ads_stores", pk: ["advertiser_id", "store_id"], cols: { advertiser_id: "text", store_id: "text", store_name: "text", store_code: "text", bc_id: "text", available: "boolean", raw: RAW } },
   ads_campaigns: { name: "ads_campaigns", pk: ["advertiser_id", "campaign_id"], cols: { advertiser_id: "text", campaign_id: "text", store_id: "text", name: "text", status: "text", promotion_type: "text", budget: "numeric", roas_target: "numeric", created_at: "timestamptz", modified_at: "timestamptz", raw: RAW } },
   ads_campaign_daily: { name: "ads_campaign_daily", pk: ["advertiser_id", "campaign_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", day: "date", cost: "numeric", net_cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", raw: RAW } },
-  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", views: "bigint", raw: RAW } },
-  ads_product_daily: { name: "ads_product_daily", pk: ["advertiser_id", "campaign_id", "product_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", day: "date", title: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", raw: RAW } },
+  ads_product_daily: { name: "ads_product_daily", pk: ["advertiser_id", "campaign_id", "product_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", day: "date", title: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", raw: RAW } },
+  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", raw: RAW } },
 };
 
 /** The row that stays open while a whole sync (every dataset) is in progress. */
@@ -149,84 +149,173 @@ export function backWindows(end: string, floor: string, days = WINDOW_DAYS): { s
   return out;
 }
 
-type Ladder = { dims: string[][]; mets: string[][]; map: (l: M.ReportLine, advertiserId: string) => M.Row | null; table: string };
 const CORE = ["cost", "orders", "gross_revenue", "roi"];
-const LADDERS: Record<"campaign_daily" | "creative_daily" | "product_daily", Ladder> = {
-  campaign_daily: { dims: [["campaign_id", "stat_time_day"]], mets: [["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi"], CORE], map: M.campaignDaily, table: "ads_campaign_daily" },
-  creative_daily: { dims: [["campaign_id", "item_id", "stat_time_day"], ["item_id", "stat_time_day"]], mets: [[...CORE, "title", "tt_account_name", "shop_content_type"], CORE], map: M.creativeDaily, table: "ads_creative_daily" },
-  product_daily: { dims: [["campaign_id", "item_group_id", "stat_time_day"], ["item_group_id", "stat_time_day"]], mets: [[...CORE, "product_name"], CORE], map: M.productDaily, table: "ads_product_daily" },
-};
 const looksLikeBadParam = (e: unknown) => e instanceof AdsApiError && !e.isAuth && !e.isRateLimit && !e.isServer && /dimension|metric|param|invalid|field|filter/i.test(e.message);
+const chunk = <T,>(list: T[], n: number): T[][] => { const out: T[][] = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };
 
-async function runDaily(key: keyof typeof LADDERS, ctx: Ctx, c: Counter) {
-  const L = LADDERS[key];
-  const today = (ctx.deps.now?.() ? ctx.deps.now!().toISOString().slice(0, 10) : todayKL());
+type ReportReq = { adv: string; storeIds: string[]; dims: string[]; mets: string[]; filtering?: Record<string, unknown>; start: string; end: string };
+const reportQuery = (r: ReportReq) => ({ advertiser_id: r.adv, store_ids: r.storeIds, dimensions: r.dims, metrics: r.mets, start_date: r.start, end_date: r.end, ...(r.filtering ? { filtering: r.filtering } : {}) });
+
+/** Today, and the first day this run reads back to. */
+function runSpan(ctx: Ctx) {
+  const today = ctx.deps.now ? ctx.deps.now().toISOString().slice(0, 10) : todayKL();
+  const floor = ctx.backfill ? ctx.historyFrom : ctx.full ? addDaysISO(today, -(REREAD_DAYS - 1)) : addDaysISO(today, -(RECENT_DAYS - 1));
+  return { today, floor, wins: backWindows(today, floor) };
+}
+
+async function storesByAccount(c: Counter): Promise<Map<string, string[]>> {
   const stores = await rows<{ advertiser_id: string; store_id: string }>(sql`select advertiser_id, store_id from ads_stores where coalesce(available, true) order by 1, 2`);
   const byAdv = new Map<string, string[]>();
   for (const s of stores) byAdv.set(s.advertiser_id, [...(byAdv.get(s.advertiser_id) ?? []), s.store_id]);
-  if (!byAdv.size) { c.note = "No GMV Max shop is linked to your ad account yet, so there are no results to read."; return; }
+  if (!byAdv.size) c.note = "No GMV Max shop is linked to your ad account yet, so there are no results to read.";
+  return byAdv;
+}
 
-  const floorHistory = ctx.backfill ? ctx.historyFrom : addDaysISO(today, -(REREAD_DAYS - 1));
-  const floor = ctx.backfill || ctx.full ? floorHistory : addDaysISO(today, -(RECENT_DAYS - 1));
-  const wins = backWindows(today, floor);
-  let chosen: { dims: string[]; mets: string[] } | null = null;
-  let endLadder = [today, addDaysISO(today, -1)];
+/**
+ * Reads every page of one report request, checks that the numbers can be read, and saves them. Throws on any TikTok refusal.
+ * If TikTok says the last day is in the future (a time zone ahead of the ad account), the day before is used instead.
+ */
+async function readReport(ctx: Ctx, c: Counter, req: ReportReq, table: string, map: (l: M.ReportLine) => M.Row | null, today: string): Promise<number> {
+  const go = async (end: string) => {
+    let n = 0;
+    for await (const { items } of pages(ctx, "/gmv_max/report/get/", reportQuery({ ...req, end }))) {
+      c.pages++;
+      const lines = items.map(M.reportLine);
+      if (lines.length && !M.hasReadableMetrics(lines)) throw new Error(`TikTok sent ${lines.length} result lines, but none of the numbers (cost, orders, gross revenue, ROI) could be read. Fields sent: ${M.metricNames(lines).join(", ") || "none"}. TikTok may have renamed them.`);
+      lines.forEach((l) => remember(c, { dimensions: l.dims, metrics: l.mets }));
+      const mapped = lines.map(map);
+      const ok = mapped.filter((r): r is M.Row => !!r);
+      if (ok.length < lines.length) { c.skipped += lines.length - ok.length; c.skipExample ??= JSON.stringify(lines[mapped.findIndex((r) => !r)].dims).slice(0, 120); }
+      await save(ctx, c, table, ok);
+      n += ok.length;
+    }
+    return n;
+  };
+  const end = req.end > today ? today : req.end;
+  try { return await go(end); }
+  catch (e) { if (e instanceof AdsApiError && /end.?date|future/i.test(e.message) && end > req.start) return go(addDaysISO(end, -1)); throw e; }
+}
 
+/** Which of the optional metrics TikTok accepts is found out once (one tiny request per name) and remembered, so the sync asks only for names that work. */
+const MKEY = "tiktok_ads_metrics";
+async function metricSupport(): Promise<Record<string, string[]>> {
+  const [r] = await rows<{ value: Record<string, string[]> }>(sql`select value from settings where key = ${MKEY}`);
+  return r?.value ?? {};
+}
+async function discoverMetrics(ctx: Ctx, kind: string, probe: ReportReq): Promise<string[]> {
+  const known = await metricSupport();
+  if (known[kind] && !ctx.deps.backfill) return known[kind];
+  const accepted: string[] = [];
+  const ask = (mets: string[]) => call(ctx, "/gmv_max/report/get/", { query: { ...reportQuery({ ...probe, mets }), page: 1, page_size: 1 } });
+  await ask(CORE); // if even the basic numbers are refused, that is the real problem and TikTok's message is shown
+  for (const m of M.OPTIONAL_METRICS) {
+    try { await ask([...CORE, m]); accepted.push(m); }
+    catch (e) { if (!looksLikeBadParam(e)) throw e; }
+  }
+  const all = { ...known, [kind]: accepted };
+  await rows(sql`insert into settings (key, value) values (${MKEY}, ${JSON.stringify(all)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`);
+  return accepted;
+}
+
+/** Campaign results: one row per campaign per day. Needs no filter. */
+async function runCampaignDaily(ctx: Ctx, c: Counter) {
+  const { today, wins } = runSpan(ctx);
+  const byAdv = await storesByAccount(c);
+  if (!byAdv.size) return;
+  const metSets = [["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi"], CORE];
+  let chosen: string[] | null = null;
   await eachAccount([...byAdv.keys()], c, async (adv) => {
     let emptyRun = 0;
-    for (let w = 0; w < wins.length; w++) {
-      const win = wins[w];
-      const got = await readWindow(adv, byAdv.get(adv)!, win);
-      if (got === "stop") break;
-      emptyRun = got === 0 ? emptyRun + 1 : 0;
-      if (ctx.backfill && emptyRun >= 3) break; // three empty months in a row: the account had no ads before that
-    }
-  });
-
-  /** Reads one window for one account. Returns the number of rows saved, or "stop" when TikTok says the window is older than it keeps. */
-  async function readWindow(adv: string, storeIds: string[], win: { start: string; end: string }): Promise<number | "stop"> {
-    const combos = chosen ? [chosen] : L.dims.flatMap((dims) => L.mets.map((mets) => ({ dims, mets })));
-    let lastErr: unknown = null;
-    for (const combo of combos) {
-      for (const end of endLadder) {
-        const e2 = win.end > end ? end : win.end;
-        try {
-          let n = 0;
-          for await (const { items, page } of pages(ctx, "/gmv_max/report/get/", { advertiser_id: adv, store_ids: storeIds, dimensions: combo.dims, metrics: combo.mets, start_date: win.start, end_date: e2 })) {
-            c.pages++; void page;
-            const lines = items.map(M.reportLine);
-            if (lines.length && !M.hasReadableMetrics(lines)) throw new Error(`TikTok sent ${lines.length} result lines, but none of the numbers (cost, orders, gross revenue, ROI) could be read. Fields sent: ${M.metricNames(lines).join(", ") || "none"}. TikTok may have renamed them.`);
-            lines.forEach((l) => remember(c, { dimensions: l.dims, metrics: l.mets }));
-            const mapped = lines.map((l) => L.map(l, adv));
-            const ok = mapped.filter((r): r is M.Row => !!r);
-            if (ok.length < lines.length) { c.skipped += lines.length - ok.length; c.skipExample ??= JSON.stringify(lines[mapped.findIndex((r) => !r)].dims).slice(0, 120); }
-            await save(ctx, c, L.table, ok);
-            n += ok.length;
-          }
-          if (!chosen) { chosen = combo; c.note = [c.note, `Used dimensions ${combo.dims.join(" + ")}`].filter(Boolean).join(" · "); }
-          if (end !== endLadder[0]) endLadder = [end];
-          return n;
-        } catch (e) {
-          lastErr = e;
-          if (e instanceof AdsApiError && /end.?date|future/i.test(e.message) && end === endLadder[0] && endLadder.length > 1) continue; // try yesterday as the last day
-          if (looksLikeBadParam(e) && !chosen) break; // this dimension/metric choice is refused: try the next one
+    for (const win of wins) {
+      let n: number | null = null;
+      for (const mets of chosen ? [chosen] : metSets) {
+        try { n = await readReport(ctx, c, { adv, storeIds: byAdv.get(adv)!, dims: ["campaign_id", "stat_time_day"], mets, start: win.start, end: win.end }, "ads_campaign_daily", (l) => M.campaignDaily(l, adv), today); chosen = mets; break; }
+        catch (e) {
+          if (looksLikeBadParam(e) && !chosen) continue;
           // A window older than TikTok keeps: keep what we have and say so (the newest window must always work).
-          if (chosen && e instanceof AdsApiError && /date|range|time|old|history|limit/i.test(e.message) && win.end < today) { c.note = [c.note, `TikTok only keeps this report back to about ${addDaysISO(win.end, 1)} (${clean(e.message).slice(0, 100)})`].filter(Boolean).join(" · "); return "stop"; }
+          if (chosen && e instanceof AdsApiError && /date|range|time|old|history|limit/i.test(e.message) && win.end < today) { c.note = [c.note, `TikTok only keeps this report back to about ${addDaysISO(win.end, 1)} (${clean(e.message).slice(0, 100)})`].filter(Boolean).join(" · "); return; }
           throw e;
         }
       }
+      if (n == null) throw new Error("TikTok refused the campaign results request.");
+      emptyRun = n === 0 ? emptyRun + 1 : 0;
+      if (ctx.backfill && emptyRun >= 3) break; // three empty months in a row: the account had no ads before that
     }
-    throw lastErr instanceof Error ? lastErr : new Error("TikTok refused the report request.");
-  }
+  });
+}
+
+/**
+ * Product results. TikTok returns them only when the request names the campaign, so this asks for the campaigns that spent money in each
+ * window (from Campaign Results), ten at a time (one at a time if TikTok refuses a list).
+ */
+async function runProductDaily(ctx: Ctx, c: Counter) {
+  const { today, wins } = runSpan(ctx);
+  const byAdv = await storesByAccount(c);
+  if (!byAdv.size) return;
+  let batch = 10;
+  await eachAccount([...byAdv.keys()], c, async (adv) => {
+    const storeIds = byAdv.get(adv)!;
+    let mets: string[] | null = null;
+    let any = false;
+    for (const win of wins) {
+      const camps = (await rows<{ campaign_id: string }>(sql`select distinct campaign_id from ads_campaign_daily where advertiser_id = ${adv} and day between ${win.start}::date and ${win.end}::date and coalesce(cost, 0) > 0 order by 1`)).map((r) => r.campaign_id);
+      if (!camps.length) continue;
+      any = true;
+      mets ??= [...CORE, ...(await discoverMetrics(ctx, "product", { adv, storeIds, dims: ["campaign_id", "item_group_id", "stat_time_day"], mets: CORE, filtering: { campaign_ids: camps.slice(0, 1) }, start: win.start, end: win.end }))];
+      for (const group of chunk(camps, batch)) {
+        const read = (ids: string[]) => readReport(ctx, c, { adv, storeIds, dims: ["campaign_id", "item_group_id", "stat_time_day"], mets: mets!, filtering: { campaign_ids: ids }, start: win.start, end: win.end }, "ads_product_daily", (l) => M.productDaily(l, adv, { campaign: ids.length === 1 ? ids[0] : undefined }), today);
+        try { await read(group); }
+        catch (e) {
+          if (!(looksLikeBadParam(e) && group.length > 1)) throw e;
+          batch = 1; // TikTok does not take a list of campaigns: one at a time from now on
+          for (const id of group) await read([id]);
+        }
+      }
+    }
+    if (!any) c.note = [c.note, "No campaign spent any money in this period, so there are no product results to read."].filter(Boolean).join(" · ");
+  });
+}
+
+/**
+ * Creative (video) results. TikTok returns them only for one campaign and one product at a time, so this asks for each campaign and product
+ * that spent money in the window (from Product Results). One row per video, per product, per campaign, per day.
+ */
+async function runCreativeDaily(ctx: Ctx, c: Counter) {
+  const { today, wins } = runSpan(ctx);
+  const byAdv = await storesByAccount(c);
+  if (!byAdv.size) return;
+  const dimSets = [["campaign_id", "item_group_id", "item_id", "stat_time_day"], ["campaign_id", "item_id", "stat_time_day"]];
+  let dims: string[] | null = null;
+  await eachAccount([...byAdv.keys()], c, async (adv) => {
+    const storeIds = byAdv.get(adv)!;
+    let mets: string[] | null = null;
+    let any = false;
+    for (const win of wins) {
+      const pairs = await rows<{ campaign_id: string; product_id: string }>(sql`select campaign_id, product_id from ads_product_daily where advertiser_id = ${adv} and day between ${win.start}::date and ${win.end}::date and coalesce(cost, 0) > 0 group by 1, 2 order by 1, 2`);
+      for (const p of pairs) {
+        any = true;
+        const filtering = { campaign_ids: [p.campaign_id], item_group_ids: [p.product_id] };
+        mets ??= [...CORE, ...(await discoverMetrics(ctx, "creative", { adv, storeIds, dims: dims ?? dimSets[0], mets: CORE, filtering, start: win.start, end: win.end }).catch(async (e) => { if (!looksLikeBadParam(e) || dims) throw e; return discoverMetrics(ctx, "creative", { adv, storeIds, dims: dimSets[1], mets: CORE, filtering, start: win.start, end: win.end }); }))];
+        let done = false;
+        for (const d of dims ? [dims] : dimSets) {
+          try { await readReport(ctx, c, { adv, storeIds, dims: d, mets, filtering, start: win.start, end: win.end }, "ads_creative_daily", (l) => M.creativeDaily(l, adv, { campaign: p.campaign_id, product: p.product_id }), today); dims = d; done = true; break; }
+          catch (e) { if (looksLikeBadParam(e) && !dims) continue; throw e; }
+        }
+        if (!done) throw new Error("TikTok refused the creative results request.");
+      }
+    }
+    if (!any) c.note = [c.note, "No product spent any money in this period, so there are no creative results to read."].filter(Boolean).join(" · ");
+  });
+  if (dims) c.note = [c.note, `Used dimensions ${(dims as string[]).join(" + ")}`].filter(Boolean).join(" · ");
 }
 
 const RUNNERS: Record<AdsDatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
   advertisers: runAdvertisers,
   stores: runStores,
   campaigns: runCampaigns,
-  campaign_daily: (ctx, c) => runDaily("campaign_daily", ctx, c),
-  creative_daily: (ctx, c) => runDaily("creative_daily", ctx, c),
-  product_daily: (ctx, c) => runDaily("product_daily", ctx, c),
+  campaign_daily: runCampaignDaily,
+  product_daily: runProductDaily,
+  creative_daily: runCreativeDaily,
 };
 
 export async function adsLiveCount(key: AdsDatasetKey): Promise<number> {

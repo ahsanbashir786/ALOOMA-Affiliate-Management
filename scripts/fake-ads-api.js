@@ -34,17 +34,22 @@ const server = http.createServer(async (req, res) => {
   if (p === "/gmv_max/campaign/get/") return reply(res, 0, { list: CAMPAIGNS, page_info: { page: 1, page_size: 50, total_number: CAMPAIGNS.length, total_page: 1 } });
   if (p === "/gmv_max/report/get/") {
     const dims = JSON.parse(q.dimensions), mets = JSON.parse(q.metrics);
-    if (dims.includes("item_id") && dims.includes("campaign_id")) return reply(res, 40002, null, "Invalid dimensions: item_id can not be combined with campaign_id");
-    if (mets.includes("title") || mets.includes("product_name")) return reply(res, 40002, null, "Invalid metric: title");
+    const filt = q.filtering ? JSON.parse(q.filtering) : {};
+    const creativeLevel = dims.includes("item_id"), productLevel = dims.includes("item_group_id") && !creativeLevel;
+    if (creativeLevel && (!(filt.campaign_ids || []).length || !(filt.item_group_ids || []).length)) return reply(res, 40002, null, "Creative level report must have at least 1 campaign ID and 1 item group ID, please correct the filters.");
+    if (productLevel && !(filt.campaign_ids || []).length) return reply(res, 40002, null, "Item level report must have at least 1 campaign ID, please correct the campaign_id filter.");
+    const OK = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks"];
+    const bad = mets.find((m) => !OK.includes(m));
+    if (bad) return reply(res, 40002, null, "Invalid metric: " + bad);
     const lines = [];
     for (let d = q.start_date; d <= q.end_date; d = addDays(d, 1)) {
       if (d < FIRST) continue;
-      for (const camp of ["C1", "C2"]) for (const it of dims.includes("item_id") ? ["V1", "V22"] : dims.includes("item_group_id") ? ["P1"] : [""]) {
-        const v = val(camp, d, it);
+      for (const camp of filt.campaign_ids || ["C1", "C2"]) for (const it of creativeLevel ? ["V1", "V22"] : productLevel ? ["P1"] : [""]) {
+        const v = { ...val(camp, d, it), product_impressions: "1000", product_clicks: "50", title: "Video " + it };
         const dm = { stat_time_day: d + " 00:00:00" };
         if (dims.includes("campaign_id")) dm.campaign_id = camp;
-        if (dims.includes("item_id")) dm.item_id = it;
-        if (dims.includes("item_group_id")) dm.item_group_id = it;
+        if (creativeLevel) dm.item_id = it;
+        if (dims.includes("item_group_id")) dm.item_group_id = creativeLevel ? filt.item_group_ids[0] : it;
         lines.push({ dimensions: dm, metrics: Object.fromEntries(mets.map((k) => [k, v[k] ?? ""])) });
       }
     }

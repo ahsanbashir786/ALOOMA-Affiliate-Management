@@ -628,6 +628,7 @@ export const adsCampaignDaily = pgTable("ads_campaign_daily", {
 export const adsCreativeDaily = pgTable("ads_creative_daily", {
   advertiserId: text("advertiser_id").notNull(),
   campaignId: text("campaign_id").notNull(),
+  productId: text("product_id").notNull(),
   creativeId: text("creative_id").notNull(),
   day: date("day").notNull(),
   title: text("title"),
@@ -637,11 +638,17 @@ export const adsCreativeDaily = pgTable("ads_creative_daily", {
   orders: integer("orders"),
   grossRevenue: numeric("gross_revenue", { precision: 14, scale: 2 }),
   roi: numeric("roi", { precision: 14, scale: 4 }),
-  views: bigint("views", { mode: "number" }),
+  costPerOrder: numeric("cost_per_order", { precision: 14, scale: 2 }),
+  impressions: bigint("impressions", { mode: "number" }),
+  clicks: bigint("clicks", { mode: "number" }),
+  clickRate: numeric("click_rate", { precision: 12, scale: 6 }),
+  conversionRate: numeric("conversion_rate", { precision: 12, scale: 6 }),
+  viewRate2s: numeric("view_rate_2s", { precision: 12, scale: 6 }),
+  viewRate6s: numeric("view_rate_6s", { precision: 12, scale: 6 }),
   raw: jsonb("raw"),
   h: text("h"),
   syncedAt: tz("synced_at").notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.creativeId, t.day] }), index("ads_creative_daily_day").on(t.day), index("ads_creative_daily_creative").on(t.creativeId)]);
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.productId, t.creativeId, t.day] }), index("ads_creative_daily_day").on(t.day), index("ads_creative_daily_creative").on(t.creativeId)]);
 
 export const adsProductDaily = pgTable("ads_product_daily", {
   advertiserId: text("advertiser_id").notNull(),
@@ -653,6 +660,11 @@ export const adsProductDaily = pgTable("ads_product_daily", {
   orders: integer("orders"),
   grossRevenue: numeric("gross_revenue", { precision: 14, scale: 2 }),
   roi: numeric("roi", { precision: 14, scale: 4 }),
+  costPerOrder: numeric("cost_per_order", { precision: 14, scale: 2 }),
+  impressions: bigint("impressions", { mode: "number" }),
+  clicks: bigint("clicks", { mode: "number" }),
+  clickRate: numeric("click_rate", { precision: 12, scale: 6 }),
+  conversionRate: numeric("conversion_rate", { precision: 12, scale: 6 }),
   raw: jsonb("raw"),
   h: text("h"),
   syncedAt: tz("synced_at").notNull().defaultNow(),

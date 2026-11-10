@@ -26,8 +26,8 @@ Your TikTok Shop must be linked to the ad account in TikTok Ads Manager, otherwi
 | Shops | The TikTok Shop(s) linked to each ad account for GMV Max | `ads_stores` |
 | GMV Max Campaigns | Name, status, type (product / LIVE), budget, ROAS target, dates | `ads_campaigns` |
 | Campaign Results | One row per campaign per day: cost, net cost, orders, sales (gross revenue), ROI, cost per order | `ads_campaign_daily` |
-| Creative Results | One row per creative (video) per day: cost, orders, sales, ROI, title, account | `ads_creative_daily` |
-| Product Results | One row per product per day: cost, orders, sales, ROI | `ads_product_daily` |
+| Product Results | One row per campaign, product and day: cost, orders, sales, ROI, cost per order, impressions, clicks, click rate, conversion rate | `ads_product_daily` |
+| Creative Results | One row per campaign, product, video and day: the same numbers plus title, TikTok account, 2-second and 6-second view rates | `ads_creative_daily` |
 
 Every row also keeps **TikTok's full answer** (`raw` column), so a field we did not map yet is never lost and can be added later without a new sync. The card's **What TikTok sent** shows the first record of the last good run.
 
@@ -43,7 +43,9 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 | One account failing | If TikTok refuses one ad account for its own reasons, the others still sync and the card says which was skipped. |
 | Rate limit | The sync waits when TikTok says "too many requests" and tries again (up to six times); TikTok's own hiccups are retried three times. Sign-in problems are never retried. |
 | Unreadable data | If TikTok sends result lines but none of the numbers can be read (a renamed field), the dataset **fails with the field names it saw** instead of saving empty rows. |
-| Dimensions | For creative and product results the system tries TikTok's allowed dimension and metric choices in order and remembers the first that works; the card says which one it used. |
+| Product and creative results | TikTok returns these only when the request **names the campaign** (and, for videos, the **product**). The sync therefore asks for the campaigns and products that spent money in each window, taken from Campaign Results, so no call is wasted. Product results go ten campaigns at a time (one at a time if TikTok refuses a list). |
+| Extra numbers | Which optional numbers TikTok accepts (impressions, clicks, rates, title…) is found out once with one tiny request per name and remembered; the sync then asks only for names that work. **Re-Read History** checks again. |
+| Dimensions | If TikTok refuses a dimension choice the system tries the next one and remembers the first that works; the card says which one it used. |
 | Safe restarts | A restart marks any run left "running" as interrupted, so nothing waits forever. Already-saved data is untouched. |
 | Time zone | Days are the days in the ad account's own time zone, as TikTok reports them. |
 | Privacy | Ad data only. No customer data is involved. |

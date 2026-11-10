@@ -85,6 +85,7 @@ CREATE TABLE public.ads_campaigns (
 CREATE TABLE public.ads_creative_daily (
     advertiser_id text NOT NULL,
     campaign_id text NOT NULL,
+    product_id text NOT NULL,
     creative_id text NOT NULL,
     day date NOT NULL,
     title text,
@@ -94,7 +95,13 @@ CREATE TABLE public.ads_creative_daily (
     orders integer,
     gross_revenue numeric(14,2),
     roi numeric(14,4),
-    views bigint,
+    cost_per_order numeric(14,2),
+    impressions bigint,
+    clicks bigint,
+    click_rate numeric(12,6),
+    conversion_rate numeric(12,6),
+    view_rate_2s numeric(12,6),
+    view_rate_6s numeric(12,6),
     raw jsonb,
     h text,
     synced_at timestamp with time zone DEFAULT now() NOT NULL
@@ -115,6 +122,11 @@ CREATE TABLE public.ads_product_daily (
     orders integer,
     gross_revenue numeric(14,2),
     roi numeric(14,4),
+    cost_per_order numeric(14,2),
+    impressions bigint,
+    clicks bigint,
+    click_rate numeric(12,6),
+    conversion_rate numeric(12,6),
     raw jsonb,
     h text,
     synced_at timestamp with time zone DEFAULT now() NOT NULL
@@ -996,7 +1008,7 @@ ALTER TABLE ONLY public.ads_campaigns
 --
 
 ALTER TABLE ONLY public.ads_creative_daily
-    ADD CONSTRAINT ads_creative_daily_pkey PRIMARY KEY (advertiser_id, campaign_id, creative_id, day);
+    ADD CONSTRAINT ads_creative_daily_pkey PRIMARY KEY (advertiser_id, campaign_id, product_id, creative_id, day);
 
 
 --
