@@ -186,6 +186,13 @@ async function main() {
   const support = (await q(sql`select value from settings where key = 'tiktok_ads_metrics'`))[0]?.value as Record<string, string[]> | undefined;
   const dl = (await q(sql`select delivery_status from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
   check("creative results: the delivery status TikTok gives (Performing / Underperforming…) is saved", dl.delivery_status === "PERFORMING", JSON.stringify(dl));
+  await q(sql`update settings set value = jsonb_set(value, '{_sig}', '["old"]'::jsonb) where key = 'tiktok_ads_metrics'`);
+  const probesBefore = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
+  await S.runAdsDataset("product_daily", "manual", null, deps);
+  check("metric discovery: a changed list of names is asked about again, an unchanged one is not", seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length > probesBefore);
+  const probesMid = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
+  await S.runAdsDataset("product_daily", "manual", null, deps);
+  check("metric discovery: remembered answers are reused", seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length === probesMid);
   check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title", "creative_delivery_status"].sort()) && !(support?.product ?? []).includes("tt_account_name"), JSON.stringify(support));
   const realReports = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size !== "1");
   check("requests: after discovery every report asks only for metrics TikTok accepts", realReports.every((x) => (JSON.parse(x.q.metrics) as string[]).every((m) => ACCEPTED.includes(m))));

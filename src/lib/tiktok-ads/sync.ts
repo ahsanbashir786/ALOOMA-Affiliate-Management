@@ -215,7 +215,9 @@ async function metricSupport(): Promise<Record<string, string[]>> {
 }
 async function discoverMetrics(ctx: Ctx, kind: string, probe: ReportReq): Promise<string[]> {
   const known = await metricSupport();
-  if (known[kind] && !ctx.deps.backfill) return known[kind];
+  // Remembered answers are used only while the list of names we ask about is the same (a new name added in an update is tried once).
+  const sig = [M.OPTIONAL_METRICS.length, M.OPTIONAL_METRICS.join(",").length].join(":");
+  if (known[kind] && known._sig?.[0] === sig && !ctx.deps.backfill) return known[kind];
   const accepted: string[] = [];
   const ask = (mets: string[]) => call(ctx, "/gmv_max/report/get/", { query: { ...reportQuery({ ...probe, mets }), page: 1, page_size: 1 } });
   await ask(CORE); // if even the basic numbers are refused, that is the real problem and TikTok's message is shown
@@ -223,7 +225,7 @@ async function discoverMetrics(ctx: Ctx, kind: string, probe: ReportReq): Promis
     try { await ask([...CORE, m]); accepted.push(m); }
     catch (e) { if (!looksLikeBadParam(e)) throw e; }
   }
-  const all = { ...known, [kind]: accepted };
+  const all = { ...known, [kind]: accepted, _sig: [sig] };
   await rows(sql`insert into settings (key, value) values (${MKEY}, ${JSON.stringify(all)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`);
   return accepted;
 }
