@@ -704,3 +704,5 @@ export const adsBoosts = pgTable("ads_boosts", {
   h: text("h"),
   syncedAt: tz("synced_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.advertiserId, t.sessionId] }), index("ads_boosts_campaign").on(t.campaignId), index("ads_boosts_item").on(t.itemId)]);
+
+// The view ads_creative_summary (migrations/0023) is read with plain SQL; drizzle does not manage it.

@@ -29,6 +29,7 @@ async function main() {
   let renameMetrics = false;
   let maxCampaignIds = 10;
   let rejectProductDim = false;
+  let videosOnlyViaIdentity = false;
   let oldestAllowed = "";
   const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks"];
   const failAccount222 = true;
@@ -74,8 +75,10 @@ async function main() {
       const size = 2; // a server that gives fewer per page than asked: the walk must follow page_info, not the asked size
       return reply(0, { list: all.slice((page - 1) * size, page * size), page_info: { page, page_size: size, total_number: all.length, total_page: Math.ceil(all.length / size) } });
     }
+    if (p === "/gmv_max/identity/get/") return reply(0, { identity_list: [{ identity_id: "ID1", identity_type: "TT_USER", identity_authorized_bc_id: "B1", display_name: "Tender Twigs" }] });
     if (p === "/gmv_max/video/get/") {
       if (!qq.store_authorized_bc_id || qq.store_id !== "S1") return reply(40002, null, "store_authorized_bc_id is required");
+      if (videosOnlyViaIdentity) { const il = qq.identity_list ? JSON.parse(qq.identity_list) : []; if (!il.length || il[0].identity_id !== "ID1" || il[0].identity_type !== "TT_USER") return reply(0, { list: [], page_info: { page: 1, page_size: 10, total_number: 0, total_page: 1 } }); }
       const all = [1, 2, 3, 4, 5].map((n) => ({ item_id: "VID" + n, spu_id: "P1", text: "Video number " + n, identity_name: n === 5 ? "ben" : "amy", identity_id: "ID" + n, create_time: "2026-10-0" + n + " 10:00:00", authorization_status: n === 4 ? "AUTHORIZATION_NEEDED" : "AUTHORIZED", is_eligible: n !== 4 }));
       const page = Number(qq.page), size = 2; // gives fewer per page than asked
       return reply(0, { list: all.slice((page - 1) * size, page * size), page_info: { page, page_size: size, total_number: all.length, total_page: Math.ceil(all.length / size) } });
@@ -223,6 +226,13 @@ async function main() {
   check("too old: product results keep what TikTok allows, stop at the edge and say so", ro.status === "ok" && /only keeps product results back to/.test(ro.error ?? "") && (await count("ads_product_daily")) === 60, `${ro.status} ${ro.error} ${await count("ads_product_daily")}`);
   oldestAllowed = "";
   await S.runAdsDataset("product_daily", "manual", null, { ...deps, backfill: true });
+
+  // ── the plain video list is empty: the shop's TikTok accounts are asked one by one ──
+  videosOnlyViaIdentity = true;
+  await q(sql`delete from ads_videos`); await q(sql`delete from ads_sync_state where dataset = 'videos'`);
+  const rv = await S.runAdsDataset("videos", "manual", null, deps);
+  check("empty video list: falls back to each TikTok account of the shop and still finds the videos, and says so", rv.status === "ok" && (await count("ads_videos")) === 5 && /plain video list was empty.*1 TikTok account tried, 5 videos found/.test(rv.error ?? ""), `${rv.status} ${rv.error} ${await count("ads_videos")}`);
+  videosOnlyViaIdentity = false;
 
   // ── trouble ──
   renameMetrics = true;

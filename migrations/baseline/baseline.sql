@@ -131,6 +131,80 @@ CREATE TABLE public.ads_creative_daily (
 
 
 --
+-- Name: ads_videos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_videos (
+    advertiser_id text NOT NULL,
+    store_id text NOT NULL,
+    item_id text NOT NULL,
+    spu_id text,
+    title text,
+    identity_id text,
+    username text,
+    posted_at timestamp with time zone,
+    authorization_status text,
+    authorization_type text,
+    eligible boolean,
+    status text,
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: tt_videos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tt_videos (
+    video_id text NOT NULL,
+    creator text,
+    title text,
+    posted_at timestamp with time zone,
+    views bigint,
+    gmv numeric(14,2),
+    units_sold integer,
+    click_through_rate numeric(12,6),
+    products jsonb,
+    window_start date,
+    window_end date,
+    h text,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_creative_summary; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.ads_creative_summary AS
+ SELECT d.advertiser_id,
+    d.campaign_id,
+    d.product_id,
+    d.creative_id,
+    min(d.day) AS first_day,
+    max(d.day) AS last_day,
+    sum(d.cost) AS cost,
+    (sum(d.orders))::integer AS orders,
+    sum(d.gross_revenue) AS gross_revenue,
+        CASE
+            WHEN (sum(d.cost) > (0)::numeric) THEN round((sum(d.gross_revenue) / sum(d.cost)), 2)
+            ELSE NULL::numeric
+        END AS roi,
+    (sum(d.impressions))::bigint AS impressions,
+    (sum(d.clicks))::bigint AS clicks,
+    COALESCE(max(v.creator), max(av.username)) AS creator,
+    COALESCE(max(v.title), max(av.title), max(d.title)) AS title,
+    COALESCE(max(v.posted_at), max(av.posted_at)) AS posted_at
+   FROM ((public.ads_creative_daily d
+     LEFT JOIN public.tt_videos v ON ((v.video_id = d.creative_id)))
+     LEFT JOIN public.ads_videos av ON (((av.item_id = d.creative_id) AND (av.advertiser_id = d.advertiser_id))))
+  GROUP BY d.advertiser_id, d.campaign_id, d.product_id, d.creative_id;
+
+
+--
 -- Name: ads_product_daily; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -223,29 +297,6 @@ CREATE TABLE public.ads_sync_state (
     records integer DEFAULT 0 NOT NULL,
     sample jsonb,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: ads_videos; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.ads_videos (
-    advertiser_id text NOT NULL,
-    store_id text NOT NULL,
-    item_id text NOT NULL,
-    spu_id text,
-    title text,
-    identity_id text,
-    username text,
-    posted_at timestamp with time zone,
-    authorization_status text,
-    authorization_type text,
-    eligible boolean,
-    status text,
-    raw jsonb,
-    h text,
-    synced_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -414,28 +465,6 @@ CREATE TABLE public.tt_lives (
     product_clicks integer,
     click_through_rate numeric(12,6),
     click_to_order_rate numeric(12,6),
-    h text,
-    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
-    synced_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: tt_videos; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.tt_videos (
-    video_id text NOT NULL,
-    creator text,
-    title text,
-    posted_at timestamp with time zone,
-    views bigint,
-    gmv numeric(14,2),
-    units_sold integer,
-    click_through_rate numeric(12,6),
-    products jsonb,
-    window_start date,
-    window_end date,
     h text,
     first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
     synced_at timestamp with time zone DEFAULT now() NOT NULL

@@ -69,12 +69,18 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
     if (!all.length && firstError) throw firstError;
     return { items: all };
   });
-  const withShop = ids.find((id) => (shopsOf.get(id) ?? []).length);
-  if (withShop) {
+  const withShops = ids.filter((id) => (shopsOf.get(id) ?? []).length);
+  if (withShops.length) {
     await run("Campaign results (last 7 days)", async () => {
       const end = todayKL();
-      const d = await adsCall<Record<string, unknown>>("/gmv_max/report/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: withShop, store_ids: shopsOf.get(withShop), dimensions: ["campaign_id", "stat_time_day"], metrics: ["cost", "orders", "gross_revenue", "roi"], start_date: addDaysISO(end, -6), end_date: end, page: 1, page_size: 10 } });
-      const list = arr(d.list);
+      let last: { list: Record<string, unknown>[]; adv: string } | null = null;
+      for (const id of withShops) {
+        const d = await adsCall<Record<string, unknown>>("/gmv_max/report/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: id, store_ids: shopsOf.get(id), dimensions: ["campaign_id", "stat_time_day"], metrics: ["cost", "orders", "gross_revenue", "roi"], start_date: addDaysISO(end, -6), end_date: end, page: 1, page_size: 10 } });
+        const list = arr(d.list);
+        last = { list, adv: id };
+        if (list.length) break; // the first account that has results in the last week
+      }
+      const list = last?.list ?? [];
       return { items: list, fields: { ...obj(list[0]?.dimensions), ...obj(list[0]?.metrics) } };
     });
   }
@@ -83,7 +89,11 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
   if (sr) {
     await run("GMV Max videos", async () => {
       const d = await adsCall<Record<string, unknown>>("/gmv_max/video/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: sr.adv, store_id: sr.store, store_authorized_bc_id: sr.bc, page: 1, page_size: 10 } });
-      return { items: arr(d.list ?? d.videos ?? d.item_list ?? Object.values(d).find((v) => Array.isArray(v))) };
+      const items = arr(d.list ?? d.videos ?? d.item_list ?? Object.values(d).find((v) => Array.isArray(v)));
+      if (items.length) return { items };
+      // Nothing from the plain list: the TikTok accounts (identities) of the shop, so we can see what they look like.
+      const idn = await adsCall<Record<string, unknown>>("/gmv_max/identity/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: sr.adv, store_id: sr.store, store_authorized_bc_id: sr.bc } });
+      return { items: [], fields: obj(arr(idn.identity_list ?? idn.list ?? idn.identities ?? Object.values(idn).find((v) => Array.isArray(v)))[0]) };
     });
   }
   const fc = firstCampaign as { adv: string; id: string } | null;

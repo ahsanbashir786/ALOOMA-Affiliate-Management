@@ -336,11 +336,33 @@ async function runVideos(ctx: Ctx, c: Counter) {
   await eachAccount([...byAdv.keys()], c, async (adv) => {
     for (const st of byAdv.get(adv)!) {
       if (!st.bc_id) { c.note = [c.note, `Shop ${st.store_id} has no Business Center id, so its videos were not read`].filter(Boolean).join(" · "); continue; }
+      let found = 0;
       for await (const { items, page } of pages(ctx, "/gmv_max/video/get/", { advertiser_id: adv, store_id: st.store_id, store_authorized_bc_id: st.bc_id })) {
         c.pages = Math.max(c.pages, page);
         items.forEach((o) => remember(c, o));
+        found += items.length;
         await save(ctx, c, "ads_videos", items.map((o) => M.video(o, adv, st.store_id)).filter((r) => r.item_id));
       }
+      if (found) continue;
+      // The plain list was empty: ask for the videos of each TikTok account (identity) of the shop, one at a time.
+      let identities: Record<string, unknown>[] = [];
+      try {
+        const d = await call(ctx, "/gmv_max/identity/get/", { query: { advertiser_id: adv, store_id: st.store_id, store_authorized_bc_id: st.bc_id } });
+        identities = ((d.identity_list ?? d.identities ?? d.list ?? Object.values(d).find((v) => Array.isArray(v))) as Record<string, unknown>[] | undefined) ?? [];
+      } catch (e) { if (e instanceof AdsApiError && (e.isAuth || e.isRateLimit)) throw e; }
+      let viaIdentity = 0;
+      for (const idn of identities) {
+        const identity = { identity_id: M.str(M.pick(idn, "identity_id", "id")), identity_type: M.str(M.pick(idn, "identity_type", "type")), identity_authorized_bc_id: M.str(M.pick(idn, "identity_authorized_bc_id", "authorized_bc_id", "bc_id")) };
+        if (!identity.identity_id) continue;
+        try {
+          for await (const { items } of pages(ctx, "/gmv_max/video/get/", { advertiser_id: adv, store_id: st.store_id, store_authorized_bc_id: st.bc_id, identity_list: [Object.fromEntries(Object.entries(identity).filter(([, v]) => v))] })) {
+            items.forEach((o) => remember(c, o));
+            viaIdentity += items.length;
+            await save(ctx, c, "ads_videos", items.map((o) => { const v = M.video(o, adv, st.store_id); return { ...v, identity_id: v.identity_id ?? identity.identity_id } as M.Row; }).filter((r) => r.item_id));
+          }
+        } catch (e) { if (e instanceof AdsApiError && (e.isAuth || e.isRateLimit)) throw e; }
+      }
+      c.note = [c.note, `Shop ${st.store_id}: TikTok's plain video list was empty; ${identities.length} TikTok account${identities.length === 1 ? "" : "s"} tried, ${viaIdentity} video${viaIdentity === 1 ? "" : "s"} found`].filter(Boolean).join(" · ");
     }
   });
 }

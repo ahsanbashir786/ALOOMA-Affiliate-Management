@@ -2,6 +2,7 @@
 // TikTok's field names for GMV Max are read tolerantly (the first name that is present wins) and every row also keeps the whole answer
 // ("raw"), so a field we did not map yet is never lost and can be added later without a new sync.
 import { day as dayOf, int, num, str, ts, type Row } from "@/lib/tiktok/map";
+export { str };
 export type { Row };
 type R = Record<string, unknown>;
 /** The two kinds of GMV Max campaign, as TikTok names them (TikTok's own error message listed these as the allowed values). */
