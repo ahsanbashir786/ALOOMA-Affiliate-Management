@@ -14,7 +14,7 @@ async function main() {
   const { sql } = await import("drizzle-orm");
   const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
   for (const t of ["ads_videos", "ads_boosts", "ads_sync_runs", "ads_sync_state", "ads_advertisers", "ads_stores", "ads_campaigns", "ads_campaign_daily", "ads_creative_daily", "ads_product_daily"]) await q(sql.raw(`delete from ${t}`));
-  await q(sql`delete from settings where key in ('tiktok_ads_connection', 'tiktok_ads_sync')`);
+  await q(sql`delete from settings where key in ('tiktok_ads_connection', 'tiktok_ads_sync', 'tiktok_ads_metrics')`);
   const cfg = { appId: "APP1", appSecret: "s3cret", redirectUri: null };
   const sleep = async () => {};
   const now = () => new Date("2026-11-10T04:00:00Z");
@@ -31,7 +31,7 @@ async function main() {
   let rejectProductDim = false;
   let videosOnlyViaIdentity = false;
   let oldestAllowed = "";
-  const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks"];
+  const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks", "creative_delivery_status"];
   const failAccount222 = true;
   let bump: Record<string, string> = {};
   const seen: { path: string; headers: Record<string, string>; q: Record<string, string>; body: unknown }[] = [];
@@ -83,6 +83,10 @@ async function main() {
       const page = Number(qq.page), size = 2; // gives fewer per page than asked
       return reply(0, { list: all.slice((page - 1) * size, page * size), page_info: { page, page_size: size, total_number: all.length, total_page: Math.ceil(all.length / size) } });
     }
+    if (p === "/campaign/gmv_max/session/get/") {
+      const ids = JSON.parse(qq.session_ids) as string[];
+      return reply(0, { list: ids.map((id) => ({ session_id: id, status: id === "S-1" ? "BOOSTING" : "BOOSTED", item_ids: id === "S-1" ? ["V1", "V22"] : ["V1"] })) });
+    }
     if (p === "/campaign/gmv_max/session/list/") {
       if (qq.campaign_id === "C3") return reply(40002, null, "This campaign has no creative boost");
       if (qq.campaign_id === "C2") return reply(0, { list: [] });
@@ -110,7 +114,7 @@ async function main() {
           const items = creativeLevel ? ["V1", "V22"] : productLevel ? ["P1"] : [""];
           for (const it of items) {
             const v = val(camp, d, it) as Record<string, string>;
-            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it;
+            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it; v.creative_delivery_status = it === "V1" ? "PERFORMING" : "UNDERPERFORMING";
             if (bump[`${camp}|${d}`] && !it) v.gross_revenue = bump[`${camp}|${d}`];
             const m: Record<string, string> = Object.fromEntries(mets.map((k) => [renameMetrics ? "x_" + k : k, v[k] ?? ""]));
             const dm: Record<string, string> = { stat_time_day: d + " 00:00:00" };
@@ -180,7 +184,9 @@ async function main() {
   const cr = (await q(sql`select title, impressions::int as imp, clicks::int as clk, cost_per_order::float8 as cpo from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
   check("creative results: the extra numbers TikTok accepts are saved (title, impressions, clicks, cost per order)", cr.title === "Video V1" && cr.imp === 1000 && cr.clk === 50 && cr.cpo === 10, JSON.stringify(cr));
   const support = (await q(sql`select value from settings where key = 'tiktok_ads_metrics'`))[0]?.value as Record<string, string[]> | undefined;
-  check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title"].sort()) && !(support?.product ?? []).includes("tt_account_name"), JSON.stringify(support));
+  const dl = (await q(sql`select delivery_status from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
+  check("creative results: the delivery status TikTok gives (Performing / Underperforming…) is saved", dl.delivery_status === "PERFORMING", JSON.stringify(dl));
+  check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title", "creative_delivery_status"].sort()) && !(support?.product ?? []).includes("tt_account_name"), JSON.stringify(support));
   const realReports = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size !== "1");
   check("requests: after discovery every report asks only for metrics TikTok accepts", realReports.every((x) => (JSON.parse(x.q.metrics) as string[]).every((m) => ACCEPTED.includes(m))));
   check("requests: product and creative requests always name their campaign (and product)", realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_id")).every((x) => { const f = JSON.parse(x.q.filtering); return f.campaign_ids.length === 1 && f.item_group_ids.length === 1; }) && realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_group_id") && !JSON.parse(x.q.dimensions).includes("item_id")).every((x) => JSON.parse(x.q.filtering).campaign_ids.length >= 1));
@@ -189,7 +195,7 @@ async function main() {
   check("videos: all pages of the video list saved (TikTok gave fewer per page than asked), with the creator, authorization and eligibility", vids.length === 5 && vids[0].username === "amy" && vids[4].username === "ben" && vids[3].authorization_status === "AUTHORIZATION_NEEDED" && vids[3].eligible === false && vids[0].eligible === true && vids[0].has_date === true && vids[0].spu_id === "P1", JSON.stringify(vids));
   check("videos: asked with the shop and its Business Center id", seen.filter((x) => x.path === "/gmv_max/video/get/").every((x) => x.q.store_id === "S1" && x.q.store_authorized_bc_id === "B1"));
   const bst = (await q(sql`select session_id, campaign_id, item_id, status, budget::float8 as budget, starts_at is not null as has_start from ads_boosts order by session_id`));
-  check("boosts: the sessions of each campaign saved with item, status, budget and schedule; a campaign TikTok refuses is skipped and reported", bst.length === 2 && bst[0].campaign_id === "C1" && bst[0].item_id === "V1" && bst[0].status === "ACTIVE" && bst[0].budget === 50 && bst[0].has_start === true && /1 of 3 campaigns skipped/.test(String(r1.find((r) => r.dataset === "boosts")?.error)), JSON.stringify([bst, r1.find((r) => r.dataset === "boosts")]));
+  check("boosts: the sessions of each campaign saved with item, status (from the detail call), budget and schedule; a campaign TikTok refuses is skipped and reported", bst.length === 2 && bst[0].campaign_id === "C1" && bst[0].item_id === "V1" && bst[0].budget === 50 && bst[0].has_start === true && bst[0].status === "BOOSTING" && bst[1].status === "BOOSTED" && /1 of 3 campaigns skipped/.test(String(r1.find((r) => r.dataset === "boosts")?.error)), JSON.stringify([bst, r1.find((r) => r.dataset === "boosts")]));
   check("requests: every call carries the login in the Access-Token header", seen.filter((s) => !s.path.startsWith("/oauth2/")).every((s) => s.headers["access-token"] === "AT123"));
   check("requests: the last day asked for is never in the future", reqs.every((r) => r.q.end_date <= TODAY));
   check("requests: asks for the shop ids of that account only", reqs.every((r) => r.q.store_ids === '["S1"]'));

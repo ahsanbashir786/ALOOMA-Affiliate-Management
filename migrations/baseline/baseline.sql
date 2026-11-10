@@ -126,7 +126,8 @@ CREATE TABLE public.ads_creative_daily (
     view_rate_6s numeric(12,6),
     raw jsonb,
     h text,
-    synced_at timestamp with time zone DEFAULT now() NOT NULL
+    synced_at timestamp with time zone DEFAULT now() NOT NULL,
+    delivery_status text
 );
 
 

@@ -64,8 +64,9 @@ export function video(o: R, advertiserId: string, storeId: string): Row {
 
 /** One creative boost session of a campaign. */
 export function boost(o: R, advertiserId: string, campaignId: string): Row {
-  const s = obj(o.session);
-  const g = (...n: string[]) => pick(o, ...n) ?? pick(s, ...n);
+  const s = obj(o.session), d = obj(o.detail);
+  // The detail call is the most specific, then the list line.
+  const g = (...n: string[]) => pick(d, ...n) ?? pick(obj(d.session), ...n) ?? pick(o, ...n) ?? pick(s, ...n);
   return {
     advertiser_id: advertiserId, campaign_id: campaignId,
     session_id: str(g("session_id", "id")), store_id: str(g("store_id")),
@@ -102,7 +103,8 @@ export const FUNNEL_METRICS = {
   view_rate_6s: ["ad_video_view_rate_6s", "video_view_rate_6s"],
 } as const;
 /** Every optional metric worth asking for. Which of them TikTok accepts is found out once per account (see discovery in sync.ts). */
-export const OPTIONAL_METRICS = ["cost_per_order", "title", "tt_account_name", "shop_content_type", "product_name", ...Object.values(FUNNEL_METRICS).flat()];
+export const DELIVERY_STATUS_METRICS = ["creative_delivery_status", "exploration_secondary_status", "exploration_status", "delivery_status", "creative_status", "item_status"];
+export const OPTIONAL_METRICS = ["cost_per_order", "title", "tt_account_name", "shop_content_type", "product_name", ...Object.values(FUNNEL_METRICS).flat(), ...DELIVERY_STATUS_METRICS];
 const funnel = (m: R) => ({
   impressions: int(dec(pick(m, ...FUNNEL_METRICS.impressions))), clicks: int(dec(pick(m, ...FUNNEL_METRICS.clicks))),
   click_rate: dec(pick(m, ...FUNNEL_METRICS.click_rate)), conversion_rate: dec(pick(m, ...FUNNEL_METRICS.conversion_rate)),
@@ -119,7 +121,7 @@ export function creativeDaily(l: ReportLine, advertiserId: string, scope?: { cam
     account_name: str(pick(l.mets, "tt_account_name", "account_name")),
     content_type: str(pick(l.mets, "shop_content_type", "content_type")),
     cost: dec(l.mets.cost), orders: int(dec(l.mets.orders)), gross_revenue: dec(l.mets.gross_revenue), roi: dec(l.mets.roi), cost_per_order: dec(l.mets.cost_per_order),
-    ...funnel(l.mets), view_rate_2s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_2s)), view_rate_6s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_6s)), raw: raw(l),
+    ...funnel(l.mets), view_rate_2s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_2s)), view_rate_6s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_6s)), delivery_status: str(pick(l.mets, ...DELIVERY_STATUS_METRICS) ?? pick(l.dims, ...DELIVERY_STATUS_METRICS)), raw: raw(l),
   };
 }
 

@@ -36,7 +36,7 @@ const TABLES: Record<string, Table> = {
   ads_videos: { name: "ads_videos", pk: ["advertiser_id", "store_id", "item_id"], cols: { advertiser_id: "text", store_id: "text", item_id: "text", spu_id: "text", title: "text", identity_id: "text", username: "text", posted_at: "timestamptz", authorization_status: "text", authorization_type: "text", eligible: "boolean", status: "text", raw: RAW } },
   ads_boosts: { name: "ads_boosts", pk: ["advertiser_id", "session_id"], cols: { advertiser_id: "text", campaign_id: "text", session_id: "text", store_id: "text", item_id: "text", status: "text", budget: "numeric", bid_type: "text", schedule_type: "text", starts_at: "timestamptz", ends_at: "timestamptz", raw: RAW } },
   ads_product_daily: { name: "ads_product_daily", pk: ["advertiser_id", "campaign_id", "product_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", day: "date", title: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", raw: RAW } },
-  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", raw: RAW } },
+  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", delivery_status: "text", raw: RAW } },
 };
 
 /** The row that stays open while a whole sync (every dataset) is in progress. */
@@ -382,8 +382,19 @@ async function runBoosts(ctx: Ctx, c: Counter) {
       const d = await call(ctx, "/campaign/gmv_max/session/list/", { query: { advertiser_id: camp.advertiser_id, campaign_id: camp.campaign_id } });
       const list = (((d.list ?? d.sessions ?? d.session_list) as Record<string, unknown>[] | undefined) ?? (Object.values(d).find((v) => Array.isArray(v)) as Record<string, unknown>[] | undefined) ?? []);
       c.pages++; ok++;
-      list.forEach((o) => remember(c, o));
-      await save(ctx, c, "ads_boosts", list.map((o) => M.boost(o, camp.advertiser_id, camp.campaign_id)).filter((r) => r.session_id));
+      // The list gives the basics; the detail call adds what each session contains (videos, status). A detail call that fails never loses the list.
+      const ids = list.map((o) => M.str(M.pick(o, "session_id", "id"))).filter((x): x is string => !!x);
+      const detail = new Map<string, Record<string, unknown>>();
+      for (let i = 0; i < ids.length; i += 10) {
+        try {
+          const g = await call(ctx, "/campaign/gmv_max/session/get/", { query: { advertiser_id: camp.advertiser_id, session_ids: ids.slice(i, i + 10) } });
+          const got = ((g.list ?? g.sessions ?? g.session_list) as Record<string, unknown>[] | undefined) ?? (Object.values(g).find((v) => Array.isArray(v)) as Record<string, unknown>[] | undefined) ?? [];
+          for (const x of got) { const id = M.str(M.pick(x, "session_id", "id")); if (id) detail.set(id, x); }
+        } catch (e) { if (e instanceof AdsApiError && (e.isAuth || e.isRateLimit)) throw e; }
+      }
+      const merged = list.map((o) => { const id = M.str(M.pick(o, "session_id", "id")); const d = id ? detail.get(id) : undefined; return d ? { ...o, detail: d } : o; });
+      merged.forEach((o) => remember(c, o));
+      await save(ctx, c, "ads_boosts", merged.map((o) => M.boost(o, camp.advertiser_id, camp.campaign_id)).filter((r) => r.session_id));
     } catch (e) {
       if (e instanceof AdsApiError && (e.isAuth || e.isRateLimit)) throw e;
       failed++; if (!firstError) firstError = clean(errText(e)) + (e instanceof AdsApiError && e.requestId ? ` (request ${e.requestId})` : "");
