@@ -669,3 +669,38 @@ export const adsProductDaily = pgTable("ads_product_daily", {
   h: text("h"),
   syncedAt: tz("synced_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.productId, t.day] }), index("ads_product_daily_day").on(t.day)]);
+
+export const adsVideos = pgTable("ads_videos", {
+  advertiserId: text("advertiser_id").notNull(),
+  storeId: text("store_id").notNull(),
+  itemId: text("item_id").notNull(),
+  spuId: text("spu_id"),
+  title: text("title"),
+  identityId: text("identity_id"),
+  username: text("username"),
+  postedAt: tz("posted_at"),
+  authorizationStatus: text("authorization_status"),
+  authorizationType: text("authorization_type"),
+  eligible: boolean("eligible"),
+  status: text("status"),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.storeId, t.itemId] }), index("ads_videos_username").on(t.username)]);
+
+export const adsBoosts = pgTable("ads_boosts", {
+  advertiserId: text("advertiser_id").notNull(),
+  campaignId: text("campaign_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  storeId: text("store_id"),
+  itemId: text("item_id"),
+  status: text("status"),
+  budget: numeric("budget", { precision: 14, scale: 2 }),
+  bidType: text("bid_type"),
+  scheduleType: text("schedule_type"),
+  startsAt: tz("starts_at"),
+  endsAt: tz("ends_at"),
+  raw: jsonb("raw"),
+  h: text("h"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.sessionId] }), index("ads_boosts_campaign").on(t.campaignId), index("ads_boosts_item").on(t.itemId)]);

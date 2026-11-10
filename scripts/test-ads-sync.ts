@@ -13,7 +13,7 @@ async function main() {
   const { db } = await import("../src/db");
   const { sql } = await import("drizzle-orm");
   const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
-  for (const t of ["ads_sync_runs", "ads_sync_state", "ads_advertisers", "ads_stores", "ads_campaigns", "ads_campaign_daily", "ads_creative_daily", "ads_product_daily"]) await q(sql.raw(`delete from ${t}`));
+  for (const t of ["ads_videos", "ads_boosts", "ads_sync_runs", "ads_sync_state", "ads_advertisers", "ads_stores", "ads_campaigns", "ads_campaign_daily", "ads_creative_daily", "ads_product_daily"]) await q(sql.raw(`delete from ${t}`));
   await q(sql`delete from settings where key in ('tiktok_ads_connection', 'tiktok_ads_sync')`);
   const cfg = { appId: "APP1", appSecret: "s3cret", redirectUri: null };
   const sleep = async () => {};
@@ -73,6 +73,17 @@ async function main() {
       if (asked > 50) return reply(40002, null, "page_size is invalid: it must be 1 to 50"); // forces the page size to step down
       const size = 2; // a server that gives fewer per page than asked: the walk must follow page_info, not the asked size
       return reply(0, { list: all.slice((page - 1) * size, page * size), page_info: { page, page_size: size, total_number: all.length, total_page: Math.ceil(all.length / size) } });
+    }
+    if (p === "/gmv_max/video/get/") {
+      if (!qq.store_authorized_bc_id || qq.store_id !== "S1") return reply(40002, null, "store_authorized_bc_id is required");
+      const all = [1, 2, 3, 4, 5].map((n) => ({ item_id: "VID" + n, spu_id: "P1", text: "Video number " + n, identity_name: n === 5 ? "ben" : "amy", identity_id: "ID" + n, create_time: "2026-10-0" + n + " 10:00:00", authorization_status: n === 4 ? "AUTHORIZATION_NEEDED" : "AUTHORIZED", is_eligible: n !== 4 }));
+      const page = Number(qq.page), size = 2; // gives fewer per page than asked
+      return reply(0, { list: all.slice((page - 1) * size, page * size), page_info: { page, page_size: size, total_number: all.length, total_page: Math.ceil(all.length / size) } });
+    }
+    if (p === "/campaign/gmv_max/session/list/") {
+      if (qq.campaign_id === "C3") return reply(40002, null, "This campaign has no creative boost");
+      if (qq.campaign_id === "C2") return reply(0, { list: [] });
+      return reply(0, { list: [{ session_id: "S-1", item_id: "V1", status: "ACTIVE", budget: "50.00", bid_type: "CUSTOM", schedule_type: "SCHEDULE_FROM_NOW", schedule_start_time: "2026-11-10 00:00:00", schedule_end_time: "2026-11-10 23:59:59" }, { session_id: "S-2", item_id: "V22", status: "ENDED", budget: "30", schedule_start_time: "2026-11-07 00:00:00", schedule_end_time: "2026-11-07 23:59:59" }] });
     }
     if (p === "/gmv_max/report/get/") {
       const dims = JSON.parse(qq.dimensions) as string[], mets = JSON.parse(qq.metrics) as string[];
@@ -140,13 +151,13 @@ async function main() {
 
   // ── the connection check ──
   const chk = await K.runAdsChecks({ cfg, f: fake, sleep });
-  check("check: ad accounts, shops, campaigns and results all answer", chk.checks.length === 4 && chk.checks.every((c) => c.ok), JSON.stringify(chk.checks.filter((c) => !c.ok)));
+  check("check: ad accounts, shops, campaigns, results, videos and boosts all answer", chk.checks.length === 6 && chk.checks.every((c) => c.ok), JSON.stringify(chk.checks.filter((c) => !c.ok)));
   check("accounts list: the login goes in the Access-Token header, never in the web address, and the app id and secret are sent", seen.filter((x) => x.path === "/oauth2/advertiser/get/").every((x) => x.headers["access-token"] === "AT123" && !x.q.access_token && x.q.app_id === "APP1" && x.q.secret === "s3cret"));
   check("check: it lists the accounts and the field names TikTok sent", chk.accounts.length === 2 && chk.accounts[0].name === "ALOOMA" && !!chk.checks.find((c) => c.name.startsWith("Campaign results"))?.fields?.includes("cost"));
 
   // ── a full sync ──
   const r1 = await S.runAdsAll("manual", null, deps);
-  check("sync: every dataset finishes", r1.length === 6 && r1.every((r) => r.status === "ok"), JSON.stringify(r1.map((r) => [r.dataset, r.status, r.error])));
+  check("sync: every dataset finishes", r1.length === 8 && r1.every((r) => r.status === "ok"), JSON.stringify(r1.map((r) => [r.dataset, r.status, r.error])));
   check("sync: ad accounts and shops saved", (await count("ads_advertisers")) === 2 && (await count("ads_stores")) === 1);
   const a1 = (await q(sql`select name, currency, timezone from ads_advertisers where advertiser_id = '111'`))[0];
   check("sync: account details are mapped", a1.name === "ALOOMA" && a1.currency === "MYR" && a1.timezone === "Asia/Kuala_Lumpur");
@@ -171,6 +182,11 @@ async function main() {
   check("requests: after discovery every report asks only for metrics TikTok accepts", realReports.every((x) => (JSON.parse(x.q.metrics) as string[]).every((m) => ACCEPTED.includes(m))));
   check("requests: product and creative requests always name their campaign (and product)", realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_id")).every((x) => { const f = JSON.parse(x.q.filtering); return f.campaign_ids.length === 1 && f.item_group_ids.length === 1; }) && realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_group_id") && !JSON.parse(x.q.dimensions).includes("item_id")).every((x) => JSON.parse(x.q.filtering).campaign_ids.length >= 1));
   const reqs = seen.filter((s) => s.path === "/gmv_max/report/get/");
+  const vids = (await q(sql`select item_id, username, authorization_status, eligible, posted_at is not null as has_date, spu_id from ads_videos order by item_id`));
+  check("videos: all pages of the video list saved (TikTok gave fewer per page than asked), with the creator, authorization and eligibility", vids.length === 5 && vids[0].username === "amy" && vids[4].username === "ben" && vids[3].authorization_status === "AUTHORIZATION_NEEDED" && vids[3].eligible === false && vids[0].eligible === true && vids[0].has_date === true && vids[0].spu_id === "P1", JSON.stringify(vids));
+  check("videos: asked with the shop and its Business Center id", seen.filter((x) => x.path === "/gmv_max/video/get/").every((x) => x.q.store_id === "S1" && x.q.store_authorized_bc_id === "B1"));
+  const bst = (await q(sql`select session_id, campaign_id, item_id, status, budget::float8 as budget, starts_at is not null as has_start from ads_boosts order by session_id`));
+  check("boosts: the sessions of each campaign saved with item, status, budget and schedule; a campaign TikTok refuses is skipped and reported", bst.length === 2 && bst[0].campaign_id === "C1" && bst[0].item_id === "V1" && bst[0].status === "ACTIVE" && bst[0].budget === 50 && bst[0].has_start === true && /1 of 3 campaigns skipped/.test(String(r1.find((r) => r.dataset === "boosts")?.error)), JSON.stringify([bst, r1.find((r) => r.dataset === "boosts")]));
   check("requests: every call carries the login in the Access-Token header", seen.filter((s) => !s.path.startsWith("/oauth2/")).every((s) => s.headers["access-token"] === "AT123"));
   check("requests: the last day asked for is never in the future", reqs.every((r) => r.q.end_date <= TODAY));
   check("requests: asks for the shop ids of that account only", reqs.every((r) => r.q.store_ids === '["S1"]'));
@@ -182,7 +198,7 @@ async function main() {
   // ── idempotent, and TikTok restating a recent day ──
   const seenBefore = seen.length;
   const r2 = await S.runAdsAll("schedule", null, deps);
-  check("again: running the sync twice changes nothing and duplicates nothing", r2.every((r) => r.status === "ok") && r2.filter((r) => ["campaign_daily", "creative_daily", "product_daily", "campaigns", "advertisers", "stores"].includes(r.dataset)).every((r) => r.changed === 0) && (await count("ads_campaign_daily")) === nDays * 2, JSON.stringify(r2.map((r) => [r.dataset, r.changed])));
+  check("again: running the sync twice changes nothing and duplicates nothing", r2.every((r) => r.status === "ok") && r2.filter((r) => ["campaign_daily", "creative_daily", "product_daily", "campaigns", "advertisers", "stores", "videos", "boosts"].includes(r.dataset)).every((r) => r.changed === 0) && (await count("ads_campaign_daily")) === nDays * 2, JSON.stringify(r2.map((r) => [r.dataset, r.changed])));
   const recentReq = seen.slice(seenBefore).filter((s) => s.path === "/gmv_max/report/get/");
   check("again: a normal sync reads only the recent days again, not the whole history", recentReq.length >= 3 && recentReq.every((r) => r.q.start_date >= addDays(TODAY, -13)), JSON.stringify(recentReq.map((r) => r.q.start_date)));
   bump["C1|2026-11-08"] = "999.00";

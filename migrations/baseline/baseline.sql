@@ -38,6 +38,28 @@ CREATE TABLE public.ads_advertisers (
 
 
 --
+-- Name: ads_boosts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_boosts (
+    advertiser_id text NOT NULL,
+    campaign_id text NOT NULL,
+    session_id text NOT NULL,
+    store_id text,
+    item_id text,
+    status text,
+    budget numeric(14,2),
+    bid_type text,
+    schedule_type text,
+    starts_at timestamp with time zone,
+    ends_at timestamp with time zone,
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: ads_campaign_daily; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -201,6 +223,29 @@ CREATE TABLE public.ads_sync_state (
     records integer DEFAULT 0 NOT NULL,
     sample jsonb,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ads_videos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ads_videos (
+    advertiser_id text NOT NULL,
+    store_id text NOT NULL,
+    item_id text NOT NULL,
+    spu_id text,
+    title text,
+    identity_id text,
+    username text,
+    posted_at timestamp with time zone,
+    authorization_status text,
+    authorization_type text,
+    eligible boolean,
+    status text,
+    raw jsonb,
+    h text,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -988,6 +1033,14 @@ ALTER TABLE ONLY public.ads_advertisers
 
 
 --
+-- Name: ads_boosts ads_boosts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_boosts
+    ADD CONSTRAINT ads_boosts_pkey PRIMARY KEY (advertiser_id, session_id);
+
+
+--
 -- Name: ads_campaign_daily ads_campaign_daily_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1041,6 +1094,14 @@ ALTER TABLE ONLY public.ads_sync_runs
 
 ALTER TABLE ONLY public.ads_sync_state
     ADD CONSTRAINT ads_sync_state_pkey PRIMARY KEY (dataset);
+
+
+--
+-- Name: ads_videos ads_videos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ads_videos
+    ADD CONSTRAINT ads_videos_pkey PRIMARY KEY (advertiser_id, store_id, item_id);
 
 
 --
@@ -1316,6 +1377,20 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: ads_boosts_campaign; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_boosts_campaign ON public.ads_boosts USING btree (campaign_id);
+
+
+--
+-- Name: ads_boosts_item; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_boosts_item ON public.ads_boosts USING btree (item_id);
+
+
+--
 -- Name: ads_campaign_daily_day; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1355,6 +1430,13 @@ CREATE INDEX ads_product_daily_day ON public.ads_product_daily USING btree (day)
 --
 
 CREATE INDEX ads_sync_runs_dataset_started ON public.ads_sync_runs USING btree (dataset, started_at DESC);
+
+
+--
+-- Name: ads_videos_username; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_videos_username ON public.ads_videos USING btree (username);
 
 
 --

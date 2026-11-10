@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, Building2, CheckCircle2, ChevronDown, Loader2, Package, RefreshCw, Store, Target, Video } from "lucide-react";
+import { AlertTriangle, BarChart3, Building2, CheckCircle2, ChevronDown, Film, Loader2, Package, RefreshCw, Rocket, Store, Target, Video } from "lucide-react";
 import { setAdsSyncSchedule } from "@/app/actions/tiktok-ads";
 import { DOT, EVERY, ago, dmy, dur, fresh, inMin, span } from "@/components/sync/format";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ import type { AdsOverview } from "@/lib/tiktok-ads/sync";
 /** A note that only says how a result was read (not a problem): shown calmly, not as a warning. */
 const isInfoNote = (note: string | null | undefined) => !!note && note.split(" · ").every((p) => /^Used dimensions /.test(p));
 
-const ICON: Record<string, React.ComponentType<{ className?: string }>> = { building: Building2, store: Store, target: Target, chart: BarChart3, video: Video, package: Package };
+const ICON: Record<string, React.ComponentType<{ className?: string }>> = { building: Building2, store: Store, target: Target, chart: BarChart3, video: Video, package: Package, film: Film, rocket: Rocket };
 
 export function AdsSyncBoard({ initial, connected, configured, canAdmin, canRun, canConnect, serverNow }: { initial: AdsOverview; connected: boolean; configured: boolean; canAdmin: boolean; canRun: boolean; canConnect: boolean; serverNow: number }) {
   const [ov, setOv] = useState(initial);
@@ -104,7 +104,7 @@ export function AdsSyncBoard({ initial, connected, configured, canAdmin, canRun,
         {err && <p role="alert" className="relative mt-4 rounded-lg bg-white/15 px-3 py-2 text-[13.5px]">{err}</p>}
       </section>
 
-      <section aria-label="Data" className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+      <section aria-label="Data" className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         {ov.datasets.map((d) => {
           const Icon = ICON[d.icon] ?? Package;
           const f = fresh(d.lastSuccessAt, now);

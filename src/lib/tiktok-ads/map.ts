@@ -39,6 +39,43 @@ export function campaign(o: R, advertiserId: string): Row {
   };
 }
 
+/** A TikTok yes/no that may arrive as true/false, "true"/"false", 1/0 or a word. */
+export const yes = (v: unknown): boolean | null => (v == null || v === "" ? null : v === true || v === 1 || /^(true|yes|1|eligible|authorized)$/i.test(String(v)));
+
+/** One video from the GMV Max video list. Field names are read tolerantly; the whole answer is kept in raw. */
+export function video(o: R, advertiserId: string, storeId: string): Row {
+  const ident = obj(pick(o, "identity_info", "identity", "tt_account"));
+  return {
+    advertiser_id: advertiserId, store_id: storeId,
+    item_id: str(pick(o, "item_id", "video_id", "post_id", "id")),
+    spu_id: str(pick(o, "spu_id", "item_group_id", "product_id")),
+    title: str(pick(o, "text", "title", "caption", "video_title", "description")),
+    identity_id: str(pick(o, "identity_id") ?? pick(ident, "identity_id", "id")),
+    username: str(pick(o, "identity_name", "tt_account_name", "user_name", "username", "display_name", "unique_id", "nickname") ?? pick(ident, "identity_name", "user_name", "display_name", "name")),
+    posted_at: ts(pick(o, "create_time", "post_time", "publish_time", "posted_time", "video_create_time")),
+    authorization_status: str(pick(o, "authorization_status", "auth_status", "authorized_status", "video_status")),
+    authorization_type: str(pick(o, "authorization_type", "auth_type", "identity_type")),
+    eligible: yes(pick(o, "is_eligible", "eligible", "is_available", "available", "can_boost")),
+    status: str(pick(o, "status", "exploration_status", "delivery_status", "creative_delivery_status")),
+    raw: raw(o),
+  };
+}
+
+/** One creative boost session of a campaign. */
+export function boost(o: R, advertiserId: string, campaignId: string): Row {
+  const s = obj(o.session);
+  const g = (...n: string[]) => pick(o, ...n) ?? pick(s, ...n);
+  return {
+    advertiser_id: advertiserId, campaign_id: campaignId,
+    session_id: str(g("session_id", "id")), store_id: str(g("store_id")),
+    item_id: str(g("item_id", "video_id", "post_id")),
+    status: str(g("status", "operation_status", "session_status", "delivery_status")),
+    budget: dec(g("budget", "session_budget")), bid_type: str(g("bid_type")), schedule_type: str(g("schedule_type")),
+    starts_at: ts(g("schedule_start_time", "start_time", "begin_time")), ends_at: ts(g("schedule_end_time", "end_time")),
+    raw: raw(o),
+  };
+}
+
 /** One line of a GMV Max report: { dimensions: {...}, metrics: {...} }. */
 export type ReportLine = { dims: R; mets: R };
 export const reportLine = (o: R): ReportLine => ({ dims: obj(o.dimensions), mets: obj(o.metrics) });

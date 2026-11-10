@@ -10,7 +10,7 @@ import * as M from "./map";
 // so running twice never duplicates; a failed dataset is shown with TikTok's own message while the others still run; a restart never
 // leaves a run "stuck". Results are re-read for the last two weeks each time, because TikTok restates ad numbers after the day ends.
 
-export type AdsDatasetKey = "advertisers" | "stores" | "campaigns" | "campaign_daily" | "creative_daily" | "product_daily";
+export type AdsDatasetKey = "advertisers" | "stores" | "campaigns" | "campaign_daily" | "product_daily" | "creative_daily" | "videos" | "boosts";
 export type AdsDeps = { cfg?: AdsConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date; /** Read the whole history window, not only the recent days. */ backfill?: boolean };
 export type AdsRunResult = { dataset: AdsDatasetKey; status: "ok" | "failed" | "skipped"; pages: number; seen: number; changed: number; error?: string };
 
@@ -22,6 +22,8 @@ export const ADS_DATASETS: { key: AdsDatasetKey; label: string; table: string; i
   { key: "campaign_daily", label: "Campaign Results", table: "ads_campaign_daily", icon: "chart", what: "campaign-days" },
   { key: "product_daily", label: "Product Results", table: "ads_product_daily", icon: "package", what: "product-days" },
   { key: "creative_daily", label: "Creative Results", table: "ads_creative_daily", icon: "video", what: "creative-days" },
+  { key: "videos", label: "Videos", table: "ads_videos", icon: "film", what: "videos" },
+  { key: "boosts", label: "Creative Boosts", table: "ads_boosts", icon: "rocket", what: "boosts" },
 ];
 
 type Table = Parameters<typeof upsertRows>[0];
@@ -31,6 +33,8 @@ const TABLES: Record<string, Table> = {
   ads_stores: { name: "ads_stores", pk: ["advertiser_id", "store_id"], cols: { advertiser_id: "text", store_id: "text", store_name: "text", store_code: "text", bc_id: "text", available: "boolean", raw: RAW } },
   ads_campaigns: { name: "ads_campaigns", pk: ["advertiser_id", "campaign_id"], cols: { advertiser_id: "text", campaign_id: "text", store_id: "text", name: "text", status: "text", promotion_type: "text", budget: "numeric", roas_target: "numeric", created_at: "timestamptz", modified_at: "timestamptz", raw: RAW } },
   ads_campaign_daily: { name: "ads_campaign_daily", pk: ["advertiser_id", "campaign_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", day: "date", cost: "numeric", net_cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", raw: RAW } },
+  ads_videos: { name: "ads_videos", pk: ["advertiser_id", "store_id", "item_id"], cols: { advertiser_id: "text", store_id: "text", item_id: "text", spu_id: "text", title: "text", identity_id: "text", username: "text", posted_at: "timestamptz", authorization_status: "text", authorization_type: "text", eligible: "boolean", status: "text", raw: RAW } },
+  ads_boosts: { name: "ads_boosts", pk: ["advertiser_id", "session_id"], cols: { advertiser_id: "text", campaign_id: "text", session_id: "text", store_id: "text", item_id: "text", status: "text", budget: "numeric", bid_type: "text", schedule_type: "text", starts_at: "timestamptz", ends_at: "timestamptz", raw: RAW } },
   ads_product_daily: { name: "ads_product_daily", pk: ["advertiser_id", "campaign_id", "product_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", day: "date", title: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", raw: RAW } },
   ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", raw: RAW } },
 };
@@ -71,7 +75,7 @@ async function* pages(ctx: Ctx, path: string, query: Record<string, unknown>, li
       try { data = await call(ctx, path, { query: { ...query, page, page_size: sizes[s] } }); break; }
       catch (e) { if (s < sizes.length - 1 && /page.?size/i.test(errText(e))) { s++; continue; } throw e; }
     }
-    const items = (listKey.map((k) => data[k]).find((v) => Array.isArray(v)) as Record<string, unknown>[] | undefined) ?? [];
+    const items = ((listKey.map((k) => data[k]).find((v) => Array.isArray(v)) ?? Object.values(data).find((v) => Array.isArray(v))) as Record<string, unknown>[] | undefined) ?? [];
     yield { items, page };
     const info = M.obj(data.page_info);
     const total = M.dec(info.total_page);
@@ -320,6 +324,54 @@ async function runCreativeDaily(ctx: Ctx, c: Counter) {
   if (dims) c.note = [c.note, `Used dimensions ${(dims as string[]).join(" + ")}`].filter(Boolean).join(" · ");
 }
 
+/**
+ * The GMV Max video list of each shop (who made each video, and whether it can be boosted). TikTok asks for the shop and the shop's
+ * Business Center id (both from the Shops step).
+ */
+async function runVideos(ctx: Ctx, c: Counter) {
+  const stores = await rows<{ advertiser_id: string; store_id: string; bc_id: string | null }>(sql`select advertiser_id, store_id, bc_id from ads_stores where coalesce(available, true) order by 1, 2`);
+  if (!stores.length) { c.note = "No GMV Max shop is linked to your ad account yet, so there are no videos to read."; return; }
+  const byAdv = new Map<string, typeof stores>();
+  for (const s of stores) byAdv.set(s.advertiser_id, [...(byAdv.get(s.advertiser_id) ?? []), s]);
+  await eachAccount([...byAdv.keys()], c, async (adv) => {
+    for (const st of byAdv.get(adv)!) {
+      if (!st.bc_id) { c.note = [c.note, `Shop ${st.store_id} has no Business Center id, so its videos were not read`].filter(Boolean).join(" · "); continue; }
+      for await (const { items, page } of pages(ctx, "/gmv_max/video/get/", { advertiser_id: adv, store_id: st.store_id, store_authorized_bc_id: st.bc_id })) {
+        c.pages = Math.max(c.pages, page);
+        items.forEach((o) => remember(c, o));
+        await save(ctx, c, "ads_videos", items.map((o) => M.video(o, adv, st.store_id)).filter((r) => r.item_id));
+      }
+    }
+  });
+}
+
+/** The creative boosts (sessions) of every campaign that is on or spent money in the last two weeks. */
+async function runBoosts(ctx: Ctx, c: Counter) {
+  const today = ctx.deps.now ? ctx.deps.now().toISOString().slice(0, 10) : todayKL();
+  const camps = await rows<{ advertiser_id: string; campaign_id: string }>(sql`
+    select c.advertiser_id, c.campaign_id from ads_campaigns c
+    where upper(coalesce(c.status, '')) in ('ENABLE', 'ENABLED', 'ACTIVE', 'STATUS_DELIVERY_OK', 'DELIVERY_OK')
+       or exists (select 1 from ads_campaign_daily d where d.advertiser_id = c.advertiser_id and d.campaign_id = c.campaign_id and d.day >= ${addDaysISO(today, -13)}::date and coalesce(d.cost, 0) > 0)
+    order by 1, 2`);
+  if (!camps.length) { c.note = "No campaign is on or spent money recently, so there are no boosts to read."; return; }
+  let failed = 0, ok = 0, firstError = "";
+  for (const camp of camps) {
+    try {
+      const d = await call(ctx, "/campaign/gmv_max/session/list/", { query: { advertiser_id: camp.advertiser_id, campaign_id: camp.campaign_id } });
+      const list = (((d.list ?? d.sessions ?? d.session_list) as Record<string, unknown>[] | undefined) ?? (Object.values(d).find((v) => Array.isArray(v)) as Record<string, unknown>[] | undefined) ?? []);
+      c.pages++; ok++;
+      list.forEach((o) => remember(c, o));
+      await save(ctx, c, "ads_boosts", list.map((o) => M.boost(o, camp.advertiser_id, camp.campaign_id)).filter((r) => r.session_id));
+    } catch (e) {
+      if (e instanceof AdsApiError && (e.isAuth || e.isRateLimit)) throw e;
+      failed++; if (!firstError) firstError = clean(errText(e)) + (e instanceof AdsApiError && e.requestId ? ` (request ${e.requestId})` : "");
+    }
+    await (ctx.deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(ctx.deps.pauseMs ?? 120);
+  }
+  if (!ok && failed) throw new Error(firstError);
+  if (failed) c.note = [c.note, `${failed} of ${camps.length} campaigns skipped (${firstError.slice(0, 160)})`].filter(Boolean).join(" · ");
+}
+
 const RUNNERS: Record<AdsDatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
   advertisers: runAdvertisers,
   stores: runStores,
@@ -327,6 +379,8 @@ const RUNNERS: Record<AdsDatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = 
   campaign_daily: runCampaignDaily,
   product_daily: runProductDaily,
   creative_daily: runCreativeDaily,
+  videos: runVideos,
+  boosts: runBoosts,
 };
 
 export async function adsLiveCount(key: AdsDatasetKey): Promise<number> {

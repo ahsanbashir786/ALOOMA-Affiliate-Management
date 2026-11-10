@@ -35,7 +35,7 @@ async function login(p, email) {
   ok(/Connected/.test(await o.getByTestId("tiktok-ads-status").innerText()) && !/Not connected/.test(await o.getByTestId("tiktok-ads-status").innerText()), "ads: status turns Connected");
   await o.getByTestId("tiktok-ads-check").click(); await o.waitForSelector("[data-testid=tiktok-ads-checks]");
   const ct = await o.getByTestId("tiktok-ads-checks").innerText();
-  ok(/Everything answered/.test(ct) && /Ad accounts/.test(ct) && /GMV Max shops/.test(ct) && /GMV Max campaigns/.test(ct) && /Campaign results/.test(ct), "ads: Check Connection answers for accounts, shops, campaigns and results");
+  ok(/Everything answered/.test(ct) && /Ad accounts/.test(ct) && /GMV Max shops/.test(ct) && /GMV Max campaigns/.test(ct) && /Campaign results/.test(ct) && /GMV Max videos/.test(ct) && /Creative boosts/.test(ct), "ads: Check Connection answers for accounts, shops, campaigns, results, videos and boosts");
   await o.reload(); await o.waitForSelector("[data-testid=tiktok-ads-card]");
   ok(await o.getByTestId("tiktok-ads-accounts").count() === 1, "ads: the ad account is listed once connected");
 
@@ -50,6 +50,7 @@ async function login(p, email) {
   await o.waitForFunction(() => document.querySelector("[data-testid=ads-hero]")?.getAttribute("data-state") === "ok", null, { timeout: 60000 });
   const num = async (k) => Number((await o.getByTestId(`ads-ds-${k}`).locator("p.tnum").innerText()).replace(/,/g, ""));
   ok((await num("advertisers")) === 1 && (await num("stores")) === 1 && (await num("campaigns")) === 2, "sync: accounts, shops and campaigns arrive");
+  ok((await num("videos")) === 3 && (await num("boosts")) === 1, "sync: videos and creative boosts arrive");
   ok((await num("campaign_daily")) >= 80 && (await num("creative_daily")) >= 80 && (await num("product_daily")) >= 80, `sync: daily results arrive (${await num("campaign_daily")} campaign-days)`);
   ok(/Everything Is Up To Date/.test(await o.getByTestId("ads-hero").innerText()), "sync: the hero says everything is up to date");
   await o.getByTestId("ads-ds-campaigns").locator("summary").click();

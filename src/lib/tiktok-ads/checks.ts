@@ -38,6 +38,8 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
   });
   // Every ad account is looked at: the shop (and the ads) may sit on any one of them.
   const shopsOf = new Map<string, string[]>();
+  let shopRow: { adv: string; store: string; bc: string } | null = null;
+  let firstCampaign: { adv: string; id: string } | null = null;
   await run("GMV Max shops", async () => {
     const all: Record<string, unknown>[] = [];
     const bad: string[] = [];
@@ -46,6 +48,8 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
         const d = await adsCall<Record<string, unknown>>("/gmv_max/store/list/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: id } });
         const list = arr(d.store_list ?? d.stores ?? d.list);
         shopsOf.set(id, list.map((s) => String(s.store_id ?? "")).filter(Boolean));
+        const withBc = list.find((s) => s.store_id && s.store_authorized_bc_id);
+        if (!shopRow && withBc) shopRow = { adv: id, store: String(withBc.store_id), bc: String(withBc.store_authorized_bc_id) };
         all.push(...list.map((s) => ({ advertiser_id: id, ...s })));
       } catch (e) { bad.push(`${id}: ${short(e)}`); }
     }
@@ -59,6 +63,7 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
       try {
         const d = await adsCall<Record<string, unknown>>("/gmv_max/campaign/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: id, filtering: { gmv_max_promotion_types: GMV_MAX_PROMOTION_TYPES }, page: 1, page_size: 10 } });
         all.push(...arr(d.list).map((c) => ({ advertiser_id: id, ...c })));
+        if (!firstCampaign && arr(d.list)[0]?.campaign_id) firstCampaign = { adv: id, id: String(arr(d.list)[0].campaign_id) };
       } catch (e) { firstError ??= e; }
     }
     if (!all.length && firstError) throw firstError;
@@ -71,6 +76,21 @@ export async function runAdsChecks(deps: { cfg?: AdsConfig | null; f?: Fetch; sl
       const d = await adsCall<Record<string, unknown>>("/gmv_max/report/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: withShop, store_ids: shopsOf.get(withShop), dimensions: ["campaign_id", "stat_time_day"], metrics: ["cost", "orders", "gross_revenue", "roi"], start_date: addDaysISO(end, -6), end_date: end, page: 1, page_size: 10 } });
       const list = arr(d.list);
       return { items: list, fields: { ...obj(list[0]?.dimensions), ...obj(list[0]?.metrics) } };
+    });
+  }
+  // The video list and the boosts (read only): who made each video, whether it may be boosted, and what is boosted now.
+  const sr = shopRow as { adv: string; store: string; bc: string } | null;
+  if (sr) {
+    await run("GMV Max videos", async () => {
+      const d = await adsCall<Record<string, unknown>>("/gmv_max/video/get/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: sr.adv, store_id: sr.store, store_authorized_bc_id: sr.bc, page: 1, page_size: 10 } });
+      return { items: arr(d.list ?? d.videos ?? d.item_list ?? Object.values(d).find((v) => Array.isArray(v))) };
+    });
+  }
+  const fc = firstCampaign as { adv: string; id: string } | null;
+  if (fc) {
+    await run("Creative boosts", async () => {
+      const d = await adsCall<Record<string, unknown>>("/campaign/gmv_max/session/list/", { cfg, f: deps.f, sleep: deps.sleep, query: { advertiser_id: fc.adv, campaign_id: fc.id } });
+      return { items: arr(d.list ?? d.sessions ?? d.session_list ?? Object.values(d).find((v) => Array.isArray(v))) };
     });
   }
   return { checks, accounts, at: new Date().toISOString() };

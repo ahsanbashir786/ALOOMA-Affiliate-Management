@@ -32,6 +32,11 @@ const server = http.createServer(async (req, res) => {
   if (p === "/gmv_max/store/list/") return reply(res, 0, { store_list: [{ store_id: "S1", store_name: "ALOOMA MY", store_code: "MY-1", store_authorized_bc_id: "B1", is_gmv_max_available: true }] });
   if (p === "/gmv_max/campaign/get/") { const t = JSON.parse(q.filtering || "{}").gmv_max_promotion_types || []; if (!t.length || t.some((x) => !["LIVE_GMV_MAX", "PRODUCT_GMV_MAX"].includes(x))) return reply(res, 40002, null, "filtering: gmv_max_promotion_types: value is not one of the allowed values, correct is LIVE_GMV_MAX, PRODUCT_GMV_MAX"); }
   if (p === "/gmv_max/campaign/get/") return reply(res, 0, { list: CAMPAIGNS, page_info: { page: 1, page_size: 50, total_number: CAMPAIGNS.length, total_page: 1 } });
+  if (p === "/gmv_max/video/get/") {
+    const all = [1, 2, 3].map((n) => ({ item_id: "VID" + n, spu_id: "P1", text: "Video number " + n, identity_name: "amy", create_time: "2026-10-0" + n + " 10:00:00", authorization_status: "AUTHORIZED", is_eligible: true }));
+    return reply(res, 0, { list: all, page_info: { page: 1, page_size: 50, total_number: 3, total_page: 1 } });
+  }
+  if (p === "/campaign/gmv_max/session/list/") return reply(res, 0, { list: q.campaign_id === "C1" ? [{ session_id: "S-1", item_id: "V1", status: "ACTIVE", budget: "50.00" }] : [] });
   if (p === "/gmv_max/report/get/") {
     const dims = JSON.parse(q.dimensions), mets = JSON.parse(q.metrics);
     const filt = q.filtering ? JSON.parse(q.filtering) : {};

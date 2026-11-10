@@ -26,6 +26,8 @@ Your TikTok Shop must be linked to the ad account in TikTok Ads Manager, otherwi
 | Shops | The TikTok Shop(s) linked to each ad account for GMV Max | `ads_stores` |
 | GMV Max Campaigns | Name, status, type (product / LIVE), budget, ROAS target, dates | `ads_campaigns` |
 | Campaign Results | One row per campaign per day: cost, net cost, orders, sales (gross revenue), ROI, cost per order | `ads_campaign_daily` |
+| Videos | Each GMV Max video of each shop: who made it (TikTok account), when, which product, authorization status and type, whether it can be boosted | `ads_videos` |
+| Creative Boosts | The creative boosts (sessions) of every campaign that is on or spent money in the last two weeks: video, status, budget, schedule | `ads_boosts` |
 | Product Results | One row per campaign, product and day: cost, orders, sales, ROI, cost per order, impressions, clicks, click rate, conversion rate | `ads_product_daily` |
 | Creative Results | One row per campaign, product, video and day: the same numbers plus title, TikTok account, 2-second and 6-second view rates | `ads_creative_daily` |
 
@@ -49,6 +51,18 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 | Safe restarts | A restart marks any run left "running" as interrupted, so nothing waits forever. Already-saved data is untouched. |
 | Time zone | Days are the days in the ad account's own time zone, as TikTok reports them. |
 | Privacy | Ad data only. No customer data is involved. |
+
+## TikTok calls used (from TikTok's own developer library)
+
+| Purpose | Call |
+|---|---|
+| Ad accounts | `GET /oauth2/advertiser/get/`, `GET /advertiser/info/` |
+| Shops | `GET /gmv_max/store/list/` |
+| Campaigns | `GET /gmv_max/campaign/get/` (types `PRODUCT_GMV_MAX`, `LIVE_GMV_MAX`) |
+| Results | `GET /gmv_max/report/get/` (filters `campaign_ids`, `item_group_ids`, `item_ids`) |
+| Videos | `GET /gmv_max/video/get/` (needs the shop id and its Business Center id) |
+| Boosts | `GET /campaign/gmv_max/session/list/` |
+| Later: create / change / stop a boost | `POST /campaign/gmv_max/session/create/` (`advertiser_id`, `campaign_id`, `store_id`, `session` with `budget`, `product_list[{spu_id}]`, `item_id`, schedule), `…/update/`, `…/delete/` |
 
 ## Safety
 
