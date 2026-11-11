@@ -285,7 +285,7 @@ async function main() {
 
   // ── creating and stopping a boost from the app (a pretend TikTok; the real one is never called) ──
   const BW = await import("../src/lib/tiktok-ads/boost-write");
-  const wipeBW = async () => { await q(sql`delete from ads_boost_actions`); await q(sql`delete from ads_boost_batches where note = 'Created in the app'`); await q(sql`delete from ads_creative_daily where advertiser_id = 'BW'`); await q(sql`delete from ads_campaigns where advertiser_id = 'BW'`); await q(sql`delete from settings where key = 'ads_boost_write'`); };
+  const wipeBW = async () => { await q(sql`delete from ads_stores where advertiser_id = 'BW'`); await q(sql`delete from ads_boost_actions`); await q(sql`delete from ads_boost_batches where note = 'Created in the app'`); await q(sql`delete from ads_creative_daily where advertiser_id = 'BW'`); await q(sql`delete from ads_campaigns where advertiser_id = 'BW'`); await q(sql`delete from settings where key = 'ads_boost_write'`); };
   await wipeBW();
   await q(sql`insert into ads_campaigns (advertiser_id, campaign_id, store_id, name, status, promotion_type) values ('BW', 'BWC', 'BWS', 'Boost test campaign', 'ENABLE', 'PRODUCT_GMV_MAX'), ('BW', 'BWL', 'BWS', 'Live campaign', 'ENABLE', 'LIVE_GMV_MAX'), ('BW', 'BWD', 'BWS', 'Off campaign', 'DISABLE', 'PRODUCT_GMV_MAX')`);
   const mkw = (id: string, status: string | null, camp = "BWC") => q(sql`insert into ads_creative_daily (advertiser_id, campaign_id, product_id, creative_id, day, cost, orders, gross_revenue, delivery_status) select 'BW', ${camp}, 'BWP', ${id}, (${todayKL()}::date - g), 5, 2, 90, ${status} from generate_series(0, 3) g`);
@@ -303,7 +303,14 @@ async function main() {
   check("boost from the app: settings are saved; the all-boosts limit can never be below the one-boost limit", sv.enabled && (await BW.saveBoostWriteSettings({ maxBudget: 80 })).dailyCap === 80 && (await BW.saveBoostWriteSettings({ maxBudget: 30, dailyCap: 50 })).maxBudget === 30);
   const opt = await BW.boostOptions("bw-1");
   check("boost options: only Product GMV Max campaigns that are not switched off, where the video ran", opt.campaigns.length === 1 && opt.campaigns[0].campaignId === "BWC" && opt.campaigns[0].storeId === "BWS" && opt.campaigns[0].productId === "BWP" && opt.campaigns[0].ranHere && opt.blockers.length === 0, JSON.stringify(opt));
-  check("boost options: a video TikTok will not boost, and a video that is in no campaign, say so before asking TikTok", /Authorization/i.test((await BW.boostOptions("bw-auth")).blockers.join(" ")) && /No Product GMV Max campaign/.test((await BW.boostOptions("bw-nowhere")).blockers.join(" ")) && (await BW.boostOptions("bw-live")).campaigns.length === 0);
+  check("boost options: a video TikTok will not boost, and a video that is in no campaign, say so before asking TikTok", /Authorization/i.test((await BW.boostOptions("bw-auth")).blockers.join(" ")) && /no campaign in the synced results/.test((await BW.boostOptions("bw-nowhere")).blockers.join(" ")) && (await BW.boostOptions("bw-live")).campaigns.length === 0);
+  await mkw("bw-off", "NOT_DELIVERYING", "BWD"); await mkw("bw-unknown", "NOT_DELIVERYING", "BWX");
+  const offB = (await BW.boostOptions("bw-off")).blockers.join(" "), unkB = (await BW.boostOptions("bw-unknown")).blockers.join(" "), liveB = (await BW.boostOptions("bw-live")).blockers.join(" ");
+  check("boost options: when a campaign cannot be used, the page says why (switched off, not synced, LIVE)", /Off campaign.*switched off in TikTok/.test(offB) && /not in the synced campaign list/.test(unkB) && /LIVE GMV Max/.test(liveB), JSON.stringify([offB, unkB, liveB]));
+  await q(sql`update ads_campaigns set store_id = null where advertiser_id = 'BW' and campaign_id = 'BWC'`); await q(sql`insert into ads_stores (advertiser_id, store_id, store_name) values ('BW', 'BWS2', 'Test shop') on conflict do nothing`);
+  const viaStore = await BW.boostOptions("bw-1");
+  check("boost options: when TikTok's campaign list gave no shop, the shop saved for the account is used", viaStore.campaigns.length === 1 && viaStore.campaigns[0].storeId === "BWS2", JSON.stringify(viaStore.campaigns));
+  await q(sql`update ads_campaigns set store_id = 'BWS' where advertiser_id = 'BW' and campaign_id = 'BWC'`); await q(sql`delete from ads_stores where advertiser_id = 'BW'`);
   const tooBig = await mk1("bw-1", 40);
   check("boost from the app: more than the one-boost limit is refused before TikTok is asked", !tooBig.ok && /limit of RM 30/.test((tooBig as { error: string }).error) && sent("/campaign/gmv_max/session/create/").length === before0, JSON.stringify(tooBig));
   const bwr1 = await mk1("bw-1", 20);

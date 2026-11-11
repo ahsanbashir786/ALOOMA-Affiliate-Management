@@ -39,7 +39,7 @@ async function committedFromApp(): Promise<number> {
 }
 
 export async function boostOptions(itemId: string): Promise<BoostOptions> {
-  const camps = await rows<{ advertiser_id: string; campaign_id: string; name: string | null; store_id: string | null; product_id: string; product_key: string | null; ran_here: boolean; last_spend: string | null }>(sql`
+  const cands = await rows<{ advertiser_id: string; campaign_id: string; name: string | null; known: boolean; store_id: string | null; status: string | null; promotion_type: string | null; product_id: string; product_key: string | null; ran_here: boolean; last_spend: string | null }>(sql`
     with mine as (
       select advertiser_id, campaign_id, product_id, to_char(max(day) filter (where coalesce(cost, 0) > 0), 'YYYY-MM-DD') as last_spend
       from ads_creative_daily where creative_id = ${itemId} and campaign_id <> '-' group by 1, 2, 3
@@ -50,11 +50,20 @@ export async function boostOptions(itemId: string): Promise<BoostOptions> {
       select advertiser_id, campaign_id, product_id, true as ran_here, last_spend from mine
       union all select advertiser_id, campaign_id, product_id, false, null from others
     )
-    select a.advertiser_id, a.campaign_id, c.name, c.store_id, a.product_id, pm.product_key, a.ran_here, a.last_spend
-    from allc a join ads_campaigns c on c.advertiser_id = a.advertiser_id and c.campaign_id = a.campaign_id
+    select a.advertiser_id, a.campaign_id, c.name, c.campaign_id is not null as known,
+      coalesce(nullif(c.store_id, ''), (select s.store_id from ads_stores s where s.advertiser_id = a.advertiser_id order by s.store_id limit 1)) as store_id,
+      c.status, c.promotion_type, a.product_id, pm.product_key, a.ran_here, a.last_spend
+    from allc a left join ads_campaigns c on c.advertiser_id = a.advertiser_id and c.campaign_id = a.campaign_id
     left join product_map pm on pm.product_id = a.product_id
-    where coalesce(c.promotion_type, 'PRODUCT_GMV_MAX') = 'PRODUCT_GMV_MAX' and coalesce(c.status, '') not ilike '%DISABLE%' and coalesce(c.status, '') not ilike '%DELETE%' and coalesce(c.store_id, '') <> ''
     order by a.ran_here desc, a.last_spend desc nulls last`);
+  // Each campaign is either usable, or comes with the reason it is not (shown to the person, never a vague "not found").
+  const why = (c: (typeof cands)[number]): string | null =>
+    !c.known ? "it is not in the synced campaign list (press Sync Now)"
+    : c.promotion_type && c.promotion_type !== "PRODUCT_GMV_MAX" ? "it is a LIVE GMV Max campaign (creative boost works in Product GMV Max campaigns)"
+    : /DISABLE|DELETE|PAUSE/i.test(c.status ?? "") ? `it is switched off in TikTok (status ${c.status}). Turn it on in TikTok first, then press Sync Now`
+    : !c.store_id ? "no TikTok Shop is linked to it in the synced data (press Sync Now)" : null;
+  const camps = cands.filter((c) => !why(c));
+  const notUsable = cands.filter((c) => why(c));
   const [st] = await rows<{ s: string | null }>(sql`select (array_agg(delivery_status order by day desc) filter (where delivery_status is not null))[1] as s from ads_creative_daily where creative_id = ${itemId}`);
   const sessions = await rows<{ session_id: string; from_app: boolean }>(sql`
     select b.session_id, false as from_app from ads_boosts b where b.item_id = ${itemId} and coalesce(b.ends_at, now() + interval '1 day') > now()
@@ -62,7 +71,10 @@ export async function boostOptions(itemId: string): Promise<BoostOptions> {
   const seen = new Set<string>();
   const running = sessions.filter((x) => !seen.has(x.session_id) && seen.add(x.session_id)).map((x) => ({ sessionId: x.session_id, fromApp: x.from_app }));
   const blockers: string[] = [];
-  if (!camps.length) blockers.push("No Product GMV Max campaign that this video's product runs in was found. Press Sync Now first, or boost it in TikTok Ads Manager.");
+  if (!camps.length) {
+    if (!cands.length) blockers.push("This video has no campaign in the synced results, so there is nowhere to boost it. Press Sync Now, or boost it in TikTok Ads Manager.");
+    else for (const c of notUsable.slice(0, 3)) blockers.push(`The campaign "${c.name ?? `Campaign ${c.campaign_id.slice(-6)}`}" cannot be used: ${why(c)}.`);
+  }
   if (isBlocked(st?.s)) blockers.push(`TikTok will not boost it: its status is ${STATUS_LABEL[st!.s!] ?? st!.s}.`);
   if (running.length) blockers.push("A boost for this video is already running. Only one is allowed at a time.");
   return {
