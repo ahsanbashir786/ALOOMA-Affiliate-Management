@@ -72,7 +72,7 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 |---|---|---|
 | Ads Today | `ads_campaign_daily` | Latest day with results against the day before; last 7 and 30 days against the period before; alerts from Campaign Health and the video groups |
 | Boost Picks | `ads_creative_daily` (all time), `tt_videos`, `ads_videos`, `ads_boosts`, Boost Log | One group per video and product, see below |
-| Batch Planner | The ticked videos | Minimum total RM 3.50 a video rounded up (3 videos RM 11, 10 videos RM 35, both seen in Seller Center), one video RM 5; split by ROI and orders. A plan only. TikTok's batch budget works within one product |
+| Batch Planner | The ticked videos | Two ways, no budget formula of ours: **Option 1** keeps the list and a Copy button per product for TikTok's own batch ("Use batch budget" in Seller Center, one shared total that TikTok splits; TikTok's API cannot create it), plus Mark As Boosted for the Boost Log with the total you typed. **Option 2** boosts every video through the app with one button, each its own creative boost with the amount you type (owner only, switched on in Settings, limits apply) |
 | Boost Log | `ads_boost_batches`, `ads_boost_batch_videos` (migration 0028) | Sales a day in the 7 days before the boost date against up to 7 days from it |
 | Campaign Health | `ads_campaign_daily`, `ads_campaigns` | No Sales (spend 10+ and no orders), Stopped Spending (nothing in 3 days), ROI Dropped (under 70% of the period before), Watch, Healthy |
 | Product Performance | `ads_product_daily`, `product_map` | Push More (ROI 15% above your average), Fix Or Pause (no orders, or ROI under 70% of your average), Hold |
@@ -99,7 +99,7 @@ The creative-level report returns `creative_delivery_status` for each video. Val
 
 ## Creating a creative boost (built, off until the owner switches it on)
 
-One video at a time, from the video page (`/ads/video/<id>`, panel "Boost This Video In TikTok", also reached by the Boost button in the Batch Planner). Batch boosts do not exist in TikTok's API, so batches are still made in TikTok Ads Manager.
+One video at a time from the video page (`/ads/video/<id>`, panel "Boost This Video In TikTok"), or several videos one after the other from the Batch Planner ("Boost All"; each is still its own boost). Batch boosts do not exist in TikTok's API, so batches are still made in TikTok Ads Manager.
 
 | Step | What happens |
 |---|---|

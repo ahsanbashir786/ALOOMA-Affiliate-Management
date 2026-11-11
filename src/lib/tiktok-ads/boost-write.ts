@@ -141,6 +141,14 @@ export async function createBoost(input: CreateInput, deps: Deps = {}): Promise<
   }
 }
 
+/** Boosts a video in the campaign it ran in most recently (the first one offered). Used by "Boost All" in the planner. */
+export async function createBoostAuto(input: { itemId: string; budget: number; days: number | null; user: string }, deps: Deps = {}): Promise<BoostResult> {
+  const opt = await boostOptions(input.itemId);
+  const c = opt.campaigns[0];
+  if (!c) return { ok: false, error: opt.blockers[0] ?? "No campaign found for this video." };
+  return createBoost({ itemId: input.itemId, advertiserId: c.advertiserId, campaignId: c.campaignId, budget: input.budget, days: input.days, user: input.user }, deps);
+}
+
 /** Stops (deletes) a running boost session. */
 export async function stopBoost(sessionId: string, user: string, deps: Deps = {}): Promise<BoostResult> {
   const cfg = deps.cfg ?? adsConfig();

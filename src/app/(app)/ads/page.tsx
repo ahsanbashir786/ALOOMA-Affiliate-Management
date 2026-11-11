@@ -12,6 +12,8 @@ import { rangeSuffix, resolveRange, type RangeKey } from "@/lib/ads/range";
 import { RangePicker } from "@/components/ads/range-picker";
 import { todayKL } from "@/lib/time";
 import { productName } from "@/lib/products/catalog";
+import { boostOptions, getBoostWriteSettings } from "@/lib/tiktok-ads/boost-write";
+import { can } from "@/lib/auth";
 import { PicksBoard, type PickRow } from "@/components/ads/picks-board";
 import { Planner } from "@/components/ads/planner";
 import { CampaignSection, CreatorSection, LogSection, ProductSection, TodaySection } from "@/components/ads/sections";
@@ -42,7 +44,7 @@ const pick = (v: VaultVideo): PickRow => ({
 });
 
 export default async function AdsPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { denied } = await gate("ads", "GMV Max");
+  const { user, denied } = await gate("ads", "GMV Max");
   if (denied) return denied;
   const sp = await searchParams;
   const tab: Tab = TABS.find((t) => t.key === one(sp.tab))?.key ?? "today";
@@ -82,7 +84,11 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
     if (tab === "planner") {
       const keys = (one(sp.v) ?? "").split(",").filter(Boolean).slice(0, 50);
       const byKey = new Map(v.videos.map((x) => [x.key, x]));
-      body = <Planner videos={keys.map((k) => byKey.get(k)).filter((x): x is VaultVideo => !!x).map(pick)} today={v.today} />;
+      const picked = keys.map((k) => byKey.get(k)).filter((x): x is VaultVideo => !!x).slice(0, 20);
+      const [bw, opts] = await Promise.all([getBoostWriteSettings(), Promise.all(picked.map((x) => boostOptions(x.creativeId)))]);
+      const items: Record<string, { campaign: string | null; blocker: string | null }> = {};
+      picked.forEach((x, i) => { items[x.key] = { campaign: opts[i].campaigns[0]?.name ?? null, blocker: opts[i].blockers[0] ?? null }; });
+      body = <Planner videos={picked.map(pick)} today={v.today} boost={{ enabled: bw.enabled, canWrite: can(user, "settings"), maxBudget: bw.maxBudget, dailyCap: bw.dailyCap, committed: opts[0]?.committed ?? 0, items }} />;
     } else {
       const product = one(sp.product) || null, q = (one(sp.q) ?? "").trim().toLowerCase();
       const list = v.videos.filter((x) => (!product || x.productKey === product) && (!q || `${x.creator ?? ""} ${x.title ?? ""} ${x.creativeId}`.toLowerCase().includes(q)));

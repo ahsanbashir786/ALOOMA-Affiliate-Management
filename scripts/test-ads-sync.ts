@@ -146,20 +146,6 @@ async function main() {
   const deps = { cfg, f: fake, sleep, pauseMs: 0, now };
   const count = async (t: string) => Number((await q(sql.raw(`select count(*)::int as n from ${t}`)))[0].n);
 
-  // ── suggested budgets for a boost batch (pure) ──
-  const B = await import("../src/lib/ads/budget");
-  const vids10 = Array.from({ length: 10 }, (_, i) => ({ id: "v" + i, roi: 20 - i, orders: 80 - i * 6 }));
-  const s10 = B.suggestBudgets(vids10);
-  const amounts = Object.values(s10.budgets);
-  check("budget: 10 videos get TikTok's usual minimum of RM 35 in total, exactly", s10.total === 35 && amounts.reduce((a, b) => a + b, 0) === 35, JSON.stringify(s10));
-  check("budget: unevenly, the best video gets the most and none gets less than RM 1", s10.budgets.v0 > s10.budgets.v9 && amounts.every((x) => x >= 1) && new Set(amounts).size > 3, JSON.stringify(s10.budgets));
-  check("budget: every amount is a multiple of RM 0.5", amounts.every((x) => Math.abs(x * 2 - Math.round(x * 2)) < 1e-9));
-  check("budget: the minimum is RM 3.50 a video rounded up (3 videos RM 11, as TikTok showed; one video RM 5); more videos add RM 3.5 each", B.suggestBudgets(vids10.slice(0, 3)).total === 11 && B.minBatchTotal(1) === 5 && B.minBatchTotal(2) === 7 && B.suggestBudgets(Array.from({ length: 14 }, (_, i) => ({ id: "w" + i, roi: 10, orders: 20 }))).total === 49);
-  const big = B.suggestBudgets(vids10, 100);
-  check("budget: a bigger total is honoured and still adds up", big.total === 100 && Object.values(big.budgets).reduce((a, b) => a + b, 0) === 100);
-  check("budget: a total below the minimum is lifted to the minimum; nothing for no videos", B.suggestBudgets(vids10, 10).total === 35 && B.suggestBudgets([]).total === 0);
-  const same = B.suggestBudgets(Array.from({ length: 4 }, (_, i) => ({ id: "e" + i, roi: 10, orders: 20 })));
-  check("budget: equal videos get equal money", new Set(Object.values(same.budgets)).size === 1 || Math.max(...Object.values(same.budgets)) - Math.min(...Object.values(same.budgets)) <= 0.5, JSON.stringify(same));
 
   // ── helpers ──
   check("queryString: lists and objects go as JSON text, empty values are left out", C.queryString({ a: ["x", "y"], b: { c: 1 }, d: "z", e: null, f: "" }) === "a=%5B%22x%22%2C%22y%22%5D&b=%7B%22c%22%3A1%7D&d=z");

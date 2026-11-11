@@ -106,7 +106,7 @@ export function LogSection({ batches, saved, range }: { batches: LogBatch[]; sav
             <div className="overflow-x-auto">
               <table className="w-full min-w-[820px] border-collapse text-[13.5px]">
                 <thead><tr className={head}><th className={cn(th, "pl-5")}>Video</th><th className={thr}>Budget A Day</th><th className={thr}>Sales Before</th><th className={thr}>Sales After</th><th className={thr}>ROI Before</th><th className={thr}>ROI After</th><th className={cn(thr, "pr-5")}>Orders After</th></tr></thead>
-                <tbody>{b.videos.map((v) => <tr key={v.creativeId + v.productId} className="border-b border-line"><td className={cn(td, "max-w-[340px] pl-5")}><VideoCell v={{ ...v, postedOn: null }} /></td><td className={tdr}>{rm2(v.budget)}</td><td className={tdr}>{rm(v.before.revenue)}</td><td className={tdr}>{rm(v.after.revenue)}</td><td className={tdr}>{roiFmt(v.before.roi)}</td><td className={tdr}>{roiFmt(v.after.roi)}</td><td className={cn(tdr, "pr-5")}>{nfmt(v.after.orders)}</td></tr>)}</tbody>
+                <tbody>{b.videos.map((v) => <tr key={v.creativeId + v.productId} className="border-b border-line"><td className={cn(td, "max-w-[340px] pl-5")}><VideoCell v={{ ...v, postedOn: null }} /></td><td className={tdr}>{v.budget > 0 ? rm2(v.budget) : "Shared"}</td><td className={tdr}>{rm(v.before.revenue)}</td><td className={tdr}>{rm(v.after.revenue)}</td><td className={tdr}>{roiFmt(v.before.roi)}</td><td className={tdr}>{roiFmt(v.after.roi)}</td><td className={cn(tdr, "pr-5")}>{nfmt(v.after.orders)}</td></tr>)}</tbody>
               </table>
             </div>
           </details>

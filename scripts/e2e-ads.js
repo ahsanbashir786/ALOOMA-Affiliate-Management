@@ -77,11 +77,11 @@ async function login(p, email) {
   await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").first().check();
   ok(/1 video selected/.test(await o.getByTestId("ads-selection").innerText()), "boost picks: ticking a video starts a batch");
   await Promise.all([o.waitForURL(/tab=planner/), o.getByTestId("ads-open-planner").click()]); await o.waitForSelector("[data-testid=ads-planner]");
-  ok(/RM 5\.00/.test(await o.getByTestId("ads-plan-total").innerText()) && (await o.getByTestId("ads-plan-row").count()) === 1, "batch planner: one video needs RM 5 on its own");
-  await o.getByTestId("ads-plan-total-input").fill("50");
-  ok(/RM 50\.00/.test(await o.getByTestId("ads-plan-total").innerText()), "batch planner: changing the total re-splits the budget");
+  ok((await o.getByTestId("ads-plan-row").count()) === 1 && (await o.getByTestId("ads-plan-seller").isVisible()) && (await o.getByTestId("ads-plan-api").isVisible()), "batch planner: the ticked video, and the two ways to boost it (Seller Center batch, or each through the app)");
+  ok(!/RM 3\.50|rounded up|suggest/i.test(await o.getByTestId("ads-planner").innerText()), "batch planner: no budget formula of ours is shown (the minimum and the split are TikTok's)");
+  await o.getByTestId("ads-plan-total-input").fill("12");
   await Promise.all([o.waitForURL(/tab=log/), o.getByTestId("ads-mark-boosted").click()]); await o.waitForSelector("[data-testid=ads-log-batch]");
-  ok(/Saved/.test(await o.getByTestId("ads-log-saved").innerText()) && /RM 50\.00 A Day/.test(await o.getByTestId("ads-log-batch").first().innerText()) && /Before/.test(await o.getByTestId("ads-log-batch").first().innerText()), "boost log: Mark As Boosted saves the batch with before and after");
+  ok(/Saved/.test(await o.getByTestId("ads-log-saved").innerText()) && /RM 12\.00 A Day/.test(await o.getByTestId("ads-log-batch").first().innerText()) && /Before/.test(await o.getByTestId("ads-log-batch").first().innerText()), "boost log: Mark As Boosted saves the batch with before and after");
   await o.getByTestId("ads-log-delete").first().click(); await o.getByTestId("ads-log-delete-yes").click();
   await o.waitForFunction(() => !document.querySelector("[data-testid=ads-log-batch]"), null, { timeout: 15000 }); ok(true, "boost log: a batch can be removed");
   await o.goto(BASE + "/ads?tab=planner"); await o.waitForSelector("[data-testid=ads-planner-empty]"); ok(true, "batch planner: empty until videos are ticked");
@@ -166,9 +166,23 @@ async function login(p, email) {
   const logT = await o.getByTestId("boost-write-log").innerText();
   ok(/Create boost/.test(logT) && /Stop boost/.test(logT) && /Refused/.test(logT) && /OK/.test(logT), "boost from app: the log in Settings shows the create, the refusal and the stop");
   await o.goto(BASE + "/ads?tab=log"); await o.waitForSelector("[data-testid=ads-log-batch]"); ok(/Created in the app|Test Owner|Aisyah|Owner/.test(await o.locator("main").innerText()), "boost from app: it also appears in the Boost Log");
-  await o.goto(BASE + "/ads?tab=planner&v=" + encodeURIComponent("V22|P1")); await o.waitForSelector("[data-testid=ads-planner], [data-testid=ads-planner-empty]");
-  if (await o.getByTestId("ads-plan-boost").count()) ok(/budget=/.test(await o.getByTestId("ads-plan-boost").first().getAttribute("href")), "boost from app: the Batch Planner has a Boost button on each video");
-  else ok(true, "boost from app: planner row (video not in this list)");
+  // Boost All from the planner (the owner has switched it on above; the limits are RM 30 and RM 50)
+  await o.goto(BASE + "/ads/video/V1"); await o.waitForSelector("[data-testid=ads-boost-stop]");
+  await o.getByTestId("ads-boost-stop").first().click(); await o.getByTestId("ads-boost-stop-yes").click();
+  await o.waitForFunction(() => !document.querySelector("[data-testid=ads-boost-stop]"), null, { timeout: 20000 }); ok(true, "boost from app: a boost that was started in TikTok itself can be stopped here too");
+  await o.goto(BASE + "/ads?tab=planner&v=" + encodeURIComponent("V22|P1,V1|P1")); await o.waitForSelector("[data-testid=ads-planner]");
+  ok((await o.getByTestId("ads-plan-api-row").count()) === 2, "planner: every video is listed for Boost All");
+  ok(/already running/.test(await o.getByTestId("ads-plan-api").innerText()) || (await o.getByTestId("ads-plan-api-amount").count()) >= 1, "planner: a video that cannot be boosted says why, in its row");
+  await o.getByTestId("ads-plan-api-amount").first().fill("40");
+  ok(/at most RM 30\.00/.test(await o.getByTestId("ads-plan-api-problem").innerText()) && (await o.getByTestId("ads-plan-api-go").isDisabled()), "planner: an amount above your limit is stopped before anything is sent");
+  await o.getByTestId("ads-plan-api-amount").first().fill("12"); await o.getByTestId("ads-plan-api-amount").last().fill("12"); await o.getByTestId("ads-plan-api-sure").check();
+  await o.getByTestId("ads-plan-api-go").click(); await o.waitForSelector("[data-testid=ads-plan-api-confirm]");
+  ok(/2 separate creative boosts/.test(await o.getByTestId("ads-plan-api-confirm").innerText()) && /RM 24\.00 a day/.test(await o.getByTestId("ads-plan-api-confirm").innerText()), "planner: a confirm box says how many boosts and how much");
+  await o.getByTestId("ads-plan-api-yes").click(); await o.waitForSelector("[data-testid=ads-plan-api-done]", { timeout: 30000 });
+  ok(/1 of 2 boosts were created/.test(await o.getByTestId("ads-plan-api-done").innerText()), "planner: Boost All goes one after the other and says how many worked (V22 was just boosted, so only V1 went through)");
+  ok((await o.getByTestId("ads-plan-api-result").count()) === 2 && /just boosted/.test(await o.getByTestId("ads-plan-api").innerText()), "planner: each video shows its own answer, a refusal with its reason");
+  const sent3 = await (await fetch("http://127.0.0.1:3999/open_api/v1.3/__sent", { headers: { "access-token": "AT123" } })).json();
+  ok(sent3.data.created.filter((c) => c.session.item_id === "V1").length === 1 && sent3.data.created.at(-1).session.budget === 12, "planner: TikTok received exactly one boost, for V1, with RM 12");
 
   // ── a viewer cannot use the connection
   const v = await mk(); await login(v, "viewer@test.local");
