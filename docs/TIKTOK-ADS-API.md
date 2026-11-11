@@ -72,7 +72,7 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 |---|---|---|
 | Ads Today | `ads_campaign_daily` | Latest day with results against the day before; last 7 and 30 days against the period before; alerts from Campaign Health and the video groups |
 | Boost Picks | `ads_creative_daily` (all time), `tt_videos`, `ads_videos`, `ads_boosts`, Boost Log | One group per video and product, see below |
-| Batch Planner | The ticked videos | Minimum total RM 35 for up to 10 videos (+RM 3.5 for each extra), split by ROI and orders. A plan only |
+| Batch Planner | The ticked videos | Minimum total RM 3.50 a video rounded up (3 videos RM 11, 10 videos RM 35, both seen in Seller Center), one video RM 5; split by ROI and orders. A plan only. TikTok's batch budget works within one product |
 | Boost Log | `ads_boost_batches`, `ads_boost_batch_videos` (migration 0028) | Sales a day in the 7 days before the boost date against up to 7 days from it |
 | Campaign Health | `ads_campaign_daily`, `ads_campaigns` | No Sales (spend 10+ and no orders), Stopped Spending (nothing in 3 days), ROI Dropped (under 70% of the period before), Watch, Healthy |
 | Product Performance | `ads_product_daily`, `product_map` | Push More (ROI 15% above your average), Fix Or Pause (no orders, or ROI under 70% of your average), Hold |

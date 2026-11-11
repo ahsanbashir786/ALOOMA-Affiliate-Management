@@ -77,7 +77,7 @@ async function login(p, email) {
   await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").first().check();
   ok(/1 video selected/.test(await o.getByTestId("ads-selection").innerText()), "boost picks: ticking a video starts a batch");
   await Promise.all([o.waitForURL(/tab=planner/), o.getByTestId("ads-open-planner").click()]); await o.waitForSelector("[data-testid=ads-planner]");
-  ok(/RM 35\.00/.test(await o.getByTestId("ads-plan-total").innerText()) && (await o.getByTestId("ads-plan-row").count()) === 1, "batch planner: a batch of up to 10 videos gets the RM 35 minimum");
+  ok(/RM 5\.00/.test(await o.getByTestId("ads-plan-total").innerText()) && (await o.getByTestId("ads-plan-row").count()) === 1, "batch planner: one video needs RM 5 on its own");
   await o.getByTestId("ads-plan-total-input").fill("50");
   ok(/RM 50\.00/.test(await o.getByTestId("ads-plan-total").innerText()), "batch planner: changing the total re-splits the budget");
   await Promise.all([o.waitForURL(/tab=log/), o.getByTestId("ads-mark-boosted").click()]); await o.waitForSelector("[data-testid=ads-log-batch]");

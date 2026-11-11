@@ -44,7 +44,7 @@ export function Planner({ videos, today }: { videos: PickRow[]; today: string })
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
             <h2 className="text-[16px] font-semibold text-ink">Batch Of {list.length} Video{list.length === 1 ? "" : "s"}</h2>
-            <p className="mt-0.5 text-[13px] text-ink-3">The lowest total TikTok normally accepts for this many videos is about {rm(min)} a day. The total is split unevenly: more for the videos with the best ROI and most orders. You can change the total or any amount.</p>
+            <p className="mt-0.5 text-[13px] text-ink-3">The lowest total TikTok accepts for this many videos is about {rm(min)} a day (RM 3.50 a video, rounded up; one video alone needs RM 5). The total is split unevenly: more for the videos with the best ROI and most orders. You can change the total or any amount.</p>
           </div>
           <div className="text-right"><p className="tnum text-[26px] leading-tight font-semibold text-ink" data-testid="ads-plan-total">RM {sum.toFixed(2)}</p><p className="text-[12.5px] text-ink-3">a day{days > 1 ? ` · RM ${(sum * days).toFixed(2)} for ${days} days` : ""}</p></div>
         </div>
@@ -59,6 +59,7 @@ export function Planner({ videos, today }: { videos: PickRow[]; today: string })
             <input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-line-strong bg-surface px-2.5 text-[14px] text-ink focus:border-brand focus:outline-none" />
           </label>
         </div>
+        {new Set(list.map((v) => v.productId)).size > 1 && <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn" data-testid="ads-plan-products">These videos belong to {new Set(list.map((v) => v.productId)).size} different products. In Seller Center a batch budget is set for one product at a time, so make one batch for each product.</p>}
         <ul className="mt-4 divide-y divide-line border-y border-line">
           {list.map((v) => (
             <li key={v.key} className="flex flex-wrap items-center gap-3 py-2.5" data-testid="ads-plan-row">

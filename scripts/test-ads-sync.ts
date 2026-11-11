@@ -154,7 +154,7 @@ async function main() {
   check("budget: 10 videos get TikTok's usual minimum of RM 35 in total, exactly", s10.total === 35 && amounts.reduce((a, b) => a + b, 0) === 35, JSON.stringify(s10));
   check("budget: unevenly, the best video gets the most and none gets less than RM 1", s10.budgets.v0 > s10.budgets.v9 && amounts.every((x) => x >= 1) && new Set(amounts).size > 3, JSON.stringify(s10.budgets));
   check("budget: every amount is a multiple of RM 0.5", amounts.every((x) => Math.abs(x * 2 - Math.round(x * 2)) < 1e-9));
-  check("budget: fewer than 10 videos still total RM 35; more than 10 add RM 3.5 each", B.suggestBudgets(vids10.slice(0, 3)).total === 35 && B.suggestBudgets(Array.from({ length: 14 }, (_, i) => ({ id: "w" + i, roi: 10, orders: 20 }))).total === 49);
+  check("budget: the minimum is RM 3.50 a video rounded up (3 videos RM 11, as TikTok showed; one video RM 5); more videos add RM 3.5 each", B.suggestBudgets(vids10.slice(0, 3)).total === 11 && B.minBatchTotal(1) === 5 && B.minBatchTotal(2) === 7 && B.suggestBudgets(Array.from({ length: 14 }, (_, i) => ({ id: "w" + i, roi: 10, orders: 20 }))).total === 49);
   const big = B.suggestBudgets(vids10, 100);
   check("budget: a bigger total is honoured and still adds up", big.total === 100 && Object.values(big.budgets).reduce((a, b) => a + b, 0) === 100);
   check("budget: a total below the minimum is lifted to the minimum; nothing for no videos", B.suggestBudgets(vids10, 10).total === 35 && B.suggestBudgets([]).total === 0);

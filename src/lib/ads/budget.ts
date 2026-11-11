@@ -1,14 +1,15 @@
 // Suggested budgets for a creative boost batch. Pure (safe in client components); no network, no database.
-// TikTok's own suggestion for a batch of 10 videos was a minimum of RM 35 in total, spent unevenly across the videos.
+// TikTok's batch budget (Seller Center, "Use batch budget"): 3 videos need at least RM 11 in total, 10 videos RM 35, spent unevenly across the videos.
+// Both fit RM 3.50 a video, rounded up. One video on its own needs RM 5.
 // We suggest the same low total and split it unevenly, by how well each video has done.
 
-/** Minimum total for a batch (RM 35 for up to 10 videos, +RM 3.5 for each video after that). TikTok's own minimum always applies on top. */
-export const BATCH_MIN_BASE = 35;
+/** Minimum total for a batch: RM 3.50 a video, rounded up (3 videos RM 11, 10 videos RM 35, as TikTok showed). One video on its own: RM 5. TikTok's own minimum always applies on top. */
 export const BATCH_MIN_PER_VIDEO = 3.5;
+export const SINGLE_MIN = 5;
 export const MIN_PER_VIDEO = 1;
 const STEP = 0.5;
 
-export const minBatchTotal = (n: number) => (n <= 0 ? 0 : n <= 10 ? BATCH_MIN_BASE : BATCH_MIN_BASE + (n - 10) * BATCH_MIN_PER_VIDEO);
+export const minBatchTotal = (n: number) => (n <= 0 ? 0 : n === 1 ? SINGLE_MIN : Math.ceil(n * BATCH_MIN_PER_VIDEO));
 
 export type BudgetInput = { id: string; roi: number; orders: number };
 
