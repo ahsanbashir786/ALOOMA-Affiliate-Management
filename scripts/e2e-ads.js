@@ -12,6 +12,8 @@ async function login(p, email) {
 }
 (async () => {
   const b = await chromium.launch(); const errs = [];
+  // Press and hold a launch button until it fires.
+  const hold = async (p, loc) => { await loc.scrollIntoViewIfNeeded(); const r = await loc.boundingBox(); await p.mouse.move(r.x + r.width / 2, r.y + r.height / 2); await p.mouse.down(); await p.waitForTimeout(1700); await p.mouse.up(); };
   const mk = async (vp = { width: 1440, height: 1100 }) => { const p = await (await b.newContext({ viewport: vp })).newPage(); p.on("pageerror", (e) => errs.push(e.message)); return p; };
   const o = await mk(); await login(o, "owner@test.local");
 
@@ -77,9 +79,9 @@ async function login(p, email) {
   await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").first().check();
   ok(/1 video selected/.test(await o.getByTestId("ads-selection").innerText()), "boost picks: ticking a video starts a batch");
   await Promise.all([o.waitForURL(/tab=planner/), o.getByTestId("ads-open-planner").click()]); await o.waitForSelector("[data-testid=ads-planner]");
-  ok((await o.getByTestId("ads-plan-row").count()) === 1 && (await o.getByTestId("ads-plan-seller").isVisible()) && (await o.getByTestId("ads-plan-api").isVisible()), "batch planner: the ticked video, and the two ways to boost it (Seller Center batch, or each through the app)");
+  ok((await o.getByTestId("ads-plan-row").count()) === 1 && (await o.getByTestId("ads-plan-mode-app").isVisible()) && (await o.getByTestId("ads-plan-mode-seller").isVisible()), "boost studio: the ticked video as a card, and two ways to boost: in the app, or Seller Center");
   ok(!/RM 3\.50|rounded up|suggest/i.test(await o.getByTestId("ads-planner").innerText()), "batch planner: no budget formula of ours is shown (the minimum and the split are TikTok's)");
-  await o.getByTestId("ads-plan-total-input").fill("12");
+  await o.getByTestId("ads-plan-mode-seller").click(); await o.waitForSelector("[data-testid=ads-plan-seller]"); await o.getByTestId("ads-plan-total-input").fill("12");
   await Promise.all([o.waitForURL(/tab=log/), o.getByTestId("ads-mark-boosted").click()]); await o.waitForSelector("[data-testid=ads-log-batch]");
   ok(/Saved/.test(await o.getByTestId("ads-log-saved").innerText()) && /RM 12\.00 A Day/.test(await o.getByTestId("ads-log-batch").first().innerText()) && /Before/.test(await o.getByTestId("ads-log-batch").first().innerText()), "boost log: Mark As Boosted saves the batch with before and after");
   await o.getByTestId("ads-log-delete").first().click(); await o.getByTestId("ads-log-delete-yes").click();
@@ -138,22 +140,22 @@ async function login(p, email) {
   await o.goto(BASE + "/settings?tab=connection&src=ads"); await o.waitForSelector("[data-testid=boost-write-card]");
   ok(/Off/.test(await o.getByTestId("boost-write-switch").innerText()) && (await o.getByTestId("boost-write-max").inputValue()) === "30" && (await o.getByTestId("boost-write-cap").inputValue()) === "50", "boost from app: Settings shows it Off by default, with the limits RM 30 and RM 50");
   await o.goto(BASE + "/ads/video/V22"); await o.waitForSelector("[data-testid=ads-boost-panel]");
-  ok(/switched off/.test(await o.getByTestId("ads-boost-off").innerText()) && (await o.getByTestId("ads-boost-go").count()) === 0, "boost from app: while Off, the video page cannot boost");
+  ok(/switched off/i.test(await o.getByTestId("ads-boost-off").innerText()) && (await o.getByTestId("ads-boost-go").count()) === 0, "boost from app: while Off, the video page cannot boost");
   await o.goto(BASE + "/settings?tab=connection&src=ads"); await o.waitForSelector("[data-testid=boost-write-card]");
   await o.getByTestId("boost-write-switch").click(); await o.waitForFunction(() => /On/.test(document.querySelector("[data-testid=boost-write-switch]")?.textContent ?? ""), null, { timeout: 15000 });
   ok(true, "boost from app: the owner switches it On");
   await o.goto(BASE + "/ads/video/V22"); await o.waitForSelector("[data-testid=ads-boost-go]");
   ok((await o.getByTestId("ads-boost-campaign").locator("option").count()) >= 1 && /Pillow GMV Max/.test(await o.getByTestId("ads-boost-campaign").innerText()), "boost from app: the campaign this video ran in is offered");
-  ok(await o.getByTestId("ads-boost-go").isDisabled(), "boost from app: the button stays disabled until you confirm you understand it spends money");
-  await o.getByTestId("ads-boost-budget").fill("40"); await o.getByTestId("ads-boost-sure").check();
-  ok(/at most RM 30\.00/.test(await o.getByTestId("ads-boost-problem").innerText()) && (await o.getByTestId("ads-boost-go").isDisabled()), "boost from app: above your limit is stopped on the page");
+  ok(await o.getByTestId("ads-boost-go").isEnabled(), "boost from app: the press-and-hold launch button is ready with the default RM 5");
+  await o.getByTestId("ads-boost-budget").fill("40");
+  ok(/RM 30/.test(await o.getByTestId("ads-boost-problem").innerText()) && (await o.getByTestId("ads-boost-go").isDisabled()), "boost from app: above your limit is stopped on the page");
   await o.getByTestId("ads-boost-budget").fill("5");
-  await o.getByTestId("ads-boost-go").click(); await o.getByTestId("ads-boost-confirm-yes").click(); await o.waitForSelector("[data-testid=ads-boost-result]");
+  await hold(o, o.getByTestId("ads-boost-go")); await o.waitForSelector("[data-testid=ads-boost-result]");
   ok(/TikTok said/.test(await o.getByTestId("ads-boost-result").innerText()) && /at least 10/.test(await o.getByTestId("ads-boost-result").innerText()), "boost from app: when TikTok refuses (budget under its minimum), its own message is shown");
-  await o.getByTestId("ads-boost-budget").fill("12"); await o.getByTestId("ads-boost-sure").check(); await o.getByTestId("ads-boost-days").selectOption("3");
-  await o.getByTestId("ads-boost-go").click(); await o.waitForSelector("[data-testid=ads-boost-confirm]");
-  ok(/RM 12\.00 a day/.test(await o.getByTestId("ads-boost-confirm").innerText()) && /3 days/.test(await o.getByTestId("ads-boost-confirm").innerText()) && /up to RM 36\.00/.test(await o.getByTestId("ads-boost-confirm").innerText()), "boost from app: a confirm box says the video, the amount, the days and the most it can spend");
-  await o.getByTestId("ads-boost-confirm-yes").click(); await o.waitForFunction(() => /TikTok created the boost/.test(document.querySelector("[data-testid=ads-boost-result]")?.textContent ?? ""), null, { timeout: 20000 });
+  await o.getByTestId("ads-boost-budget").fill("12"); await o.getByTestId("ads-boost-days-3").click();
+  await o.getByTestId("ads-boost-go").click(); ok(true, "boost from app: a quick click does not launch (you must hold)");
+  { const sentQuick = await (await fetch("http://127.0.0.1:3999/open_api/v1.3/__sent", { headers: { "access-token": "AT123" } })).json(); ok(sentQuick.data.created.filter((c) => c.session.budget === 12).length === 0, "boost from app: nothing was sent by that click"); }
+  await hold(o, o.getByTestId("ads-boost-go")); await o.waitForFunction(() => /Live in TikTok/.test(document.querySelector("[data-testid=ads-boost-result]")?.textContent ?? ""), null, { timeout: 20000 });
   ok(true, "boost from app: TikTok creates the boost");
   await o.waitForSelector("[data-testid=ads-boost-blocker]"); ok(/already running/.test(await o.getByTestId("ads-boost-blocker").innerText()), "boost from app: the video then shows a boost is running, so it cannot be boosted twice");
   const sent = await (await fetch("http://127.0.0.1:3999/open_api/v1.3/__sent", { headers: { "access-token": "AT123" } })).json();
@@ -171,16 +173,14 @@ async function login(p, email) {
   await o.getByTestId("ads-boost-stop").first().click(); await o.getByTestId("ads-boost-stop-yes").click();
   await o.waitForFunction(() => !document.querySelector("[data-testid=ads-boost-stop]"), null, { timeout: 20000 }); ok(true, "boost from app: a boost that was started in TikTok itself can be stopped here too");
   await o.goto(BASE + "/ads?tab=planner&v=" + encodeURIComponent("V22|P1,V1|P1")); await o.waitForSelector("[data-testid=ads-planner]");
-  ok((await o.getByTestId("ads-plan-api-row").count()) === 2, "planner: every video is listed for Boost All");
-  ok(/already running/.test(await o.getByTestId("ads-plan-api").innerText()) || (await o.getByTestId("ads-plan-api-amount").count()) >= 1, "planner: a video that cannot be boosted says why, in its row");
+  ok((await o.getByTestId("ads-plan-row").count()) === 2, "boost studio: every video is a card");
+  ok((await o.getByTestId("ads-plan-api-amount").count()) >= 1, "boost studio: a ready card has the amount stepper");
   await o.getByTestId("ads-plan-api-amount").first().fill("40");
-  ok(/at most RM 30\.00/.test(await o.getByTestId("ads-plan-api-problem").innerText()) && (await o.getByTestId("ads-plan-api-go").isDisabled()), "planner: an amount above your limit is stopped before anything is sent");
-  await o.getByTestId("ads-plan-api-amount").first().fill("12"); await o.getByTestId("ads-plan-api-amount").last().fill("12"); await o.getByTestId("ads-plan-api-sure").check();
-  await o.getByTestId("ads-plan-api-go").click(); await o.waitForSelector("[data-testid=ads-plan-api-confirm]");
-  ok(/2 separate creative boosts/.test(await o.getByTestId("ads-plan-api-confirm").innerText()) && /RM 24\.00 a day/.test(await o.getByTestId("ads-plan-api-confirm").innerText()), "planner: a confirm box says how many boosts and how much");
-  await o.getByTestId("ads-plan-api-yes").click(); await o.waitForSelector("[data-testid=ads-plan-api-done]", { timeout: 30000 });
-  ok(/1 of 2 boosts were created/.test(await o.getByTestId("ads-plan-api-done").innerText()), "planner: Boost All goes one after the other and says how many worked (V22 was just boosted, so only V1 went through)");
-  ok((await o.getByTestId("ads-plan-api-result").count()) === 2 && /just boosted/.test(await o.getByTestId("ads-plan-api").innerText()), "planner: each video shows its own answer, a refusal with its reason");
+  ok(/RM 1/.test(await o.getByTestId("ads-plan-api-problem").innerText()) && (await o.getByTestId("ads-plan-api-go").isDisabled()), "boost studio: an amount above your limit is stopped before anything is sent");
+  await o.getByTestId("ads-plan-api-amount").first().fill("12"); await o.getByTestId("ads-plan-api-amount").last().fill("12");
+  await hold(o, o.getByTestId("ads-plan-api-go")); await o.waitForSelector("[data-testid=ads-plan-api-done]", { timeout: 30000 });
+  ok(/1\s*of\s*2\s*live/i.test(await o.getByTestId("ads-plan-api-done").innerText()), "boost studio: press and hold launches them one after the other and says how many are live (V22 was just boosted, so only V1)");
+  ok((await o.getByTestId("ads-plan-api-result").count()) === 2 && /just boosted/.test(await o.getByTestId("ads-plan-grid").innerText()), "boost studio: each card shows its own answer, a refusal with its reason");
   const sent3 = await (await fetch("http://127.0.0.1:3999/open_api/v1.3/__sent", { headers: { "access-token": "AT123" } })).json();
   ok(sent3.data.created.filter((c) => c.session.item_id === "V1").length === 1 && sent3.data.created.at(-1).session.budget === 12, "planner: TikTok received exactly one boost, for V1, with RM 12");
 

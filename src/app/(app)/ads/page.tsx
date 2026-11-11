@@ -7,7 +7,7 @@ import { TabLinks } from "@/components/ui/tab-links";
 import { adsConnectionInfo } from "@/lib/tiktok-ads/client";
 import { DEFAULT_RULES, vault, type VaultVideo } from "@/lib/ads/vault";
 import { GROUPS, isGroupKey, type GroupKey } from "@/lib/ads/groups";
-import { adsToday, boostLog, campaignHealth, creatorScoreboard, productPerformance } from "@/lib/ads/insights";
+import { adsToday, boostLog, videoTrends, campaignHealth, creatorScoreboard, productPerformance } from "@/lib/ads/insights";
 import { rangeSuffix, resolveRange, type RangeKey } from "@/lib/ads/range";
 import { RangePicker } from "@/components/ads/range-picker";
 import { todayKL } from "@/lib/time";
@@ -85,10 +85,10 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
       const keys = (one(sp.v) ?? "").split(",").filter(Boolean).slice(0, 50);
       const byKey = new Map(v.videos.map((x) => [x.key, x]));
       const picked = keys.map((k) => byKey.get(k)).filter((x): x is VaultVideo => !!x).slice(0, 20);
-      const [bw, opts] = await Promise.all([getBoostWriteSettings(), Promise.all(picked.map((x) => boostOptions(x.creativeId)))]);
+      const [bw, opts, trends] = await Promise.all([getBoostWriteSettings(), Promise.all(picked.map((x) => boostOptions(x.creativeId))), videoTrends(picked.map((x) => x.creativeId))]);
       const items: Record<string, { campaign: string | null; blocker: string | null }> = {};
       picked.forEach((x, i) => { items[x.key] = { campaign: opts[i].campaigns[0]?.name ?? null, blocker: opts[i].blockers[0] ?? null }; });
-      body = <Planner videos={picked.map(pick)} today={v.today} boost={{ enabled: bw.enabled, canWrite: can(user, "settings"), maxBudget: bw.maxBudget, dailyCap: bw.dailyCap, committed: opts[0]?.committed ?? 0, items }} />;
+      body = <Planner videos={picked.map(pick)} today={v.today} trends={trends} boost={{ enabled: bw.enabled, canWrite: can(user, "settings"), maxBudget: bw.maxBudget, dailyCap: bw.dailyCap, committed: opts[0]?.committed ?? 0, items }} />;
     } else {
       const product = one(sp.product) || null, q = (one(sp.q) ?? "").trim().toLowerCase();
       const list = v.videos.filter((x) => (!product || x.productKey === product) && (!q || `${x.creator ?? ""} ${x.title ?? ""} ${x.creativeId}`.toLowerCase().includes(q)));

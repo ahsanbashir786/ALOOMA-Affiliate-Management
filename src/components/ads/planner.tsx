@@ -3,157 +3,181 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, Check, CheckCircle2, ClipboardCheck, Copy, ExternalLink, Info, Rocket, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ClipboardCheck, Copy, ExternalLink, Lock, Rocket, ShoppingBag, Store, TrendingUp, Wallet, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBoostsBulk, saveBoostBatch, type BulkResult } from "@/app/actions/ads-boost";
+import { Sparkline } from "@/components/viz/sparkline";
+import { Person } from "@/components/execution/ui";
 import type { PickRow } from "./picks-board";
-import { GroupPill, VideoCell, nfmt, rm, roiFmt } from "./ui";
+import { GROUP } from "@/lib/ads/groups";
+import { BudgetStepper, HoldToLaunch, SpendGauge, rmShort } from "./boost-ui";
+import { dayShort, nfmt, rm, roiFmt } from "./ui";
 
 export type PlanBoost = { enabled: boolean; canWrite: boolean; maxBudget: number; dailyCap: number; committed: number; /** Per video (by key): the campaign it would be boosted in, or why it cannot be. */ items: Record<string, { campaign: string | null; blocker: string | null }> };
 
-const rm2 = (n: number) => `RM ${n.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const DAYS = [{ v: "", l: "Until I stop it" }, { v: "1", l: "1 day" }, { v: "3", l: "3 days" }, { v: "7", l: "7 days" }];
-const card = "rounded-2xl border border-line bg-surface p-5";
-const input = "mt-1 h-9 w-full rounded-lg border border-line-strong bg-surface px-2.5 text-[14px] text-ink focus:border-brand focus:outline-none";
+/** A blocker in a few words for the card (the full text is in the tooltip). */
+const shortBlock = (t: string | null) => !t ? "" : /already running/i.test(t) ? "Already boosted" : /no campaign|nowhere to boost/i.test(t) ? "No campaign yet" : /switched off/i.test(t) ? "Campaign is off" : /LIVE GMV/i.test(t) ? "LIVE campaign" : /not in the synced/i.test(t) ? "Press Sync Now" : /TikTok will not boost/i.test(t) ? "TikTok won't boost it" : t.slice(0, 40);
+const DAYS = [{ v: "", l: "∞" }, { v: "1", l: "1d" }, { v: "3", l: "3d" }, { v: "7", l: "7d" }];
+const EDGE: Record<string, string> = { good: "bg-good", brand: "bg-brand", warn: "bg-warn", critical: "bg-critical", muted: "bg-line-strong" };
+
+function Stat({ icon: Icon, value, tip, tone }: { icon: React.ComponentType<{ className?: string }>; value: string; tip: string; tone?: "good" }) {
+  return <span title={tip} className={cn("inline-flex items-center gap-1 rounded-lg bg-surface-2 px-2 py-1 text-[13px] font-semibold", tone === "good" ? "text-good" : "text-ink")}><Icon className="size-3.5 text-ink-3" /><span className="tnum">{value}</span></span>;
+}
 
 /**
- * Batch Planner. The list of videos you ticked, for two ways to boost them:
- *  1. As a batch in TikTok Seller Center (one shared budget that TikTok splits itself). TikTok's API cannot create that, so the app only keeps the list and the log.
- *  2. Through the app: each video its own creative boost (TikTok's API allows one video per boost), all started with one button.
- * The app invents no budget formula: you choose the amounts.
+ * Boost Studio (the Batch Planner tab). Your videos as cards, a launch pad on the side.
+ * In the app: each video its own creative boost (TikTok's API allows one video per boost), launched together by pressing and holding one button.
+ * Seller Center: TikTok's own batch with one shared budget (not possible through the API): the app only copies the list and keeps the log.
  */
-export function Planner({ videos, today, boost }: { videos: PickRow[]; today: string; boost: PlanBoost }) {
+export function Planner({ videos, today, boost, trends }: { videos: PickRow[]; today: string; boost: PlanBoost; trends: Record<string, number[]> }) {
   const router = useRouter();
   const [list, setList] = useState(videos);
-  const [total, setTotal] = useState("");
-  const [days, setDays] = useState(1);
-  const [date, setDate] = useState(today);
-  const [note, setNote] = useState("");
-  const [copied, setCopied] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, start] = useTransition();
-  // Boost through the app
+  const [mode, setMode] = useState<"app" | "seller">("app");
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [bdays, setBdays] = useState("");
-  const [sure, setSure] = useState(false);
-  const [step, setStep] = useState<"form" | "confirm">("form");
   const [results, setResults] = useState<BulkResult[] | null>(null);
+  const [busy, start] = useTransition();
+  // Seller Center mode
+  const [total, setTotal] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const amountOf = (k: string) => Number(amounts[k] ?? "5");
 
+  const ready = list.filter((v) => !boost.items[v.key]?.blocker);
+  const sum = ready.reduce((a, v) => a + (amountOf(v.key) > 0 ? amountOf(v.key) : 0), 0);
+  const room = Math.max(0, boost.dailyCap - boost.committed);
+  const bad = ready.find((v) => !(amountOf(v.key) > 0) || amountOf(v.key) > boost.maxBudget);
+  const problem = !ready.length ? "none" : bad ? "amount" : sum > room ? "cap" : null;
   const products = useMemo(() => {
     const m = new Map<string, { label: string; videos: PickRow[] }>();
     for (const v of list) { const g = m.get(v.productId) ?? { label: v.productLabel, videos: [] }; g.videos.push(v); m.set(v.productId, g); }
     return [...m.entries()].map(([id, g]) => ({ id, ...g }));
   }, [list]);
-  const boostable = list.filter((v) => !boost.items[v.key]?.blocker);
-  const sum = boostable.reduce((a, v) => a + (amountOf(v.key) > 0 ? amountOf(v.key) : 0), 0);
-  const room = Math.max(0, boost.dailyCap - boost.committed);
-  const bad = boostable.find((v) => !(amountOf(v.key) > 0) || amountOf(v.key) > boost.maxBudget);
-  const problem = !boostable.length ? "None of these videos can be boosted now." : bad ? `Each amount must be above zero and at most ${rm2(boost.maxBudget)} (your limit in Settings).` : sum > room ? `Together they are ${rm2(sum)} a day, but only ${rm2(room)} a day is left under your limit of ${rm2(boost.dailyCap)}.` : null;
-  const copy = (key: string, text: string) => { void navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(null), 1500); };
+  const resOf = (k: string) => results?.find((r) => r.key === k);
+  const live = results?.filter((r) => r.ok).length ?? 0;
+  const canApp = boost.enabled && boost.canWrite;
 
   if (!list.length)
     return (
-      <div className="grid place-items-center rounded-2xl border border-line bg-surface px-6 py-16 text-center" data-testid="ads-planner-empty">
-        <h2 className="text-[20px] font-semibold text-ink">No Videos In The Batch Yet</h2>
-        <p className="mt-1 max-w-md text-[14.5px] text-ink-3">Open Boost Picks, tick the videos you want, then press Plan This Batch.</p>
-        <Link href="/ads?tab=picks" className="mt-5 inline-flex h-10 items-center rounded-lg bg-brand px-5 text-[14.5px] font-medium text-white hover:opacity-90">Open Boost Picks</Link>
+      <div className="grid place-items-center rounded-3xl border border-dashed border-line-strong bg-surface px-6 py-20 text-center" data-testid="ads-planner-empty">
+        <span className="grid size-16 place-items-center rounded-2xl bg-brand-soft text-brand"><Rocket className="size-8" /></span>
+        <h2 className="mt-4 text-[20px] font-semibold text-ink">Pick Videos To Boost</h2>
+        <Link href="/ads?tab=picks" className="mt-5 inline-flex h-10 items-center rounded-lg bg-brand px-5 text-[14.5px] font-medium text-white hover:bg-brand-strong">Open Boost Picks</Link>
       </div>
     );
 
-  const goAll = () => start(async () => {
-    setError(null);
-    const r = await createBoostsBulk(boostable.map((v) => ({ key: v.key, itemId: v.creativeId, budget: amountOf(v.key) })), bdays ? Number(bdays) : null);
-    setResults(r); setStep("form"); setSure(false);
-    router.refresh();
+  const launch = () => start(async () => {
+    const r = await createBoostsBulk(ready.map((v) => ({ key: v.key, itemId: v.creativeId, budget: amountOf(v.key) })), bdays ? Number(bdays) : null);
+    setResults(r); router.refresh();
   });
-  const resOf = (k: string) => results?.find((r) => r.key === k);
+  const copy = (key: string, text: string) => { void navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(null), 1500); };
 
   return (
-    <div className="space-y-5" data-testid="ads-planner">
-      <section className={card}>
-        <h2 className="text-[16px] font-semibold text-ink">Your Batch: {list.length} Video{list.length === 1 ? "" : "s"}</h2>
-        {products.length > 1 && <p className="mt-2 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn" data-testid="ads-plan-products">These videos belong to {products.length} different products. In Seller Center a batch budget is set for one product at a time, so make one batch for each product (the copy buttons below are per product).</p>}
-        <ul className="mt-3 divide-y divide-line border-y border-line">
-          {list.map((v) => (
-            <li key={v.key} className="flex flex-wrap items-center gap-3 py-2.5" data-testid="ads-plan-row">
-              <span className="min-w-0 flex-1 basis-64"><VideoCell v={{ ...v, why: undefined }} /></span>
-              <GroupPill group={v.group} />
-              <span className="tnum w-36 text-right text-[12.5px] text-ink-3">{v.cost > 0 ? `ROI ${roiFmt(v.roi)} · ${nfmt(v.orders)} orders` : v.organicGmv > 0 ? `${rm(v.organicGmv)} without ads` : "no history"}</span>
-              <button type="button" onClick={() => { setList((l) => l.filter((x) => x.key !== v.key)); setResults(null); }} aria-label="Remove from batch" title="Remove from batch" className="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"><X className="size-4" /></button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className={card} data-testid="ads-plan-seller">
-        <h2 className="text-[16px] font-semibold text-ink">Option 1: One Shared Budget In Seller Center</h2>
-        <p className="mt-0.5 max-w-3xl text-[13px] text-ink-3">This is TikTok&apos;s own batch option (&quot;Use batch budget&quot;): you type one total and TikTok shares it between the videos by their performance. TikTok&apos;s API cannot create it, so you make it in Seller Center. The minimum and the split are TikTok&apos;s, not ours: Seller Center shows the minimum when you pick the videos.</p>
-        <ol className="mt-3 list-decimal space-y-1 pl-5 text-[13.5px] text-ink-2">
-          <li>Copy the video IDs below (one product at a time).</li>
-          <li>Seller Center, Shop ads, GMV Max, Creatives, Boost: pick the product, search the Post IDs, switch on &quot;Use batch budget&quot; and type the total.</li>
-          <li>Come back here, type the same total, and press Mark As Boosted, so the Boost Log can show what happened after.</li>
-        </ol>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {products.map((g) => <button key={g.id} type="button" onClick={() => copy(g.id, g.videos.map((v) => v.creativeId).join("\n"))} data-testid="ads-plan-copy" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2">{copied === g.id ? <Check className="size-4" /> : <Copy className="size-4" />}{copied === g.id ? "Copied" : `Copy ${g.videos.length} Video ID${g.videos.length === 1 ? "" : "s"}`} · {g.label}</button>)}
-          <a href="https://seller-my.tiktok.com/ads-creation/dashboard" target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium text-brand hover:underline"><ExternalLink className="size-4" />Open Seller Center</a>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <label className="text-[12.5px] font-medium text-ink-2">Total Budget You Set (RM A Day)<input type="number" min={0} step={0.5} value={total} onChange={(e) => setTotal(e.target.value)} placeholder="As typed in Seller Center" data-testid="ads-plan-total-input" className={input} /></label>
-          <label className="text-[12.5px] font-medium text-ink-2">Days<input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Math.min(30, Math.max(1, Math.round(Number(e.target.value) || 1))))} className={input} /></label>
-          <label className="text-[12.5px] font-medium text-ink-2">Boost Date<input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} className={input} /></label>
-        </div>
-        <label className="mt-3 block text-[12.5px] font-medium text-ink-2">Note (Optional)<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="For example: weekend push for towels" className={input} /></label>
-        {error && <p className="mt-3 text-[13.5px] text-critical" role="alert">{error}</p>}
-        <button type="button" disabled={busy} data-testid="ads-mark-boosted" onClick={() => start(async () => { setError(null); const r = await saveBoostBatch({ boostedOn: date, days, note, total: Number(total) > 0 ? Number(total) : undefined, videos: list.map((v) => ({ creativeId: v.creativeId, productId: v.productId, budget: 0 })) }); if (r.ok) router.push("/ads?tab=log&saved=1"); else setError(r.error); })}
-          className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-4 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-60"><ClipboardCheck className="size-4" />{busy ? "Saving…" : "Mark As Boosted"}</button>
-      </section>
-
-      <section className={card} data-testid="ads-plan-api">
-        <h2 className="flex items-center gap-2 text-[16px] font-semibold text-ink"><Rocket className="size-4.5 text-brand" />Option 2: Boost Each Video Through The App</h2>
-        <p className="mt-0.5 max-w-3xl text-[13px] text-ink-3">TikTok&apos;s API creates one creative boost per video, each with its own budget (no shared budget, so it costs more than Option 1). All videos below are started with one button, and every try is logged.</p>
-        {!boost.canWrite || !boost.enabled ? (
-          <p className="mt-3 text-[14px] text-ink-2" data-testid="ads-plan-api-off">{!boost.canWrite ? "Only the owner (the Settings permission) can create boosts from the app, because it spends real money." : "Boosting from the app is switched off. The owner can turn it on in Settings, under Connection, Ad Management."}</p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            <ul className="divide-y divide-line border-y border-line">
-              {list.map((v) => {
-                const info = boost.items[v.key], res = resOf(v.key);
-                return (
-                  <li key={v.key} className="flex flex-wrap items-center gap-3 py-2.5" data-testid="ads-plan-api-row">
-                    <span className="min-w-0 flex-1 basis-60 text-[13.5px]"><span className="block truncate font-medium text-ink">{v.title || `Video ${v.creativeId.slice(-8)}`}</span><span className="block truncate text-[12.5px] text-ink-3">{info?.blocker ? <span className="text-warn">{info.blocker}</span> : `in ${info?.campaign ?? "its campaign"}`}</span></span>
-                    {res ? <span className={cn("flex max-w-md items-start gap-1.5 text-[12.5px]", res.ok ? "text-good" : "text-critical")} data-testid="ads-plan-api-result">{res.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}{res.message}</span> : (
-                      <label className="flex items-center gap-1.5 text-[12.5px] text-ink-3">RM<input type="number" min={1} step={0.5} disabled={!!info?.blocker} value={amounts[v.key] ?? "5"} onChange={(e) => setAmounts((x) => ({ ...x, [v.key]: e.target.value }))} data-testid="ads-plan-api-amount" className="h-9 w-24 rounded-lg border border-line-strong bg-surface px-2 text-right text-[14px] text-ink focus:border-brand focus:outline-none disabled:opacity-50" aria-label={`Daily budget for ${v.title ?? v.creativeId}`} /></label>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            {!results && (step === "form" ? (
-              <div className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label className="text-[12.5px] font-medium text-ink-2">For How Long<select value={bdays} onChange={(e) => setBdays(e.target.value)} data-testid="ads-plan-api-days" className={input}>{DAYS.map((d) => <option key={d.v} value={d.v}>{d.l}</option>)}</select></label>
-                  <p className="self-end pb-1.5 text-[14px] text-ink-2 sm:col-span-2">Total: <b className="tnum" data-testid="ads-plan-api-total">{rm2(sum)}</b> a day for {boostable.length} video{boostable.length === 1 ? "" : "s"}. Your limits: {rm2(boost.maxBudget)} for one, {rm2(boost.dailyCap)} for all started here ({rm2(boost.committed)} in use).</p>
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]" data-testid="ads-planner">
+      {/* ───── the videos ───── */}
+      <div className="space-y-3">
+        {products.length > 1 && <p className="flex items-center gap-2 rounded-xl bg-warn-soft px-3.5 py-2 text-[13px] font-medium text-warn" data-testid="ads-plan-products"><AlertTriangle className="size-4" />{products.length} products: a Seller Center batch is one product at a time</p>}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2" data-testid="ads-plan-grid">
+          {list.map((v) => {
+            const info = boost.items[v.key], res = resOf(v.key), g = GROUP[v.group], tr = trends[v.creativeId] ?? [];
+            const blocked = !!info?.blocker;
+            return (
+              <article key={v.key} data-testid="ads-plan-row" data-state={res ? (res.ok ? "live" : "refused") : blocked ? "blocked" : "ready"}
+                className={cn("group relative overflow-hidden rounded-2xl border bg-surface p-4 pt-5 transition-shadow hover:shadow-card", res?.ok ? "bx-pop border-good/50" : res ? "border-critical/40" : "border-line")}>
+                <span aria-hidden className={cn("absolute inset-x-0 top-0 h-1.5", res?.ok ? "bg-good" : res ? "bg-critical" : EDGE[g.tone])} />
+                <button type="button" onClick={() => { setList((l) => l.filter((x) => x.key !== v.key)); setResults(null); }} aria-label="Remove from batch" title="Remove" className="absolute top-3 right-3 grid size-7 place-items-center rounded-full text-ink-3 opacity-60 hover:bg-surface-2 hover:opacity-100"><X className="size-4" /></button>
+                <div className="flex items-start gap-3 pr-6">
+                  {v.creator ? <Person name={v.creator} size={38} /> : <span className="size-[38px] shrink-0 rounded-full bg-surface-2" />}
+                  <div className="min-w-0">
+                    <p className="line-clamp-2 text-[14px] leading-snug font-semibold text-ink" title={v.title ?? undefined}>{v.title || `Video ${v.creativeId.slice(-8)}`}</p>
+                    <p className="mt-0.5 truncate text-[12.5px] text-ink-3">{v.creator ? `@${v.creator}` : ""}{v.postedOn ? ` · ${dayShort(v.postedOn)}` : ""}</p>
+                  </div>
                 </div>
-                {problem && <p className="text-[13px] text-critical" data-testid="ads-plan-api-problem">{problem}</p>}
-                <label className="flex items-start gap-2 text-[13.5px] text-ink-2"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} data-testid="ads-plan-api-sure" className="mt-0.5 size-4 accent-[var(--brand)]" />I understand this spends real money in TikTok.</label>
-                <button type="button" disabled={!!problem || !sure} onClick={() => setStep("confirm")} data-testid="ads-plan-api-go" className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-5 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-50"><Rocket className="size-4" />Boost All {boostable.length} In TikTok</button>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-brand/30 bg-brand-soft p-4" data-testid="ads-plan-api-confirm">
-                <p className="text-[14.5px] font-semibold text-ink">Please confirm</p>
-                <p className="mt-1 text-[14px] text-ink-2">Create <b>{boostable.length} separate creative boosts</b>, together <b>{rm2(sum)} a day</b>{bdays ? <> for <b>{bdays} day{bdays === "1" ? "" : "s"}</b> (up to {rm2(sum * Number(bdays))})</> : <>, <b>until you stop each one</b></>}. If TikTok refuses one, the others still go ahead and each answer is shown. You can stop them on each video&apos;s page.</p>
-                <div className="mt-3 flex gap-2">
-                  <button type="button" disabled={busy} onClick={goAll} data-testid="ads-plan-api-yes" className="inline-flex h-10 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-60">{busy ? "Sending to TikTok…" : "Yes, Create All Boosts"}</button>
-                  <button type="button" disabled={busy} onClick={() => setStep("form")} className="h-10 rounded-lg px-4 text-[14px] text-ink-2 hover:bg-surface-2">Go Back</button>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <Stat icon={TrendingUp} value={v.cost > 0 ? roiFmt(v.roi) : "–"} tip="ROI: sales for every RM of ads, all time" tone="good" />
+                  <Stat icon={ShoppingBag} value={nfmt(v.orders)} tip="Orders from ads, all time" />
+                  <Stat icon={Wallet} value={rm(v.cost)} tip="Ad spend, all time" />
+                  <span className="ml-auto rounded-full px-2 py-0.5 text-[11.5px] font-medium text-ink-2" style={{ background: "var(--surface-2)" }} title={g.about}>{g.label}</span>
                 </div>
-              </div>
+                <div className="mt-2 h-9" title="Sales from ads, last 14 days"><Sparkline values={tr.length ? tr : [0, 0]} tone="good" height={36} label="Sales, last 14 days" /></div>
+                {/* state / budget */}
+                {res ? (
+                  <p className={cn("mt-3 flex items-start gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium", res.ok ? "bg-good-soft text-good" : "bg-critical-soft text-critical")} data-testid="ads-plan-api-result" title={res.message}>
+                    {res.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}<span className="line-clamp-2">{res.ok ? "Live in TikTok" : res.message}</span>
+                  </p>
+                ) : blocked ? (
+                  <p className="mt-3 flex items-start gap-1.5 rounded-xl bg-warn-soft px-3 py-2 text-[12.5px] font-medium text-warn" title={info.blocker ?? undefined}><Lock className="mt-0.5 size-3.5 shrink-0" /><span className="line-clamp-1">{shortBlock(info.blocker)}</span></p>
+                ) : mode === "app" && canApp ? (
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-[12px] text-ink-3" title={info?.campaign ?? undefined}><span className="mr-1 inline-block size-2 rounded-full bg-good align-middle" />{info?.campaign ?? "Ready"}</span>
+                    <BudgetStepper value={amounts[v.key] ?? "5"} onChange={(x) => setAmounts((a) => ({ ...a, [v.key]: x }))} max={boost.maxBudget} compact testId="ads-plan-api-amount" />
+                  </div>
+                ) : (
+                  <p className="mt-3 flex items-center gap-1.5 text-[12px] text-ink-3"><span className="inline-block size-2 rounded-full bg-good" />Ready</p>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ───── the launch pad ───── */}
+      <aside className="lg:sticky lg:top-4 lg:self-start">
+        <div className="space-y-4 rounded-3xl border border-line bg-surface p-4 shadow-card">
+          <div className="grid grid-cols-2 rounded-2xl bg-surface-2 p-1" role="tablist" aria-label="Where to boost">
+            {([["app", "In The App", Rocket], ["seller", "Seller Center", Store]] as const).map(([k, l, Icon]) => (
+              <button key={k} type="button" role="tab" aria-selected={mode === k} onClick={() => setMode(k)} data-testid={`ads-plan-mode-${k}`} className={cn("inline-flex h-10 items-center justify-center gap-1.5 rounded-xl text-[14px] font-medium", mode === k ? "bg-brand-soft text-brand-strong shadow-card" : "text-ink-2 hover:text-ink")}><Icon className="size-4" />{l}</button>
             ))}
-            {results && <p className="text-[13px] text-ink-3" data-testid="ads-plan-api-done">{results.filter((r) => r.ok).length} of {results.length} boosts were created. They are in the Boost Log and in Settings, under what the app sent.</p>}
           </div>
-        )}
-        <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-ink-3"><Info className="mt-0.5 size-3.5 shrink-0" />Seller Center&apos;s smallest budget for one boost is RM 5 a day. TikTok decides and its message is shown if it refuses.</p>
-      </section>
+
+          {mode === "app" ? (
+            <div data-testid="ads-plan-api" className="space-y-4">
+              {!canApp ? (
+                <div className="grid place-items-center gap-2 rounded-2xl border border-dashed border-line-strong px-4 py-8 text-center" data-testid="ads-plan-api-off">
+                  <Lock className="size-8 text-ink-3" />
+                  <p className="text-[14px] font-medium text-ink-2">{!boost.canWrite ? "Owner only" : "Switched off"}</p>
+                  {boost.canWrite && <Link href="/settings?tab=connection&src=ads" className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2">Turn On In Settings</Link>}
+                </div>
+              ) : results ? (
+                <div className="space-y-3 text-center" data-testid="ads-plan-api-done">
+                  <p className="bx-pop mx-auto grid size-16 place-items-center rounded-full bg-good-soft text-good"><CheckCircle2 className="size-9" /></p>
+                  <p className="text-[22px] font-semibold text-ink"><span className="tnum">{live}</span> of <span className="tnum">{results.length}</span> live</p>
+                  <div className="flex justify-center gap-2"><Link href="/ads?tab=log" className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2">Boost Log</Link><button type="button" onClick={() => setResults(null)} className="h-9 rounded-lg px-3 text-[13.5px] text-ink-2 hover:bg-surface-2">Plan More</button></div>
+                </div>
+              ) : (
+                <>
+                  <SpendGauge running={boost.committed} adding={sum} cap={boost.dailyCap} />
+                  <div className="flex items-center justify-center gap-1.5" role="group" aria-label="For how long">
+                    {DAYS.map((d) => <button key={d.v} type="button" onClick={() => setBdays(d.v)} data-testid={`ads-plan-api-days-${d.v || "open"}`} aria-pressed={bdays === d.v} className={cn("h-9 min-w-12 rounded-full px-3 text-[14px] font-semibold", bdays === d.v ? "bg-brand-soft text-brand-strong" : "bg-surface-2 text-ink-2 hover:bg-brand-soft")}>{d.l}</button>)}
+                  </div>
+                  <p className="sr-only" data-testid="ads-plan-api-total">{rmShort(sum)}</p>
+                  {problem && problem !== "none" && <p className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-critical" data-testid="ads-plan-api-problem"><AlertTriangle className="size-4" />{problem === "amount" ? `Each RM 1 – ${boost.maxBudget}` : `Over your RM ${boost.dailyCap} limit`}</p>}
+                  <HoldToLaunch testId="ads-plan-api-go" label={`Launch ${ready.length} Boost${ready.length === 1 ? "" : "s"}`} disabled={!!problem} busy={busy} onDone={launch} />
+                </>
+              )}
+            </div>
+          ) : (
+            <div data-testid="ads-plan-seller" className="space-y-4">
+              <div className="space-y-2">
+                {products.map((g) => (
+                  <button key={g.id} type="button" onClick={() => copy(g.id, g.videos.map((v) => v.creativeId).join("\n"))} data-testid="ads-plan-copy" className="flex w-full items-center gap-3 rounded-2xl border border-line px-3.5 py-3 text-left hover:border-brand/50 hover:bg-brand-soft">
+                    <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">{copied === g.id ? <Check className="size-5" /> : <Copy className="size-5" />}</span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-semibold text-ink">{g.label}</span><span className="text-[12.5px] text-ink-3">{copied === g.id ? "Copied" : `${g.videos.length} video ID${g.videos.length === 1 ? "" : "s"}`}</span></span>
+                  </button>
+                ))}
+              </div>
+              <a href="https://seller-my.tiktok.com/ads-creation/dashboard" target="_blank" rel="noreferrer" className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-line-strong text-[14px] font-medium text-brand hover:bg-brand-soft"><ExternalLink className="size-4" />Open Seller Center</a>
+              <label className="block text-center">
+                <span className="text-[12px] font-medium text-ink-3">Total you set there (RM a day)</span>
+                <input type="number" min={0} step={0.5} value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" data-testid="ads-plan-total-input" className="tnum mx-auto mt-1 block h-12 w-40 rounded-2xl border border-line-strong bg-surface text-center text-[22px] font-semibold text-ink focus:border-brand focus:outline-none" />
+              </label>
+              {saveErr && <p className="text-center text-[13px] text-critical" role="alert">{saveErr}</p>}
+              <button type="button" disabled={busy} data-testid="ads-mark-boosted" onClick={() => start(async () => { setSaveErr(null); const r = await saveBoostBatch({ boostedOn: today, days: 1, note: "", total: Number(total) > 0 ? Number(total) : undefined, videos: list.map((v) => ({ creativeId: v.creativeId, productId: v.productId, budget: 0 })) }); if (r.ok) router.push("/ads?tab=log&saved=1"); else setSaveErr(r.error); })}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand text-[15px] font-semibold text-white hover:bg-brand-strong disabled:opacity-60"><ClipboardCheck className="size-5" />{busy ? "Saving…" : "Mark As Boosted"}</button>
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   );
 }

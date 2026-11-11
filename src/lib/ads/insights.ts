@@ -259,3 +259,18 @@ export async function videoDetail(id: string): Promise<VideoDetail | null> {
     sessions: sessions.map((x) => ({ sessionId: x.session_id, status: x.status, budget: x.budget == null ? null : num(x.budget), startsAt: x.starts_at ? new Date(x.starts_at).toISOString().slice(0, 10) : null, endsAt: x.ends_at ? new Date(x.ends_at).toISOString().slice(0, 10) : null, active: !!x.active })),
   };
 }
+
+/** Sales from ads per day for the last `days` days, for a handful of videos (the little charts on the Boost Studio cards). */
+export async function videoTrends(ids: string[], days = 14): Promise<Record<string, number[]>> {
+  const out: Record<string, number[]> = {};
+  if (!ids.length) return out;
+  const end = todayKL(), start = addDaysISO(end, -(days - 1));
+  const r = await rows<{ id: string; day: string; rev: number }>(sql`
+    select creative_id as id, to_char(day, 'YYYY-MM-DD') as day, coalesce(sum(gross_revenue), 0)::float8 as rev
+    from ads_creative_daily where creative_id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)}) and day between ${start}::date and ${end}::date group by 1, 2`);
+  for (const id of ids) {
+    const m = new Map(r.filter((x) => x.id === id).map((x) => [x.day, Number(x.rev)]));
+    out[id] = Array.from({ length: days }, (_, i) => m.get(addDaysISO(start, i)) ?? 0);
+  }
+  return out;
+}

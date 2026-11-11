@@ -390,3 +390,12 @@ body {
     animation-delay: 0s;
   }
 }
+
+/* Boost Studio */
+@keyframes bx-pop { 0% { transform: scale(0.92); opacity: 0; } 60% { transform: scale(1.03); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes bx-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 45%, transparent); } 50% { box-shadow: 0 0 0 8px transparent; } }
+@keyframes bx-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.bx-pop { animation: bx-pop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.bx-live { animation: bx-pulse 1.8s ease-in-out infinite; }
+.bx-shine { background-image: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%); background-size: 200% 100%; animation: bx-shine 2.4s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .bx-pop, .bx-live, .bx-shine { animation: none; } }
