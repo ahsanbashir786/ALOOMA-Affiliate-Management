@@ -67,7 +67,7 @@ export default async function AdsVideoPage({ params, searchParams }: { params: P
           </table></div>
         </section>
       )}
-      {conn.connected && <BoostPanel itemId={v.creativeId} campaigns={opt.campaigns} blockers={opt.blockers} enabled={bw.enabled} canWrite={can(user, "settings")} maxBudget={bw.maxBudget} dailyCap={bw.dailyCap} committed={opt.committed} defaultBudget={Number.isFinite(wantBudget) && wantBudget > 0 ? wantBudget : 10} />}
+      {conn.connected && <BoostPanel itemId={v.creativeId} campaigns={opt.campaigns} blockers={opt.blockers} enabled={bw.enabled} canWrite={can(user, "settings")} maxBudget={bw.maxBudget} dailyCap={bw.dailyCap} committed={opt.committed} defaultBudget={Number.isFinite(wantBudget) && wantBudget > 0 ? wantBudget : 5} />}
       <section className={cn(card, "p-5")} aria-label="What TikTok sent" data-testid="ads-sent">
         <h2 className="text-[16px] font-semibold text-ink">What TikTok&apos;s API Sent For This Video</h2>
         <p className="mt-0.5 text-[13px] text-ink-3">Nothing here is our guess. These are the newest rows we saved, field by field. TikTok&apos;s Exploration status (Explored, Performing, Underperforming) is only shown when TikTok&apos;s API sends it; an empty box below means it did not.</p>

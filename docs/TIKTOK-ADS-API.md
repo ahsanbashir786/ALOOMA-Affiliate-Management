@@ -108,7 +108,7 @@ One video at a time, from the video page (`/ads/video/<id>`, panel "Boost This V
 | Checks before asking TikTok | Switch is On; budget within both limits; the video is in a Product GMV Max campaign that is not switched off; its TikTok status is not Authorization needed, Excluded, Rejected or Unavailable; no boost already running for it; not boosted in the last 90 seconds |
 | Confirm | Tick "I understand this spends real money", then a confirm box with the amount, the days and the most it can spend |
 | Call | `POST /campaign/gmv_max/session/create/` with `session.bid_type = CREATIVE_NO_BID`, `product_list = [{spu_id}]` (the product, our `product_id`), `item_id`, `budget`, and `schedule_type` `SCHEDULE_FROM_NOW` (until stopped) or `SCHEDULE_START_END` with an end time in UTC+0. Never retried by itself |
-| Answer | TikTok's own message is shown as it is. The budget TikTok documents as a minimum is 10 (USD) a day; TikTok decides |
+| Answer | TikTok's own message is shown as it is. Seller Center shows a minimum of 5 MYR a day for one boost (seen on screen); the API documentation says 10 (USD). TikTok decides, and its message is shown |
 | Kept | Every try (done, refused, stopped) in `ads_boost_actions` with who, when, request and TikTok's answer, shown in Settings. A successful boost also enters the Boost Log |
 | Stop | A Stop button next to a running boost: `POST /campaign/gmv_max/session/delete/` with `advertiser_id` and `session_id`. Stopping is always allowed for the owner, even when boosting is switched Off |
 

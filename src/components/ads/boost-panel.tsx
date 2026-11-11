@@ -67,7 +67,7 @@ export function BoostPanel({ itemId, campaigns, blockers, enabled, canWrite, max
               <select value={days} onChange={(e) => setDays(e.target.value)} data-testid="ads-boost-days" className={input}>{DAYS.map((d) => <option key={d.v} value={d.v}>{d.l}</option>)}</select>
             </label>
           </div>
-          <p className="text-[12.5px] text-ink-3">Your limits: up to {rm(maxBudget)} a day for one boost, and {rm(dailyCap)} a day for all boosts started here ({rm(committed)} in use now). TikTok&apos;s own documented minimum is 10 (USD) a day; TikTok decides, and may refuse a lower amount.</p>
+          <p className="text-[12.5px] text-ink-3">Your limits: up to {rm(maxBudget)} a day for one boost, and {rm(dailyCap)} a day for all boosts started here ({rm(committed)} in use now). In Seller Center the smallest budget for one boost is RM 5 a day. TikTok&apos;s API documentation says 10 (USD); TikTok decides, and its message is shown if it refuses.</p>
           {problem && <p className="text-[13px] text-critical" data-testid="ads-boost-problem">{problem}</p>}
           <label className="flex items-start gap-2 text-[13.5px] text-ink-2"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} data-testid="ads-boost-sure" className="mt-0.5 size-4 accent-[var(--brand)]" />I understand this spends real money in TikTok.</label>
           <button type="button" disabled={!!problem || !sure || !chosen} onClick={() => setStep("confirm")} data-testid="ads-boost-go" className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-5 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-50"><Rocket className="size-4" />Boost In TikTok</button>
