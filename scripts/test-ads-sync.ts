@@ -232,14 +232,14 @@ async function main() {
   await q(sql`insert into tt_videos (video_id, creator, title, gmv) values ('bt-ORG', 'bt_creator', 'Sells alone', 500)`);
   const vt = await VA.vault({ minRoi: 5, minOrders: 10, idleDays: 7 });
   const grp = (id: string) => vt.videos.find((x) => x.creativeId === id)?.group;
-  check("gmv max: a proven video GMV Max stopped spending on is 'Stopped While Selling', however long ago it ran", grp("bt-S") === "stopped" && grp("bt-I") === "stopped", `${grp("bt-S")} ${grp("bt-I")}`);
+  check("gmv max: a proven video with no spend for days is 'Stopped While Selling'; one that spent today is not, even if TikTok says 'not delivering'", grp("bt-S") === "stopped" && grp("bt-I") !== "stopped", `${grp("bt-S")} ${grp("bt-I")}`);
   check("gmv max: a video that sold a little at good ROI and was dropped is 'Sold, Then Dropped'", grp("bt-P") === "promise", String(grp("bt-P")));
   check("gmv max: videos TikTok will not boost are 'Blocked'; a money loser is 'Wasting Money'", grp("bt-B") === "blocked" && grp("bt-W") === "wasting", `${grp("bt-B")} ${grp("bt-W")}`);
   check("gmv max: a good video that is still running is not put in a stopped group", ["winning", "underfed"].includes(String(grp("bt-A"))), String(grp("bt-A")));
   const org = vt.videos.find((x) => x.creativeId === "bt-ORG");
   check("gmv max: 'Never Started' holds videos ads never spent on, and videos that sell on their own but never appeared in ads", grp("bt-N") === "never" && org?.group === "never" && org.organicGmv === 500 && org.creator === "bt_creator" && /on its own/.test(org.why), `${grp("bt-N")} ${JSON.stringify(org && [org.group, org.organicGmv, org.why])}`);
   check("gmv max: the groups count every video once", Object.values(vt.counts).reduce((a2, b2) => a2 + b2, 0) === vt.videos.length);
-  const F = { cost: 100, orders: 20, revenue: 1000, cost7: 30, revenue7: 60, daysSinceSpend: 0, blocked: false, idleStatus: false, typical7: 20 };
+  const F = { cost: 100, orders: 20, revenue: 1000, cost7: 30, revenue7: 60, daysSinceSpend: 0, blocked: false, typical7: 20 };
   const RU = { minRoi: 5, minOrders: 10, idleDays: 7 };
   check("gmv max rules: a good video whose last 7 days are far below its own ROI is 'Fading'; one with tiny recent spend is 'Selling, Low Spend'", GR.classify(F, RU).group === "fading" && GR.classify({ ...F, cost7: 3, revenue7: 40 }, RU).group === "underfed" && GR.classify({ ...F, revenue7: 320 }, RU).group === "winning");
   check("gmv max: statuses are read in plain words, TikTok's own spelling included", ST.STATUS_LABEL.NOT_DELIVERYING === "Not delivering" && ST.isBlocked("UNAVAILABLE") && !ST.isBlocked("LEARNING") && !ST.isBlocked(null));
@@ -256,7 +256,7 @@ async function main() {
   const hOf = (id: string) => ch.campaigns.find((c) => c.id === id)?.health;
   check("campaign health: spending with no orders is 'No Sales'; one that spent last week and nothing now is 'Stopped Spending'", hOf("bt-NS") === "nosales" && hOf("bt-ST") === "stopped", `${hOf("bt-NS")} ${hOf("bt-ST")}`);
   const td = await IN.adsToday();
-  check("ads today: alerts name the campaign with no sales, and golden videos are counted", td.alerts.some((a2) => /No Orders/.test(a2.title) && /bt-NS/.test(a2.title)) && td.opportunities.find((o) => o.key === "stopped")!.count >= 2 && td.series.length === 30, JSON.stringify(td.alerts.map((a2) => a2.title)));
+  check("ads today: alerts name the campaign with no sales, and golden videos are counted", td.alerts.some((a2) => /No Orders/.test(a2.title) && /bt-NS/.test(a2.title)) && td.opportunities.find((o) => o.key === "stopped")!.count >= 1 && td.series.length === 30, JSON.stringify(td.alerts.map((a2) => a2.title)));
   const vd = await IN.videoDetail("bt-A");
   check("video detail: 60 days of results, where it ran, and its boost history", !!vd && vd.series.length === 60 && vd.campaigns.length === 1 && vd.logged.length === 1 && (await IN.videoDetail("nope")) === null);
   const sc = await IN.creatorScoreboard();

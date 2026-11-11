@@ -21,7 +21,7 @@ export type Rules = { minRoi: number; minOrders: number; idleDays: number };
 
 export type Facts = {
   cost: number; orders: number; revenue: number; cost7: number; revenue7: number; daysSinceSpend: number | null;
-  blocked: boolean; idleStatus: boolean; /** Typical spend in the last 7 days of a video that is running (the median). */ typical7: number;
+  blocked: boolean; /** Typical spend in the last 7 days of a video that is running (the median). */ typical7: number;
 };
 
 /** Which group a video belongs to, and why, in plain words. */
@@ -32,7 +32,8 @@ export function classify(f: Facts, r: Rules): { group: GroupKey; why: string } {
   const rm = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
   if (f.blocked) return { group: "blocked", why: "TikTok will not boost this video" };
   if (f.cost < 1) return { group: "never", why: "GMV Max has never spent on it" };
-  const stopped = f.idleStatus || f.daysSinceSpend == null || f.daysSinceSpend > r.idleDays;
+  // Stopped is judged on real spend only. TikTok's delivery status can say "not delivering" for a video that is spending today.
+  const stopped = f.daysSinceSpend == null || f.daysSinceSpend > r.idleDays;
   const ago = f.daysSinceSpend == null ? "no spend" : f.daysSinceSpend === 0 ? "spent today" : `last spend ${f.daysSinceSpend} day${f.daysSinceSpend === 1 ? "" : "s"} ago`;
   const good = roi >= r.minRoi && f.orders >= r.minOrders;
   if (good && stopped) return { group: "stopped", why: `ROI ${x(roi)} on ${f.orders} orders, ${ago}` };

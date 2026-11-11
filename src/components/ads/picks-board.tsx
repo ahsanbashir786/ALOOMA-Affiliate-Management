@@ -5,11 +5,11 @@ import Link from "next/link";
 import { CalendarCheck, Check, Copy, Info, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GROUP, GROUPS, type GroupKey } from "@/lib/ads/groups";
-import { GroupPill, StatusPill, VideoCell, nfmt, rm, roiFmt, day, th, thr, td, tdr } from "./ui";
+import { GroupPill, Pill, StatusPill, VideoCell, nfmt, rm, roiFmt, day, th, thr, td, tdr } from "./ui";
 
 export type PickRow = {
   key: string; creativeId: string; productId: string; title: string | null; creator: string | null; postedOn: string | null; productLabel: string;
-  cost: number; orders: number; revenue: number; roi: number | null; cost7: number; organicGmv: number; lastSpend: string | null;
+  cost: number; orders: number; revenue: number; roi: number | null; cost7: number; organicGmv: number; lastSpend: string | null; daysSinceSpend: number | null;
   status: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null; group: GroupKey; why: string;
 };
 type View = GroupKey | "best";
@@ -56,7 +56,7 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
         <label className="text-[12.5px] font-medium text-ink-2">Proven Means Orders ≥
           <input name="orders" type="number" min={1} defaultValue={rules.minOrders} className={cn(input, "mt-1")} />
         </label>
-        <label className="text-[12.5px] font-medium text-ink-2">Stopped = No Spend For (Days)
+        <label className="text-[12.5px] font-medium text-ink-2">Stopped = No Spend For More Than (Days)
           <input name="idle" type="number" min={1} defaultValue={rules.idleDays} className={cn(input, "mt-1")} />
         </label>
         <label className="text-[12.5px] font-medium text-ink-2">Product
@@ -75,7 +75,7 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
             <p className="mt-0.5 max-w-3xl text-[13px] text-ink-3" data-testid="ads-summary">{view === "best" ? "The strongest videos that are worth a boost, judged on all of their history." : GROUP[view].about} Showing {nfmt(list.length)} of {nfmt(total)}.</p>
           </div>
           <details className="max-w-sm text-[12.5px] text-ink-3"><summary className="flex cursor-pointer items-center gap-1 hover:text-brand"><Info className="size-3.5" />How videos are judged</summary>
-            <p className="mt-1.5 leading-relaxed">Every video is judged on all of its ad history, not only recent days. Good ROI is {rules.minRoi}× or more (your all-time ROI is {roiFmt(accountRoi)}). Proven means {rules.minOrders} orders or more. Stopped means no ad spend for more than {rules.idleDays} days, or TikTok says it is not delivering. Sales without ads come from the Shop sync.</p>
+            <p className="mt-1.5 leading-relaxed">Every video is judged on all of its ad history, not only recent days. Good ROI is {rules.minRoi}× or more (your all-time ROI is {roiFmt(accountRoi)}). Proven means {rules.minOrders} orders or more. Stopped means no ad spend for more than {rules.idleDays} days (real spend decides; TikTok&apos;s delivery status is only shown beside it). Sales without ads come from the Shop sync.</p>
           </details>
         </div>
         {list.length === 0 ? <p className="px-5 pb-8 text-[14px] text-ink-3" data-testid="ads-empty">No video in this group with these rules.</p> : (
@@ -95,7 +95,7 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
                       <td className={cn(td, "max-w-[340px]")}><VideoCell v={s} />{(s.boostedNow || s.lastLogged) && <p className="mt-1 flex gap-1">{s.boostedNow && <span className="rounded-full bg-good-soft px-2 py-0.5 text-[11.5px] text-good">Boost running now</span>}{s.lastLogged && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11.5px] text-ink-2">You boosted it on {day(s.lastLogged)}</span>}</p>}</td>
                       <td className={td}><GroupPill group={s.group} /></td>
                       <td className={cn(td, "text-ink-2")}><span className="block max-w-[170px] truncate" title={s.productLabel}>{s.productLabel}</span></td>
-                      <td className={td}><StatusPill status={s.status} label={s.statusLabel} /></td>
+                      <td className={td}>{s.daysSinceSpend != null && s.daysSinceSpend <= 1 ? <><Pill tone="good" testId="ads-spending">Spending Now</Pill>{s.status && s.status !== "DELIVERING" && s.status !== "LEARNING" && <p className="mt-0.5 text-[11.5px] text-ink-3" title="TikTok's delivery status at the last sync. It can differ from real spending.">TikTok says: {s.statusLabel}</p>}</> : <StatusPill status={s.status} label={s.statusLabel} />}</td>
                       <td className={tdr}>{rm(s.cost)}</td><td className={tdr}>{nfmt(s.orders)}</td><td className={tdr}>{rm(s.revenue)}</td>
                       <td className={cn(tdr, "font-semibold", s.roi != null && s.roi >= rules.minRoi ? "text-good" : "text-ink")}>{roiFmt(s.roi)}</td>
                       <td className={cn(tdr, "text-ink-2")}>{s.organicGmv > 0 ? rm(s.organicGmv) : "–"}</td>

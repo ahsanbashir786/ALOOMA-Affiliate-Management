@@ -4,7 +4,7 @@ import { cache } from "react";
 import { rows } from "@/lib/sql";
 import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { productName } from "@/lib/products/catalog";
-import { IDLE_STATUSES, STATUS_LABEL, isBlocked } from "./status";
+import { STATUS_LABEL, isBlocked } from "./status";
 import { classify, type GroupKey, type Rules } from "./groups";
 
 // Every video GMV Max knows, judged on ALL of its history. Read only.
@@ -87,7 +87,7 @@ export async function vault(rules: { minRoi: number | null; minOrders: number; i
     const roi = cost > 0 ? revenue / cost : null;
     const daysSinceSpend = r.last_spend ? Math.max(0, daysBetweenISO(r.last_spend, today)) : null;
     const posted = r.posted_at ? new Date(r.posted_at).toISOString().slice(0, 10) : null;
-    const { group, why } = classify({ cost, orders, revenue, cost7, revenue7, daysSinceSpend, blocked: isBlocked(r.last_status), idleStatus: !!r.last_status && IDLE_STATUSES.includes(r.last_status), typical7 }, R);
+    const { group, why } = classify({ cost, orders, revenue, cost7, revenue7, daysSinceSpend, blocked: isBlocked(r.last_status), typical7 }, R);
     counts[group]++;
     const organic = num(r.organic);
     const score = group === "never" ? Math.log(1 + organic) : (roi ?? 0) * Math.log(1 + orders) * (group === "stopped" ? 1.3 : 1);

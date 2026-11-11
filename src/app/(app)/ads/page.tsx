@@ -32,7 +32,7 @@ const PER_GROUP = 150;
 const numOr = (v: string | undefined, d: number, lo: number, hi: number) => { const n = Number(v); return v !== undefined && v !== "" && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 const pick = (v: VaultVideo): PickRow => ({
   key: v.key, creativeId: v.creativeId, productId: v.productId, title: v.title, creator: v.creator, postedOn: v.postedOn, productLabel: v.productLabel,
-  cost: v.cost, orders: v.orders, revenue: v.revenue, roi: v.roi, cost7: v.cost7, organicGmv: v.organicGmv, lastSpend: v.lastSpend,
+  cost: v.cost, orders: v.orders, revenue: v.revenue, roi: v.roi, cost7: v.cost7, organicGmv: v.organicGmv, lastSpend: v.lastSpend, daysSinceSpend: v.daysSinceSpend,
   status: v.status, statusLabel: v.statusLabel, boostedNow: v.boostedNow, lastLogged: v.lastLogged, group: v.group, why: v.why,
 });
 
