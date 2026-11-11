@@ -97,3 +97,31 @@ export const th = "py-2.5 pr-3 text-left text-[12px] font-semibold tracking-wide
 export const thr = cn(th, "text-right");
 export const td = "py-3 pr-3 align-top";
 export const tdr = cn(td, "tnum text-right");
+
+// ───────── the analysis, as small visual marks ─────────
+import { EST, EST_NOTE, type EstKey } from "@/lib/ads/explore";
+import { EVIDENCE_LABEL, type Evidence } from "@/lib/ads/groups";
+
+/** Our estimate of TikTok's Exploration status. Always marked as an estimate. */
+export function EstPill({ est }: { est: EstKey }) {
+  const e = EST[est];
+  const real = est === "locked" || est === "unavailable";
+  return <span title={real ? e.about : `${e.about} ${EST_NOTE}`} data-testid="ads-est" className="inline-flex flex-col leading-tight"><Pill tone={e.tone}>{e.label}</Pill>{!real && <span className="mt-0.5 text-[10.5px] text-ink-3">estimate</span>}</span>;
+}
+
+/** 0 to 100 as a small bar with the number. */
+export function PotentialBar({ value }: { value: number }) {
+  const tone = value >= 60 ? "var(--good)" : value >= 30 ? "var(--brand)" : "var(--ink-3)";
+  return (
+    <span className="inline-flex items-center gap-2" title={`Potential ${value} of 100: how good it looks, even if it has had little money`} data-testid="ads-potential">
+      <span className="h-2 w-16 overflow-hidden rounded-full bg-surface-2"><span className="block h-full rounded-full" style={{ width: `${Math.max(4, value)}%`, background: tone }} /></span>
+      <span className="tnum w-7 text-[13px] font-semibold text-ink">{value}</span>
+    </span>
+  );
+}
+
+/** Three dots: how many orders the proof rests on. */
+export function EvidenceDots({ level }: { level: Evidence }) {
+  const n = level === "high" ? 3 : level === "medium" ? 2 : level === "low" ? 1 : 0;
+  return <span className="inline-flex items-center gap-0.5" title={EVIDENCE_LABEL[level]} aria-label={EVIDENCE_LABEL[level]}>{[0, 1, 2].map((i) => <i key={i} className={cn("inline-block size-2 rounded-full", i < n ? "bg-brand" : "bg-line-strong")} />)}</span>;
+}

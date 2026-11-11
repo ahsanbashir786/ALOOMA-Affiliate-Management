@@ -75,3 +75,13 @@ export async function createBoostsBulk(items: BulkItem[], days: number | null): 
   revalidatePath("/ads"); revalidatePath("/settings");
   return out;
 }
+
+/** Remembers that a creator was asked to authorize their videos for ads again. Nothing is sent to the creator or to TikTok. */
+export async function markAuthAsked(creator: string, videoCount: number): Promise<{ ok: true }> {
+  const user = await requirePermission("ads");
+  const name = String(creator ?? "").trim().slice(0, 120);
+  if (!name) return { ok: true };
+  await rows(sql`insert into ads_auth_asks (creator, asked_by, video_count) values (${name}, ${user.name}, ${Math.max(0, Math.round(Number(videoCount) || 0))})`);
+  revalidatePath("/ads");
+  return { ok: true };
+}

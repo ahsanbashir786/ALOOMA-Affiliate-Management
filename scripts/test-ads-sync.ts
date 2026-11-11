@@ -214,7 +214,7 @@ async function main() {
   const RG = await import("../src/lib/ads/range");
   const ST = await import("../src/lib/ads/status");
   const { todayKL } = await import("../src/lib/time");
-  const wipeBT = async () => { await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`); await q(sql`delete from ads_campaign_daily where advertiser_id = 'BT'`); await q(sql`delete from tt_videos where video_id = 'bt-ORG'`); await q(sql`delete from ads_boost_batches where note = 'bt-test'`); };
+  const wipeBT = async () => { await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`); await q(sql`delete from ads_campaign_daily where advertiser_id = 'BT'`); await q(sql`delete from tt_videos where video_id in ('bt-ORG', 'bt-B')`); await q(sql`delete from ads_auth_asks where creator = 'bt_locked'`); await q(sql`delete from ads_boost_batches where note = 'bt-test'`); };
   await wipeBT();
   const mk = (id: string, status: string | null, cost: number, orders: number, rev: number, fromAgo: number, toAgo: number) => q(sql`insert into ads_creative_daily (advertiser_id, campaign_id, product_id, creative_id, day, cost, orders, gross_revenue, delivery_status) select 'BT', 'BC', 'BP', ${id}, (${todayKL()}::date - g), ${cost}, ${orders}, ${rev}, ${status} from generate_series(${toAgo}::int, ${fromAgo}::int) g`);
   await mk("bt-A", "DELIVERING", 10, 3, 150, 4, 0);          // good and running
@@ -224,17 +224,39 @@ async function main() {
   await mk("bt-B", "AUTHORIZATION_NEEDED", 10, 3, 150, 4, 0);
   await mk("bt-W", "DELIVERING", 10, 0, 2, 4, 0);            // spends, poor ROI
   await mk("bt-N", null, 0, 0, 0, 2, 0);                     // in ads, never spent
+  await mk("bt-R", "REJECTED", 10, 3, 150, 4, 0);            // TikTok rejected it for good
+  await mk("bt-G", "NOT_DELIVERYING", 0.5, 1, 40, 3, 3);     // 3 orders from pennies, GMV Max ignored it
+  await mk("bt-G3", "NOT_DELIVERYING", 0.7, 1, 30, 20, 18);  // 3 orders from pennies, 18 days ago
+  await q(sql`insert into tt_videos (video_id, creator, title, gmv) values ('bt-B', 'bt_locked', 'Locked seller', 0)`);
   await q(sql`insert into tt_videos (video_id, creator, title, gmv) values ('bt-ORG', 'bt_creator', 'Sells alone', 500)`);
   const vt = await VA.vault({ minRoi: 5, minOrders: 10, idleDays: 7 });
   const grp = (id: string) => vt.videos.find((x) => x.creativeId === id)?.group;
   check("gmv max: a proven video with no spend for days is 'Stopped While Selling'; one that spent today is not, even if TikTok says 'not delivering'", grp("bt-S") === "stopped" && grp("bt-I") !== "stopped", `${grp("bt-S")} ${grp("bt-I")}`);
-  check("gmv max: a video that sold a little at good ROI and was dropped is 'Sold, Then Dropped'", grp("bt-P") === "promise", String(grp("bt-P")));
-  check("gmv max: videos TikTok will not boost are 'Blocked'; a money loser is 'Wasting Money'", grp("bt-B") === "blocked" && grp("bt-W") === "wasting", `${grp("bt-B")} ${grp("bt-W")}`);
+  check("gmv max: a video that sold a little at good ROI and was left alone is a 'Hidden Gem', not thrown away", grp("bt-P") === "gem" && grp("bt-G") === "gem" && grp("bt-G3") === "gem", `${grp("bt-P")} ${grp("bt-G")} ${grp("bt-G3")}`);
+  check("gmv max: a video that sold but needs the creator's authorization is 'Authorization Rescue'; rejected is 'Blocked'; a money loser is 'Wasting Money'", grp("bt-B") === "rescue" && grp("bt-R") === "blocked" && grp("bt-W") === "wasting", `${grp("bt-B")} ${grp("bt-R")} ${grp("bt-W")}`);
   check("gmv max: a good video that is still running is not put in a stopped group", ["winning", "underfed"].includes(String(grp("bt-A"))), String(grp("bt-A")));
   const org = vt.videos.find((x) => x.creativeId === "bt-ORG");
-  check("gmv max: 'Never Started' holds videos ads never spent on, and videos that sell on their own but never appeared in ads", grp("bt-N") === "never" && org?.group === "never" && org.organicGmv === 500 && org.creator === "bt_creator" && /on its own/.test(org.why), `${grp("bt-N")} ${JSON.stringify(org && [org.group, org.organicGmv, org.why])}`);
+  check("gmv max: never used with nothing visible is 'No Signal Yet'; never used but selling on its own is 'Worth Exploring'", grp("bt-N") === "never" && org?.group === "explore" && org.organicGmv === 500 && org.creator === "bt_creator" && /on its own/.test(org.why), `${grp("bt-N")} ${JSON.stringify(org && [org.group, org.organicGmv, org.why])}`);
   check("gmv max: the groups count every video once", Object.values(vt.counts).reduce((a2, b2) => a2 + b2, 0) === vt.videos.length);
-  const F = { cost: 100, orders: 20, revenue: 1000, cost7: 30, revenue7: 60, daysSinceSpend: 0, blocked: false, typical7: 20 };
+  // ── the estimate of TikTok's Exploration status, the potential score, evidence and the fair test amount (pure) ──
+  const EX = await import("../src/lib/ads/explore");
+  const base = { cost: 50, orders: 10, roi: 8, campRoi: 8, ageDays: 40, revPct: 0.5, status: "DELIVERING" as string | null };
+  check("exploration estimate: TikTok's own words win (authorization needed, unavailable), a learning video is exploring, an unspent one is unused", EX.estimateExploration({ ...base, status: "AUTHORIZATION_NEEDED" }) === "locked" && EX.estimateExploration({ ...base, status: "REJECTED" }) === "unavailable" && EX.estimateExploration({ ...base, status: "LEARNING" }) === "exploring" && EX.estimateExploration({ ...base, cost: 0 }) === "unused");
+  check("exploration estimate: top sellers of the campaign with good ROI are Outstanding; a funded video near its campaign's ROI is Performing", EX.estimateExploration({ ...base, revPct: 0.97 }) === "outstanding" && EX.estimateExploration(base) === "performing");
+  check("exploration estimate: a video TikTok barely showed (pennies of spend, not new) is Underperforming, as in your export; a brand new one is not judged yet", EX.estimateExploration({ ...base, cost: 0.3, orders: 0, roi: 0, ageDays: 60 }) === "underperforming" && EX.estimateExploration({ ...base, cost: 0.8, orders: 0, roi: 0, ageDays: 3 }) === "performing");
+  check("exploration estimate: it says how close it is to TikTok's real label", EX.EST_ACCURACY.match > 0.7 && /estimate/i.test(EX.EST_NOTE));
+  check("potential: a few orders from pennies still scores well; many orders at the same ROI score higher; fading and already-funded videos score lower", GR.potentialOf({ cost: 2, revenue: 155, orders: 4, roiNow: true, fading: false, hasRoom: true }, 10) >= 60 && GR.potentialOf({ cost: 200, revenue: 15500, orders: 400, roiNow: true, fading: false, hasRoom: true }, 10) > GR.potentialOf({ cost: 2, revenue: 155, orders: 4, roiNow: true, fading: false, hasRoom: true }, 10) && GR.potentialOf({ cost: 2, revenue: 155, orders: 4, roiNow: true, fading: true, hasRoom: true }, 10) < 30 && GR.potentialOf({ cost: 2, revenue: 155, orders: 4, roiNow: true, fading: false, hasRoom: false }, 10) < GR.potentialOf({ cost: 2, revenue: 155, orders: 4, roiNow: true, fading: false, hasRoom: true }, 10));
+  check("evidence and fair test: orders decide the proof (none, few, some, many); a fair first budget is about 5 orders at its cost per order, never below RM 5", GR.evidenceOf(0) === "none" && GR.evidenceOf(2) === "low" && GR.evidenceOf(8) === "medium" && GR.evidenceOf(40) === "high" && GR.fairTestAmount(null) === 5 && GR.fairTestAmount(0.5) === 5 && GR.fairTestAmount(3) === 15 && GR.fairTestAmount(2.1) === 10.5);
+  check("explore potential: unused videos never score above 60 (the least proven kind), and the more visible sales or views the higher", GR.explorePotential(500, 0, 500, 1000) === 60 && GR.explorePotential(50, 0, 500, 1000) < GR.explorePotential(500, 0, 500, 1000) && GR.explorePotential(0, 0, 500, 1000) === 0);
+  const gv = vt.videos.find((x) => x.creativeId === "bt-G");
+  check("gmv max: the vault gives every video an estimated status, a potential, the proof and a fair test amount", !!gv && gv.est === "underperforming" || gv?.est === "performing", JSON.stringify(gv && [gv.est, gv.potential, gv.evidence, gv.testAmount]));
+  check("gmv max: a hidden gem has a high potential, low proof and a fair test of at least RM 5", !!gv && gv.potential >= 40 && gv.evidence === "low" && gv.testAmount >= 5, JSON.stringify(gv && [gv.potential, gv.evidence, gv.testAmount]));
+  const RS = await import("../src/lib/ads/rescue");
+  await q(sql`insert into ads_auth_asks (creator, asked_by, video_count) values ('bt_locked', 'Test Owner', 1)`);
+  const resc = await RS.rescueData();
+  const rcr = resc.creators.find((c) => c.creator === "bt_locked");
+  check("authorization rescue: locked videos that sold are grouped by their creator with their sales, and show when the creator was asked", !!rcr && rcr.videos.length === 1 && rcr.orders === 15 && rcr.revenue === 750 && !!rcr.askedAt && rcr.askedBy === "Test Owner" && resc.totalVideos >= 1, JSON.stringify(rcr && [rcr.videos.length, rcr.orders, rcr.revenue, rcr.askedAt]));
+  const F = { cost: 100, orders: 20, revenue: 1000, cost7: 30, revenue7: 60, daysSinceSpend: 0, blocked: false, locked: false, organic: 0, views: 0, cpo: 5, peerCpo: 5, typical7: 20 };
   const RU = { minRoi: 5, minOrders: 10, idleDays: 7 };
   check("gmv max rules: a good video whose last 7 days are far below its own ROI is 'Fading'; one with tiny recent spend is 'Selling, Low Spend'", GR.classify(F, RU).group === "fading" && GR.classify({ ...F, cost7: 3, revenue7: 40 }, RU).group === "underfed" && GR.classify({ ...F, revenue7: 320 }, RU).group === "winning");
   check("gmv max: statuses are read in plain words, TikTok's own spelling included", ST.STATUS_LABEL.NOT_DELIVERYING === "Not delivering" && ST.isBlocked("UNAVAILABLE") && !ST.isBlocked("LEARNING") && !ST.isBlocked(null));

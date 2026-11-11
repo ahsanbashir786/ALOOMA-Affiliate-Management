@@ -93,6 +93,23 @@ Video groups (`src/lib/ads/groups.ts`). Good ROI = your all-time ROI rounded up 
 | Blocked | TikTok will not boost it | No |
 | Not Enough Proof | Too little to judge | No |
 
+## What to boost: the analysis
+
+Every video that ever appeared in your ads, plus every video that sells on its own, is judged on all of its history. **No video is thrown away**: few sales is "not proven yet", never "bad". Only real proof (a lot of spend and bad ROI) puts a video in Wasting Money. Rules are in `src/lib/ads/groups.ts`, the estimate in `src/lib/ads/explore.ts`.
+
+| Group | Meaning | Action |
+|---|---|---|
+| Proven, Left Alone | Many orders, good ROI, GMV Max stopped | Boost |
+| Hidden Gem | 1+ orders from at most RM 30, efficient, and not being funded | A fair test |
+| Selling, Low Spend | Good ROI, still running, but very little budget | Boost |
+| Worth Exploring | Never used in ads, but it sells (Shop sync) or has 500+ views | A fair test, best first |
+| Authorization Rescue | Sold in ads, but TikTok says Authorization needed | Ask the creator (Authorization Rescue tab) |
+| Winning Now, Fading, Wasting Money, Blocked, No Signal Yet, Not Enough Proof | | Not boosted |
+
+Each video also gets **Potential** (0 to 100: ROI pulled towards your average so RM 2 of luck does not look like a star, times proof from orders, times room, lower if fading; videos never used are scaled against the best of them and capped at 60), **Proof** (none, few, some, many orders) and a **Fair Test** amount (about 5 orders at its own cost per order, never below RM 5).
+
+**Estimated Exploration status.** TikTok's API does not send it, so the app shows an estimate, always marked "estimate". It was learned from your Seller Center export of 12 Nov 2026 (15,418 rows with TikTok's real labels). It matches TikTok on about 77% of Explored videos (Performing against Underperforming is easier; Outstanding, the top ~4% of a campaign's sales, is found 56% of the time and right 39% of the time). Findings: Underperforming mostly means TikTok barely showed the video (typical RM 0.59 spend, 50 impressions, no order); 20% of Performing videos have no order; "Authorization needed" was 76% of all rows. "Authorization needed" and "Unavailable" are TikTok's own words from the API, not estimates.
+
 ## Delivery status of a video (what can be boosted)
 
 The creative-level report returns `creative_delivery_status` for each video. Values seen on your account: `DELIVERING`, `LEARNING`, `IN_QUEUE`, `NOT_DELIVERYING` (TikTok's own spelling), `NOT_ACTIVE`, `AUTHORIZATION_NEEDED`, `UNAVAILABLE`, `REJECTED` (and `EXCLUDED` in TikTok's documentation). TikTok's rule for a creative boost: the status cannot be `AUTHORIZATION_NEEDED`, `EXCLUDED`, `REJECTED` or `UNAVAILABLE`. The GMV Max screen leaves those videos out and says how many. The status is stored per video and day in `ads_creative_daily.delivery_status`; normal syncs read the last 14 days, so press **Re-Read History** once to fill older days.

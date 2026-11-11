@@ -5,7 +5,8 @@ import { rows } from "@/lib/sql";
 import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { productName } from "@/lib/products/catalog";
 import { STATUS_LABEL, isBlocked } from "./status";
-import { classify, type GroupKey, type Rules } from "./groups";
+import { classify, evidenceOf, explorePotential, fairTestAmount, potentialOf, GROUPS, type Evidence, type GroupKey, type Rules } from "./groups";
+import { estimateExploration, type EstKey } from "./explore";
 import { sqlFrom, type Range } from "./range";
 
 // Every video GMV Max knows, judged on ALL of its history. Read only.
@@ -22,6 +23,8 @@ export type VaultVideo = {
   /** Sales the video made on its own (Shop sync), with or without ads. */ organicGmv: number; views: number;
   status: string | null; /** The day TikTok's API gave that status. */ statusDay: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null;
   group: GroupKey; why: string; score: number;
+  /** Our estimate of TikTok's Exploration status (TikTok's API does not send it). */ est: EstKey;
+  /** 0 to 100: how good it looks. */ potential: number; evidence: Evidence; /** A fair first budget for it (RM a day). */ testAmount: number; campRoi: number | null;
 };
 export type Vault = { today: string; rules: Rules; autoRoi: number; accountRoi: number | null; videos: VaultVideo[]; counts: Record<GroupKey, number>; freshest: string | null };
 
@@ -34,7 +37,7 @@ type Raw = {
   cost7: number; rev7: number; orders7: number; cost_r: number; orders_r: number; rev_r: number; first_spend: string | null; last_spend: string | null; spend_days: number;
   last_status: string | null; status_day: string | null; ad_title: string | null; account_name: string | null;
   creator: string | null; title: string | null; posted_at: Date | string | null; organic: number; views: number;
-  product_key: string | null; boosted_now: boolean; last_logged: string | null;
+  product_key: string | null; boosted_now: boolean; last_logged: string | null; main_campaign: string | null;
 };
 
 const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Promise<{ raw: Raw[]; freshest: string | null }> => {
@@ -55,6 +58,7 @@ const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Pr
         (count(distinct d.day) filter (where coalesce(d.cost, 0) > 0))::int as spend_days,
         (array_agg(d.delivery_status order by d.day desc) filter (where d.delivery_status is not null))[1] as last_status,
         to_char(max(d.day) filter (where d.delivery_status is not null), 'YYYY-MM-DD') as status_day,
+        (array_agg(d.campaign_id order by d.cost desc nulls last) filter (where d.campaign_id <> '-'))[1] as main_campaign,
         (array_agg(d.title order by d.day desc) filter (where d.title is not null))[1] as ad_title,
         (array_agg(d.account_name order by d.day desc) filter (where d.account_name is not null))[1] as account_name
       from ads_creative_daily d group by 1, 2
@@ -62,7 +66,7 @@ const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Pr
       -- Videos that sell on their own and have never appeared in the ads results at all.
       select v.video_id as creative_id, coalesce(v.products->0->>'id', '-') as product_id,
         0::float8 as cost, 0 as orders, 0::float8 as revenue, 0::float8 as imp, 0::float8 as clk, 0::float8 as cost7, 0::float8 as rev7, 0 as orders7, 0::float8 as cost_r, 0 as orders_r, 0::float8 as rev_r,
-        null::text as first_spend, null::text as last_spend, 0 as spend_days, null::text as last_status, null::text as status_day, null::text as ad_title, null::text as account_name
+        null::text as first_spend, null::text as last_spend, 0 as spend_days, null::text as last_status, null::text as status_day, null::text as main_campaign, null::text as ad_title, null::text as account_name
       from tt_videos v where coalesce(v.gmv, 0) > 0 and not exists (select 1 from ads_creative_daily d where d.creative_id = v.video_id)
     ), allv as (select * from agg union all select * from organic)
     select a.*, v.creator, coalesce(v.title, av.title, a.ad_title) as title, coalesce(v.posted_at, av.posted_at) as posted_at,
@@ -87,26 +91,48 @@ export async function vault(rules: { minRoi: number | null; minOrders: number; i
   const autoRoi = Math.max(3, Math.ceil(accountRoi ?? 5));
   const R: Rules = { minRoi: rules.minRoi ?? autoRoi, minOrders: rules.minOrders, idleDays: rules.idleDays };
   const typical7 = median(raw.filter((r) => num(r.cost7) > 0).map((r) => num(r.cost7)));
-  const counts = { stopped: 0, promise: 0, underfed: 0, never: 0, winning: 0, fading: 0, wasting: 0, blocked: 0, other: 0 } as Record<GroupKey, number>;
+  const counts = Object.fromEntries(GROUPS.map((g) => [g.key, 0])) as Record<GroupKey, number>;
+  // What the videos of the same campaign and product usually do (for the estimate and for cost per order).
+  const camp = new Map<string, { cost: number; rev: number; revs: number[] }>();
+  const peers = new Map<string, number[]>();
+  for (const r of raw) {
+    const cost = num(r.cost), rev = num(r.revenue), st = r.last_status;
+    if (cost > 0 && r.main_campaign && !(st && ["AUTHORIZATION_NEEDED", "UNAVAILABLE", "EXCLUDED", "REJECTED"].includes(st))) { const c = camp.get(r.main_campaign) ?? { cost: 0, rev: 0, revs: [] }; c.cost += cost; c.rev += rev; c.revs.push(rev); camp.set(r.main_campaign, c); }
+    if (num(r.orders) > 0 && cost > 0) { const a = peers.get(r.product_id) ?? []; a.push(cost / num(r.orders)); peers.set(r.product_id, a); }
+  }
+  const peerCpo = new Map([...peers].map(([k, a]) => [k, median(a)]));
+  for (const c of camp.values()) c.revs.sort((a, b) => a - b);
+  const unused = raw.filter((r) => num(r.cost) < 1 && num(r.orders) === 0);
+  const p95 = (xs: number[]) => { const a = xs.filter((x) => x > 0).sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * 0.95))] : 0; };
+  const p95Organic = p95(unused.map((r) => num(r.organic))), p95Views = p95(unused.map((r) => num(r.views)));
   const videos = raw.map((r): VaultVideo => {
     const cost = num(r.cost), orders = num(r.orders), revenue = num(r.revenue), cost7 = num(r.cost7), revenue7 = num(r.rev7);
     const roi = cost > 0 ? revenue / cost : null;
+    const cpo = orders > 0 && cost > 0 ? cost / orders : null;
     const daysSinceSpend = r.last_spend ? Math.max(0, daysBetweenISO(r.last_spend, today)) : null;
     const posted = r.posted_at ? new Date(r.posted_at).toISOString().slice(0, 10) : null;
-    const { group, why } = classify({ cost, orders, revenue, cost7, revenue7, daysSinceSpend, blocked: isBlocked(r.last_status), typical7 }, R);
+    const ageDays = posted ? Math.max(0, daysBetweenISO(posted, today)) : null;
+    const organic = num(r.organic), views = num(r.views);
+    const locked = r.last_status === "AUTHORIZATION_NEEDED";
+    const { group, why } = classify({ cost, orders, revenue, cost7, revenue7, daysSinceSpend, blocked: isBlocked(r.last_status) && !locked, locked, typical7, organic, views, cpo, peerCpo: peerCpo.get(r.product_id) ?? null }, R);
     counts[group]++;
-    const organic = num(r.organic);
-    const score = group === "never" ? Math.log(1 + organic) : (roi ?? 0) * Math.log(1 + orders) * (group === "stopped" ? 1.3 : 1);
+    const c = r.main_campaign ? camp.get(r.main_campaign) : undefined;
+    const revPct = c && c.revs.length > 1 && cost > 0 ? c.revs.filter((x) => x < revenue).length / c.revs.length : null;
+    const est = estimateExploration({ cost, orders, roi, campRoi: c && c.cost > 0 ? c.rev / c.cost : null, ageDays, revPct, status: r.last_status });
+    const fading = group === "fading", hasRoom = group !== "winning";
+    const potential = group === "explore" || group === "never" ? explorePotential(organic, views, p95Organic, p95Views)
+      : cost <= 0 && orders === 0 ? 0 : potentialOf({ cost, revenue, orders, roiNow: true, fading, hasRoom }, accountRoi);
+    const score = potential * 1000 + Math.min(999, revenue / 10) + (group === "stopped" || group === "gem" ? 500 : 0);
     return {
       key: `${r.creative_id}|${r.product_id}`, creativeId: r.creative_id, productId: r.product_id, title: r.title, creator: r.creator, account: r.account_name,
-      postedOn: posted, ageDays: posted ? Math.max(0, daysBetweenISO(posted, today)) : null,
+      postedOn: posted, ageDays,
       productKey: r.product_key, productLabel: r.product_key ? productName(r.product_key) : r.product_id === "-" ? "Unknown product" : `Product ${r.product_id.slice(-6)}`,
-      cost, orders, revenue, roi, costPerOrder: orders > 0 && cost > 0 ? cost / orders : null, impressions: num(r.imp), clicks: num(r.clk),
+      cost, orders, revenue, roi, costPerOrder: cpo, impressions: num(r.imp), clicks: num(r.clk),
       cost7, revenue7, orders7: num(r.orders7), roi7: cost7 > 0 ? revenue7 / cost7 : null,
       rCost: num(r.cost_r), rOrders: num(r.orders_r), rRevenue: num(r.rev_r), rRoi: num(r.cost_r) > 0 ? num(r.rev_r) / num(r.cost_r) : null,
-      firstSpend: r.first_spend, lastSpend: r.last_spend, daysSinceSpend, spendDays: num(r.spend_days), organicGmv: organic, views: num(r.views),
+      firstSpend: r.first_spend, lastSpend: r.last_spend, daysSinceSpend, spendDays: num(r.spend_days), organicGmv: organic, views,
       status: r.last_status, statusDay: r.status_day, statusLabel: r.last_status ? (STATUS_LABEL[r.last_status] ?? r.last_status) : null, boostedNow: !!r.boosted_now, lastLogged: r.last_logged,
-      group, why: group === "never" && organic > 0 ? `Never in ads, yet it sold RM ${Math.round(organic).toLocaleString("en-MY")} on its own` : why, score,
+      group, why, score, est, potential, evidence: evidenceOf(orders), testAmount: group === "stopped" || group === "underfed" ? 10 : fairTestAmount(cpo), campRoi: c && c.cost > 0 ? c.rev / c.cost : null,
     };
   }).sort((a, b) => b.score - a.score);
   return { today, rules: R, autoRoi, accountRoi, videos, counts, freshest };

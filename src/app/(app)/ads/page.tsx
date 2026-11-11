@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCheck, ClipboardList, Megaphone, Package, Rocket, Sun, Target, Users } from "lucide-react";
+import { CalendarCheck, ClipboardList, KeyRound, Megaphone, Package, Rocket, Sun, Target, Users } from "lucide-react";
 import { gate } from "@/lib/gate";
 import { PageHeader } from "@/components/ui/primitives";
 import { TabLinks } from "@/components/ui/tab-links";
@@ -15,8 +15,11 @@ import { productName } from "@/lib/products/catalog";
 import { boostOptions, getBoostWriteSettings } from "@/lib/tiktok-ads/boost-write";
 import { can } from "@/lib/auth";
 import { PicksBoard, type PickRow } from "@/components/ads/picks-board";
+import { RescueBoard } from "@/components/ads/rescue-board";
+import { LogBoard } from "@/components/ads/log-board";
+import { rescueData } from "@/lib/ads/rescue";
 import { Planner } from "@/components/ads/planner";
-import { CampaignSection, CreatorSection, LogSection, ProductSection, TodaySection } from "@/components/ads/sections";
+import { CampaignSection, CreatorSection, ProductSection, TodaySection } from "@/components/ads/sections";
 import { one, type SP } from "@/lib/url";
 
 export const metadata: Metadata = { title: "GMV Max" };
@@ -25,7 +28,8 @@ export const dynamic = "force-dynamic";
 const TABS = [
   { key: "today", label: "Ads Today", icon: Sun },
   { key: "picks", label: "Boost Picks", icon: Rocket },
-  { key: "planner", label: "Batch Planner", icon: CalendarCheck },
+  { key: "rescue", label: "Authorization Rescue", icon: KeyRound },
+  { key: "planner", label: "Boost Studio", icon: CalendarCheck },
   { key: "log", label: "Boost Log", icon: ClipboardList },
   { key: "campaigns", label: "Campaign Health", icon: Megaphone },
   { key: "products", label: "Product Performance", icon: Package },
@@ -34,12 +38,12 @@ const TABS = [
 type Tab = (typeof TABS)[number]["key"];
 const PER_GROUP = 150;
 /** The date range each tab opens with when none was chosen. */
-const DEFAULT_RANGE: Record<Tab, Exclude<RangeKey, "custom">> = { today: "7d", picks: "lifetime", planner: "lifetime", log: "lifetime", campaigns: "7d", products: "30d", creators: "lifetime" };
+const DEFAULT_RANGE: Record<Tab, Exclude<RangeKey, "custom">> = { today: "7d", picks: "lifetime", rescue: "lifetime", planner: "lifetime", log: "lifetime", campaigns: "7d", products: "30d", creators: "lifetime" };
 
 const numOr = (v: string | undefined, d: number, lo: number, hi: number) => { const n = Number(v); return v !== undefined && v !== "" && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 const pick = (v: VaultVideo): PickRow => ({
   key: v.key, creativeId: v.creativeId, productId: v.productId, title: v.title, creator: v.creator, postedOn: v.postedOn, productLabel: v.productLabel,
-  cost: v.cost, orders: v.orders, revenue: v.revenue, roi: v.roi, rCost: v.rCost, rOrders: v.rOrders, rRevenue: v.rRevenue, rRoi: v.rRoi, cost7: v.cost7, organicGmv: v.organicGmv, lastSpend: v.lastSpend, daysSinceSpend: v.daysSinceSpend,
+  cost: v.cost, orders: v.orders, revenue: v.revenue, roi: v.roi, views: v.views, est: v.est, potential: v.potential, evidence: v.evidence, testAmount: v.testAmount, rCost: v.rCost, rOrders: v.rOrders, rRevenue: v.rRevenue, rRoi: v.rRoi, cost7: v.cost7, organicGmv: v.organicGmv, lastSpend: v.lastSpend, daysSinceSpend: v.daysSinceSpend,
   status: v.status, statusDay: v.statusDay, statusLabel: v.statusLabel, boostedNow: v.boostedNow, lastLogged: v.lastLogged, group: v.group, why: v.why,
 });
 
@@ -99,15 +103,16 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
         counts[x.group]++;
         if (byGroup[x.group].length < PER_GROUP) byGroup[x.group].push(pick(x));
         // Best picks: proven groups first; a never-started video only when it already sells without ads.
-        if (best.length < PER_GROUP && !x.boostedNow && (x.group === "stopped" || x.group === "promise" || x.group === "underfed" || (x.group === "never" && x.organicGmv > 0))) best.push(pick(x));
+        if (best.length < PER_GROUP && !x.boostedNow && (x.group === "stopped" || x.group === "gem" || x.group === "underfed" || x.group === "explore")) best.push(pick(x));
       }
       const g = one(sp.group);
       const keys = [...new Set(v.videos.map((x) => x.productKey).filter((k): k is string => !!k))];
-      body = <PicksBoard key={JSON.stringify([rules, product, q, g])} byGroup={byGroup} best={best} counts={counts} start={isGroupKey(g) ? g : "best"} rules={{ ...v.rules, roiIsAuto: roi == null }} autoRoi={v.autoRoi} accountRoi={v.accountRoi}
-        products={keys.map((k) => ({ key: k, label: productName(k) })).sort((a, b) => a.label.localeCompare(b.label))} product={product} q={one(sp.q) ?? ""} rangeLabel={range.label}
+      body = <PicksBoard key={JSON.stringify([rules, product, q, g])} byGroup={byGroup} best={best} counts={counts} start={isGroupKey(g) && g !== "rescue" ? g : "best"} rules={{ ...v.rules, roiIsAuto: roi == null }} autoRoi={v.autoRoi} accountRoi={v.accountRoi}
+        products={keys.map((k) => ({ key: k, label: productName(k) })).sort((a, b) => a.label.localeCompare(b.label))} product={product} q={one(sp.q) ?? ""} rangeLabel={range.label} rescue={{ videos: counts.rescue, revenue: v.videos.filter((x) => x.group === "rescue").reduce((a, x) => a + x.revenue, 0) }}
         carry={[...new URLSearchParams(carry.slice(1))]} />;
     }
-  } else if (tab === "log") body = <LogSection batches={await boostLog(range)} saved={one(sp.saved) === "1"} range={range} />;
+  } else if (tab === "rescue") body = <RescueBoard data={await rescueData()} />;
+  else if (tab === "log") body = <LogBoard batches={await boostLog(range)} saved={one(sp.saved) === "1"} rangeLabel={range.label} />;
   else if (tab === "campaigns") body = <CampaignSection d={await campaignHealth(range)} />;
   else if (tab === "products") body = <ProductSection d={await productPerformance(range)} />;
   else body = <CreatorSection d={await creatorScoreboard(range)} />;
@@ -117,7 +122,7 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
       {header}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <TabLinks label="GMV Max sections" size="sm" items={TABS.map((t) => ({ href: `/ads?tab=${t.key}${carry}`, label: t.label, icon: t.icon, active: tab === t.key, testId: `ads-tab-${t.key}` }))} />
-        {tab !== "planner" && <RangePicker today={today} rangeKey={range.key} from={range.from} to={range.to} label={range.label} />}
+        {tab !== "planner" && tab !== "rescue" && <RangePicker today={today} rangeKey={range.key} from={range.from} to={range.to} label={range.label} />}
       </div>
       {body}
     </div>

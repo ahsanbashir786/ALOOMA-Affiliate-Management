@@ -5,7 +5,8 @@ import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { productName, productRank } from "@/lib/products/catalog";
 import { vault, type VaultVideo } from "./vault";
 import { BOOST_GROUPS } from "./groups";
-import { lastNDays, sqlFrom, sqlPrev, type Range } from "./range";
+import { LOG_WINDOW, lastNDays, sqlFrom, sqlPrev, type Range } from "./range";
+export { LOG_WINDOW };
 
 // Read-only numbers for the GMV Max screens. Everything comes from the Ads sync tables (ads_*).
 
@@ -55,19 +56,18 @@ export async function adsToday(range: Range): Promise<TodayData> {
     else if (c.health === "stopped") alerts.push({ level: "warn", title: `Stopped Spending: ${c.name}`, detail: `It spent the week before, but nothing in the last 3 days${c.lastSpend ? ` (last spend ${c.lastSpend})` : ""}.`, href });
     if (c.budget && c.latestCost >= c.budget * 0.9) alerts.push({ level: "info", title: `Budget Nearly Used: ${c.name}`, detail: `RM ${Math.round(c.latestCost)} of the RM ${Math.round(c.budget)} daily budget was used on the latest day.`, href });
   }
-  const needAuth = v.videos.filter((x) => x.status === "AUTHORIZATION_NEEDED").length;
-  if (needAuth) alerts.push({ level: "warn", title: `${needAuth} Video${needAuth === 1 ? "" : "s"} Need Authorization`, detail: "TikTok cannot use them in ads until the creator authorizes them.", href: "/ads?tab=picks&group=blocked" });
-  const golden = v.counts.stopped;
-  if (golden) alerts.push({ level: "info", title: `${golden} Golden Video${golden === 1 ? "" : "s"} Not Being Used`, detail: "Proven sellers that GMV Max has stopped spending on.", href: "/ads?tab=picks&group=stopped" });
+    const golden = v.counts.stopped + v.counts.gem;
+  if (golden) alerts.push({ level: "info", title: `${golden} Golden Video${golden === 1 ? "" : "s"} Not Being Used`, detail: "Proven sellers and hidden gems that GMV Max is not funding.", href: "/ads?tab=picks" });
+  if (v.counts.rescue) alerts.push({ level: "warn", title: `${v.counts.rescue} Selling Video${v.counts.rescue === 1 ? "" : "s"} Locked`, detail: "They sold in ads, but TikTok needs the creator to authorize them again.", href: "/ads?tab=rescue" });
   const order = { critical: 0, warn: 1, info: 2 };
   alerts.sort((a, b) => order[a.level] - order[b.level]);
 
-  const label: Record<string, string> = { stopped: "Stopped While Selling", promise: "Sold, Then Dropped", underfed: "Selling, Low Spend", never: "Never Started" };
+  const label: Record<string, string> = { stopped: "Proven, Left Alone", gem: "Hidden Gems", underfed: "Selling, Low Spend", explore: "Worth Exploring" };
   return {
     hasData: !!latestDay || v.videos.length > 0, today, latestDay, latest, dayBefore, range, rangeKpi, rangePrev, hasPrev: !!range.prevFrom, series, seriesCapped: !!range.from ? chartFrom > range.from : true, alerts,
     opportunities: BOOST_GROUPS.map((k) => ({ key: k, label: label[k], count: v.counts[k] })),
     // Proven videos first; a never-started video only when it already sells without ads.
-    topPicks: [...v.videos.filter((x) => !x.boostedNow && (x.group === "stopped" || x.group === "promise" || x.group === "underfed")), ...v.videos.filter((x) => x.group === "never" && x.organicGmv > 0)].slice(0, 5),
+    topPicks: [...v.videos.filter((x) => !x.boostedNow && (x.group === "stopped" || x.group === "gem" || x.group === "underfed")), ...v.videos.filter((x) => x.group === "explore" && !x.boostedNow)].slice(0, 5),
     activeBoosts: num(boosts[0]?.n), activeCampaigns: camp.campaigns.filter((c) => c.now.cost > 0).length,
   };
 }
@@ -148,7 +148,7 @@ export async function productPerformance(range: Range): Promise<{ range: Range; 
   const products = [...m.values()].map((a): ProductRow => {
     const now = kpiOf(a.c, a.r, a.o), before = kpiOf(a.pc, a.pr, a.po);
     const mine = v.videos.filter((x) => vkey(x) === a.key);
-    const golden = mine.filter((x) => x.group === "stopped" || x.group === "promise").length;
+    const golden = mine.filter((x) => x.group === "stopped" || x.group === "gem").length;
     let verdict: ProductRow["verdict"] = "hold", note = "ROI is near your average";
     if (now.cost <= 0) { verdict = "idle"; note = golden ? "No ad spend now, but it has proven videos" : "No ad spend in this period"; }
     else if (now.roi != null && accountRoi != null && now.roi >= accountRoi * 1.15) { verdict = "push"; note = `ROI ${now.roi.toFixed(1)}× is above your average ${accountRoi.toFixed(1)}×`; }
@@ -170,7 +170,7 @@ export async function creatorScoreboard(range: Range): Promise<{ range: Range; c
     const a = m.get(x.creator) ?? { creator: x.creator, videos: 0, sellers: 0, all: kpiOf(0, 0, 0), week: kpiOf(0, 0, 0), golden: 0, blocked: 0, best: null, c: 0, r: 0, o: 0, c7: 0, r7: 0, o7: 0 };
     a.videos++; if (x.orders > 0) a.sellers++;
     a.c += x.rCost; a.r += x.rRevenue; a.o += x.rOrders; a.c7 += x.cost7; a.r7 += x.revenue7; a.o7 += x.orders7;
-    if (x.group === "stopped" || x.group === "promise" || (x.group === "never" && x.organicGmv > 0)) a.golden++;
+    if (x.group === "stopped" || x.group === "gem" || x.group === "rescue" || (x.group === "explore")) a.golden++;
     if (x.group === "blocked") a.blocked++;
     if (!a.best || x.rRevenue > a.best.rRevenue) a.best = x;
     m.set(x.creator, a);
@@ -182,7 +182,6 @@ export async function creatorScoreboard(range: Range): Promise<{ range: Range; c
 // ───────────────────────────── Boost Log ─────────────────────────────
 export type LogVideo = { creativeId: string; productId: string; budget: number; title: string | null; creator: string | null; before: Kpi; after: Kpi };
 export type LogBatch = { id: number; boostedOn: string; days: number; totalBudget: number; note: string | null; createdBy: string | null; afterDays: number; before: Kpi; after: Kpi; videos: LogVideo[]; verdict: "better" | "same" | "worse" | "early" };
-export const LOG_WINDOW = 7;
 export async function boostLog(range: Range): Promise<LogBatch[]> {
   const today = todayKL(), rf = sqlFrom(range), rt = range.to;
   const raw = await rows<{

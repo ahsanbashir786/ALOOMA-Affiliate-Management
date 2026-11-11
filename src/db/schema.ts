@@ -747,4 +747,14 @@ export const adsBoostActions = pgTable("ads_boost_actions", {
   response: jsonb("response"),
 }, (t) => [index("ads_boost_actions_created").on(t.createdAt), index("ads_boost_actions_item").on(t.itemId), index("ads_boost_actions_session").on(t.sessionId)]);
 
+// Authorization Rescue (migrations/0030): when a creator was asked to authorize videos for ads again.
+export const adsAuthAsks = pgTable("ads_auth_asks", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  creator: text("creator").notNull(),
+  askedAt: tz("asked_at").notNull().defaultNow(),
+  askedBy: text("asked_by"),
+  videoCount: integer("video_count").notNull().default(0),
+  note: text("note"),
+}, (t) => [index("ads_auth_asks_creator").on(t.creator, t.askedAt)]);
+
 // The view ads_creative_summary (migrations/0023) is read with plain SQL; drizzle does not manage it.

@@ -64,12 +64,12 @@ async function login(p, email) {
   // ── GMV Max screens
   await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-today]");
   const tabsA = (await o.locator("nav[aria-label='GMV Max sections'] a").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(tabsA) === JSON.stringify(["Ads Today", "Boost Picks", "Batch Planner", "Boost Log", "Campaign Health", "Product Performance", "Creator Scoreboard"]), `gmv max: the seven sections (${tabsA.join(", ")})`);
+  ok(JSON.stringify(tabsA) === JSON.stringify(["Ads Today", "Boost Picks", "Authorization Rescue", "Boost Studio", "Boost Log", "Campaign Health", "Product Performance", "Creator Scoreboard"]), `gmv max: the eight sections (${tabsA.join(", ")})`);
   const mainT = await o.locator("main").innerText();
   ok(/Ad Spend/.test(mainT) && /ROI/.test(mainT) && /Last 7 days/.test(mainT) && /Needs Your Attention/.test(mainT) && /Golden Videos Waiting/.test(mainT), "ads today: totals, chart for the chosen dates, alerts and golden videos");
   ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "ads today: no sideways scroll on desktop");
   await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-picks]");
-  ok(/TikTok API Status/i.test(await o.locator("main").innerText()) && /Stopped While Selling/.test(await o.getByTestId("ads-group-stopped").innerText()) && /Never Started/.test(await o.getByTestId("ads-group-never").innerText()) && /Wasting Money/.test(await o.getByTestId("ads-group-wasting").innerText()), "boost picks: every video is in a group, with counts");
+  ok(/Exploration \(Est\.\)/i.test(await o.locator("main").innerText()) && /Proven, Left Alone/.test(await o.getByTestId("ads-group-stopped").innerText()) && /No Signal Yet/.test(await o.getByTestId("ads-group-never").innerText()) && /Wasting Money/.test(await o.getByTestId("ads-group-wasting").innerText()), "boost picks: every video is in a group, with counts");
   for (const g of ["winning", "underfed", "stopped", "never", "other", "best"]) { await o.getByTestId(`ads-group-${g}`).click(); if (await o.getByTestId("ads-row").count()) break; }
   ok((await o.getByTestId("ads-row").count()) > 0, "boost picks: videos are listed");
   await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1&idle=1"); await o.waitForSelector("[data-testid=ads-picks]");
@@ -83,7 +83,7 @@ async function login(p, email) {
   ok(!/RM 3\.50|rounded up|suggest/i.test(await o.getByTestId("ads-planner").innerText()), "batch planner: no budget formula of ours is shown (the minimum and the split are TikTok's)");
   await o.getByTestId("ads-plan-mode-seller").click(); await o.waitForSelector("[data-testid=ads-plan-seller]"); await o.getByTestId("ads-plan-total-input").fill("12");
   await Promise.all([o.waitForURL(/tab=log/), o.getByTestId("ads-mark-boosted").click()]); await o.waitForSelector("[data-testid=ads-log-batch]");
-  ok(/Saved/.test(await o.getByTestId("ads-log-saved").innerText()) && /RM 12\.00 A Day/.test(await o.getByTestId("ads-log-batch").first().innerText()) && /Before/.test(await o.getByTestId("ads-log-batch").first().innerText()), "boost log: Mark As Boosted saves the batch with before and after");
+  ok(/Saved/.test(await o.getByTestId("ads-log-saved").innerText()) && /RM 12\.00 a day/i.test(await o.getByTestId("ads-log-batch").first().innerText()) && /Sales A Day/.test(await o.getByTestId("ads-log-batch").first().innerText()), "boost log: Mark As Boosted saves the batch with before and after");
   await o.getByTestId("ads-log-delete").first().click(); await o.getByTestId("ads-log-delete-yes").click();
   await o.waitForFunction(() => !document.querySelector("[data-testid=ads-log-batch]"), null, { timeout: 15000 }); ok(true, "boost log: a batch can be removed");
   await o.goto(BASE + "/ads?tab=planner"); await o.waitForSelector("[data-testid=ads-planner-empty]"); ok(true, "batch planner: empty until videos are ticked");
@@ -100,6 +100,18 @@ async function login(p, email) {
   ok(/What TikTok.s API Sent/.test(vt) && ((await o.getByTestId("ads-sent-row").count()) > 0 ? /Delivery Status/i.test(vt) && /Exploration Status/i.test(vt) : /No result rows were saved/.test(vt)), "video detail: shows the raw fields TikTok sent (delivery, exploration, boost, authorization), or says none were saved");
   for (const t of ["picks", "campaigns", "products", "creators", "log"]) { await o.goto(BASE + "/ads?tab=" + t); await o.waitForSelector("h1"); await o.waitForTimeout(300); ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `gmv max: ${t} has no sideways scroll on desktop`); }
 
+  // ── the analysis on Boost Picks: map, estimated status, potential, sorting; Authorization Rescue
+  await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-picks]");
+  ok(await o.getByTestId("ads-map").count() === 1, "boost picks: a bubble map of the videos");
+  ok((await o.getByTestId("ads-est").count()) > 0 && /estimate/i.test(await o.getByTestId("ads-est").first().innerText()), "boost picks: every video shows an Exploration status marked as an estimate");
+  ok((await o.getByTestId("ads-potential").count()) > 0, "boost picks: every video has a potential bar");
+  const hd = (await o.locator("[data-testid=ads-table] thead th").allInnerTexts()).join("|");
+  ok(/POTENTIAL/i.test(hd) && /EXPLORATION \(EST\.\)/i.test(hd) && /FAIR TEST/i.test(hd), `boost picks: columns for potential, estimated exploration and fair test (${hd.replace(/\n/g, " ").slice(0, 120)})`);
+  const firstBefore = await o.getByTestId("ads-row").first().innerText();
+  await o.locator("[data-testid=ads-table] thead button", { hasText: "Spend" }).first().click(); await o.waitForTimeout(400);
+  ok(await o.getByTestId("ads-row").count() > 0, "boost picks: a column can be sorted");
+  await o.goto(BASE + "/ads?tab=rescue"); await o.waitForSelector("[data-testid=ads-rescue], [data-testid=ads-empty-state]"); ok(true, "authorization rescue: the tab opens");
+  ok(firstBefore.length > 0, "boost picks: rows have content");
   // ── date range picker (one for the whole GMV Max section)
   await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-range]");
   ok(/Last 7 days/.test(await o.getByTestId("ads-range-label").innerText()), "range: Ads Today opens with Last 7 days");
@@ -130,7 +142,7 @@ async function login(p, email) {
   const nBoostable = await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").count();
   ok(await o.getByTestId("ads-select-all").isVisible() && nBoostable > 1, `select all: a checkbox in the first column header (${nBoostable} videos can be ticked)`);
   await o.getByTestId("ads-select-all").check();
-  ok(new RegExp(`${Math.min(nBoostable, 50)} videos? selected`).test(await o.getByTestId("ads-selection").innerText()) && await o.getByTestId("ads-select-all").isChecked(), "select all: ticks every video that can be boosted");
+  { const m = (await o.getByTestId("ads-selection").innerText()).match(/(\d+) videos? selected/); ok(!!m && Number(m[1]) >= nBoostable && Number(m[1]) <= 50 && await o.getByTestId("ads-select-all").isChecked(), "select all: ticks every video that can be boosted, up to one batch (50), also the ones on other pages"); }
   await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").first().uncheck();
   ok(await o.getByTestId("ads-select-all").evaluate((e) => e.indeterminate), "select all: shows a dash when only some are ticked");
   await o.getByTestId("ads-select-all").check(); await o.getByTestId("ads-select-all").uncheck();

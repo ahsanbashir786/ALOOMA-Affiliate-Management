@@ -41,7 +41,7 @@ export function Planner({ videos, today, boost, trends }: { videos: PickRow[]; t
   const [total, setTotal] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
-  const amountOf = (k: string) => Number(amounts[k] ?? "5");
+  const amountOf = (k: string) => Number(amounts[k] ?? String(list.find((v) => v.key === k)?.testAmount ?? 5));
 
   const ready = list.filter((v) => !boost.items[v.key]?.blocker);
   const sum = ready.reduce((a, v) => a + (amountOf(v.key) > 0 ? amountOf(v.key) : 0), 0);
@@ -110,7 +110,7 @@ export function Planner({ videos, today, boost, trends }: { videos: PickRow[]; t
                 ) : mode === "app" && canApp ? (
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <span className="min-w-0 truncate text-[12px] text-ink-3" title={info?.campaign ?? undefined}><span className="mr-1 inline-block size-2 rounded-full bg-good align-middle" />{info?.campaign ?? "Ready"}</span>
-                    <BudgetStepper value={amounts[v.key] ?? "5"} onChange={(x) => setAmounts((a) => ({ ...a, [v.key]: x }))} max={boost.maxBudget} compact testId="ads-plan-api-amount" />
+                    <BudgetStepper value={amounts[v.key] ?? String(v.testAmount)} onChange={(x) => setAmounts((a) => ({ ...a, [v.key]: x }))} max={boost.maxBudget} compact testId="ads-plan-api-amount" />
                   </div>
                 ) : (
                   <p className="mt-3 flex items-center gap-1.5 text-[12px] text-ink-3"><span className="inline-block size-2 rounded-full bg-good" />Ready</p>

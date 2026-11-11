@@ -2,9 +2,8 @@ import Link from "next/link";
 import { AlertTriangle, ArrowRight, CircleAlert, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/viz/sparkline";
-import { HEALTH_LABEL, LOG_WINDOW, type CampaignRow, type CreatorRow, type Health, type LogBatch, type ProductRow, type TodayData, type Kpi } from "@/lib/ads/insights";
+import { HEALTH_LABEL, type CampaignRow, type CreatorRow, type Health, type ProductRow, type TodayData, type Kpi } from "@/lib/ads/insights";
 import type { Range } from "@/lib/ads/range";
-import { LogDelete } from "./log-delete";
 import { Delta, Empty, GroupPill, Pill, SpendSalesBars, Tile, VideoCell, day, nfmt, rm, rm2, roiFmt, th, thr, td, tdr } from "./ui";
 
 const card = "overflow-hidden rounded-2xl border border-line bg-surface";
@@ -73,45 +72,6 @@ export function TodaySection({ d }: { d: TodayData }) {
           </ul>
         )}
       </section>
-    </div>
-  );
-}
-
-// ───────────────────────────── 4. Boost Log ─────────────────────────────
-const VERDICT: Record<LogBatch["verdict"], { label: string; tone: string }> = { better: { label: "Sales Went Up", tone: "good" }, same: { label: "About The Same", tone: "muted" }, worse: { label: "Sales Went Down", tone: "critical" }, early: { label: "Too Early To Say", tone: "brand" } };
-export function LogSection({ batches, saved, range }: { batches: LogBatch[]; saved: boolean; range: Range }) {
-  if (!batches.length) return <Empty title={range.from ? "No Boosts Logged In These Dates" : "No Boosts Logged Yet"} action={{ href: "/ads?tab=picks", label: "Open Boost Picks" }}>When you boost a batch in TikTok, plan it here and press Mark As Boosted. The log then shows the results of those videos before and after.</Empty>;
-  const perDay = (k: Kpi, days: number) => (days > 0 ? k.revenue / days : 0);
-  return (
-    <div className="space-y-4" data-testid="ads-log">
-      {saved && <p className="rounded-xl border border-good/30 bg-good-soft px-4 py-2.5 text-[14px] text-good" data-testid="ads-log-saved">Saved. The results after the boost fill in as new days are synced.</p>}
-      <p className="text-[13px] text-ink-3">Batches boosted in {range.label}. Each batch compares the {LOG_WINDOW} days before the boost with up to {LOG_WINDOW} days from the boost date. Sales a day is used so an unfinished period is compared fairly.</p>
-      {batches.map((b) => (
-        <section key={b.id} className={card} data-testid="ads-log-batch">
-          <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4 pb-3">
-            <div>
-              <h2 className="text-[16px] font-semibold text-ink">{day(b.boostedOn)} · {b.videos.length} Video{b.videos.length === 1 ? "" : "s"} · {rm2(b.totalBudget)} A Day{b.days > 1 ? ` For ${b.days} Days` : ""}</h2>
-              <p className="mt-0.5 text-[13px] text-ink-3">{b.note ? `${b.note} · ` : ""}{b.createdBy ? `Logged by ${b.createdBy}` : ""}</p>
-            </div>
-            <div className="flex items-center gap-2"><Pill tone={VERDICT[b.verdict].tone} testId="ads-log-verdict">{VERDICT[b.verdict].label}</Pill><LogDelete id={b.id} /></div>
-          </div>
-          <div className="grid gap-3 px-5 pb-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Tile label={`Sales A Day · Before`} value={rm(perDay(b.before, LOG_WINDOW))} sub={<span className="text-[12.5px] text-ink-3">{rm(b.before.revenue)} in {LOG_WINDOW} days</span>} />
-            <Tile label={`Sales A Day · After`} value={b.afterDays ? rm(perDay(b.after, b.afterDays)) : "–"} sub={<span className="text-[12.5px] text-ink-3">{rm(b.after.revenue)} in {b.afterDays} day{b.afterDays === 1 ? "" : "s"}</span>} />
-            <Tile label="ROI · Before → After" value={`${roiFmt(b.before.roi)} → ${roiFmt(b.after.roi)}`} />
-            <Tile label="Orders · Before → After" value={`${nfmt(b.before.orders)} → ${nfmt(b.after.orders)}`} sub={<span className="text-[12.5px] text-ink-3">Spend {rm(b.before.cost)} → {rm(b.after.cost)}</span>} />
-          </div>
-          <details className="border-t border-line">
-            <summary className="cursor-pointer px-5 py-2.5 text-[13.5px] font-medium text-brand hover:underline">Show Each Video</summary>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] border-collapse text-[13.5px]">
-                <thead><tr className={head}><th className={cn(th, "pl-5")}>Video</th><th className={thr}>Budget A Day</th><th className={thr}>Sales Before</th><th className={thr}>Sales After</th><th className={thr}>ROI Before</th><th className={thr}>ROI After</th><th className={cn(thr, "pr-5")}>Orders After</th></tr></thead>
-                <tbody>{b.videos.map((v) => <tr key={v.creativeId + v.productId} className="border-b border-line"><td className={cn(td, "max-w-[340px] pl-5")}><VideoCell v={{ ...v, postedOn: null }} /></td><td className={tdr}>{v.budget > 0 ? rm2(v.budget) : "Shared"}</td><td className={tdr}>{rm(v.before.revenue)}</td><td className={tdr}>{rm(v.after.revenue)}</td><td className={tdr}>{roiFmt(v.before.roi)}</td><td className={tdr}>{roiFmt(v.after.roi)}</td><td className={cn(tdr, "pr-5")}>{nfmt(v.after.orders)}</td></tr>)}</tbody>
-              </table>
-            </div>
-          </details>
-        </section>
-      ))}
     </div>
   );
 }

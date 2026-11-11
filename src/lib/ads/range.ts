@@ -72,3 +72,6 @@ export function rangeSuffix(sp: { range?: string; from?: string; to?: string }):
 export const sqlFrom = (r: { from: string | null }) => r.from ?? LIFETIME_FROM;
 /** For SQL: the comparison period (an empty, far-past period when there is none). */
 export const sqlPrev = (r: Range): [string, string] => (r.prevFrom && r.prevTo ? [r.prevFrom, r.prevTo] : ["1900-01-01", "1900-01-02"]);
+
+/** Days compared before and after a boost in the Boost Log. */
+export const LOG_WINDOW = 7;

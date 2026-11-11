@@ -11,7 +11,7 @@ import { can } from "@/lib/auth";
 import { one, type SP } from "@/lib/url";
 import { GROUP } from "@/lib/ads/groups";
 import { Person } from "@/components/execution/ui";
-import { GroupPill, Pill, SpendSalesBars, StatusPill, Tile, day, nfmt, rm, rm2, roiFmt, th, thr, td, tdr } from "@/components/ads/ui";
+import { EstPill, EvidenceDots, GroupPill, Pill, PotentialBar, SpendSalesBars, StatusPill, Tile, day, nfmt, rm, rm2, roiFmt, th, thr, td, tdr } from "@/components/ads/ui";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Video · GMV Max" };
@@ -39,13 +39,14 @@ export default async function AdsVideoPage({ params, searchParams }: { params: P
         <div className="min-w-0 flex-1">
           <h1 className="text-[22px] leading-snug font-semibold tracking-tight text-ink">{v.title || `Video ${v.creativeId.slice(-8)}`}</h1>
           <p className="mt-1 text-[14px] text-ink-2">{v.creator ? <Link href={`/creators/${encodeURIComponent(v.creator)}`} className="text-brand hover:underline">@{v.creator}</Link> : "Creator not known"}{v.postedOn ? ` · posted ${day(v.postedOn)} (${v.ageDays} days ago)` : ""} · Video ID {v.creativeId}</p>
-          <p className="mt-2 flex flex-wrap items-center gap-2"><GroupPill group={v.group} /><StatusPill status={v.status} label={v.statusLabel} />{v.statusDay && <span className="text-[12.5px] text-ink-3">TikTok API status as of {day(v.statusDay)}</span>}{v.boostedNow && <Pill tone="good">Boost Running Now</Pill>}</p>
+          <p className="mt-2 flex flex-wrap items-center gap-2"><GroupPill group={v.group} /><EstPill est={v.est} /><StatusPill status={v.status} label={v.statusLabel} />{v.statusDay && <span className="text-[12.5px] text-ink-3">TikTok API status as of {day(v.statusDay)}</span>}{v.boostedNow && <Pill tone="good">Boost Running Now</Pill>}</p>
         </div>
         <a href={`https://www.tiktok.com/@${v.creator ?? "_"}/video/${v.creativeId}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2">Open On TikTok</a>
       </header>
       <section className={cn("rounded-2xl border p-4", g.boost ? "border-brand/30 bg-brand-soft" : "border-line bg-surface")} data-testid="ads-video-verdict">
         <p className="text-[14.5px] font-semibold text-ink">{g.boost ? (v.boostedNow ? "Worth Boosting, And A Boost Is Already Running" : "Worth Boosting") : v.group === "winning" ? "Leave It Running" : "Do Not Boost Now"}</p>
         <p className="mt-0.5 text-[13.5px] text-ink-2">{v.why}. {g.about}</p>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-ink-2"><span className="inline-flex items-center gap-2">Potential <PotentialBar value={v.potential} /></span><span className="inline-flex items-center gap-2">Proof <EvidenceDots level={v.evidence} /></span>{g.boost && <span className="inline-flex items-center gap-2">Fair test <b className="rounded-full bg-brand-soft px-2 py-0.5 text-brand-strong">RM {v.testAmount} a day</b></span>}</div>
       </section>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="All-time results">
         <Tile label="All-Time Ad Spend" value={rm(cost)} sub={<span className="text-[12.5px] text-ink-3">{v.firstSpend ? `first spend ${day(v.firstSpend)}` : "never spent"}</span>} />
