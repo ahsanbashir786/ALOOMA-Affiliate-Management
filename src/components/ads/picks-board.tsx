@@ -13,6 +13,8 @@ export type PickRow = {
   status: string | null; statusDay: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null; group: GroupKey; why: string;
 };
 type View = GroupKey | "best";
+/** Spending for real: spend yesterday or today and at least RM 5 in the last 7 days (pennies do not count). */
+const spendingNow = (s: { daysSinceSpend: number | null; cost7: number }) => s.daysSinceSpend != null && s.daysSinceSpend <= 1 && s.cost7 >= 5;
 /** One batch holds at most this many videos. */
 const MAX_BATCH = 50;
 
@@ -109,9 +111,9 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
                       <td className={cn(td, "max-w-[340px]")}><VideoCell v={s} />{(s.boostedNow || s.lastLogged) && <p className="mt-1 flex gap-1">{s.boostedNow && <span className="rounded-full bg-good-soft px-2 py-0.5 text-[11.5px] text-good">Boost running now</span>}{s.lastLogged && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11.5px] text-ink-2">You boosted it on {day(s.lastLogged)}</span>}</p>}</td>
                       <td className={td}><GroupPill group={s.group} /></td>
                       <td className={cn(td, "text-ink-2")}><span className="block max-w-[170px] truncate" title={s.productLabel}>{s.productLabel}</span></td>
-                      <td className={td}>{s.daysSinceSpend != null && s.daysSinceSpend <= 1 && <Pill tone="good" testId="ads-spending">Spending Now</Pill>}<div className={s.daysSinceSpend != null && s.daysSinceSpend <= 1 ? "mt-1" : ""}><StatusPill status={s.status} label={s.statusLabel} />{s.statusDay && <p className="mt-0.5 text-[11.5px] text-ink-3" title="The newest day TikTok's API gave a delivery status for this video">as of {day(s.statusDay)}</p>}</div></td>
+                      <td className={td}>{spendingNow(s) && <Pill tone="good" testId="ads-spending" title="At least RM 5 spent in the last 7 days, and spend yesterday or today">Spending Now</Pill>}<div className={spendingNow(s) ? "mt-1" : ""}><StatusPill status={s.status} label={s.statusLabel} />{s.statusDay && <p className="mt-0.5 text-[11.5px] text-ink-3" title="The newest day TikTok's API gave a delivery status for this video">as of {day(s.statusDay)}</p>}</div></td>
                       <td className={tdr}>{rm(s.rCost)}</td><td className={tdr}>{nfmt(s.rOrders)}</td><td className={tdr}>{rm(s.rRevenue)}</td>
-                      <td className={cn(tdr, "font-semibold", s.rRoi != null && s.rRoi >= rules.minRoi ? "text-good" : "text-ink")} title={s.roi != null ? `All-time ROI ${roiFmt(s.roi)}` : undefined}>{roiFmt(s.rRoi)}</td>
+                      <td className={cn(tdr, "font-semibold", s.rRoi != null && s.rRoi >= rules.minRoi ? "text-good" : "text-ink")} title={s.roi != null ? `All-time ROI ${roiFmt(s.roi)}` : undefined}>{roiFmt(s.rRoi)}{s.rRoi != null && s.rCost < 10 && <span className="block text-[11px] font-normal text-warn" title="Very little was spent, so this ROI may not hold when you spend more">tiny spend</span>}</td>
                       <td className={cn(tdr, "text-ink-2")}>{s.organicGmv > 0 ? rm(s.organicGmv) : "–"}</td>
                       <td className={cn(tdr, "pr-4 text-ink-2")}>{s.lastSpend ? day(s.lastSpend) : "Never"}</td>
                     </tr>
