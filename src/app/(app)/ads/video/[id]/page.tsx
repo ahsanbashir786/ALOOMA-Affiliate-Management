@@ -31,7 +31,7 @@ export default async function AdsVideoPage({ params }: { params: Promise<{ id: s
         <div className="min-w-0 flex-1">
           <h1 className="text-[22px] leading-snug font-semibold tracking-tight text-ink">{v.title || `Video ${v.creativeId.slice(-8)}`}</h1>
           <p className="mt-1 text-[14px] text-ink-2">{v.creator ? <Link href={`/creators/${encodeURIComponent(v.creator)}`} className="text-brand hover:underline">@{v.creator}</Link> : "Creator not known"}{v.postedOn ? ` · posted ${day(v.postedOn)} (${v.ageDays} days ago)` : ""} · Video ID {v.creativeId}</p>
-          <p className="mt-2 flex flex-wrap items-center gap-2"><GroupPill group={v.group} /><StatusPill status={v.status} label={v.statusLabel} />{v.boostedNow && <Pill tone="good">Boost Running Now</Pill>}</p>
+          <p className="mt-2 flex flex-wrap items-center gap-2"><GroupPill group={v.group} /><StatusPill status={v.status} label={v.statusLabel} />{v.statusDay && <span className="text-[12.5px] text-ink-3">TikTok API status as of {day(v.statusDay)}</span>}{v.boostedNow && <Pill tone="good">Boost Running Now</Pill>}</p>
         </div>
         <a href={`https://www.tiktok.com/@${v.creator ?? "_"}/video/${v.creativeId}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-[13.5px] font-medium text-ink hover:bg-surface-2">Open On TikTok</a>
       </header>
@@ -59,6 +59,18 @@ export default async function AdsVideoPage({ params }: { params: Promise<{ id: s
           </table></div>
         </section>
       )}
+      <section className={cn(card, "p-5")} aria-label="What TikTok sent" data-testid="ads-sent">
+        <h2 className="text-[16px] font-semibold text-ink">What TikTok&apos;s API Sent For This Video</h2>
+        <p className="mt-0.5 text-[13px] text-ink-3">Nothing here is our guess. These are the newest rows we saved, field by field. TikTok&apos;s Exploration status (Explored, Performing, Underperforming) is only shown when TikTok&apos;s API sends it; an empty box below means it did not.</p>
+        {d.sent.length === 0 ? <p className="mt-3 text-[14px] text-ink-3">No result rows were saved for this video yet (it never appeared in the ads results).</p> : (
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[640px] border-collapse text-[13.5px]">
+            <thead><tr className="border-y border-line bg-surface-2/60"><th className={cn(th, "pl-1")}>Result Day</th><th className={th}>Delivery Status</th><th className={th}>Exploration Status</th><th className={th}>Boost Status</th><th className={th}>Authorization</th></tr></thead>
+            <tbody>{d.sent.map((r) => <tr key={r.day + r.productId} className="border-b border-line" data-testid="ads-sent-row"><td className={cn(td, "pl-1")}>{day(r.day)}</td><td className={td}><code>{r.delivery ?? "not sent"}</code></td><td className={td}><code>{r.exploration ?? "not sent"}</code></td><td className={td}><code>{r.boost ?? "not sent"}</code></td><td className={td}><code>{r.authorization ?? "not sent"}</code></td></tr>)}</tbody>
+          </table></div>
+        )}
+        {d.sent[0] && <details className="mt-3"><summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">Show the newest row exactly as TikTok sent it</summary><pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-surface-2 p-3 text-[12px] leading-relaxed text-ink-2">{JSON.stringify(d.sent[0].json, null, 2)}</pre></details>}
+        {d.post && <details className="mt-2"><summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">Show the post record from Own Account Posts{d.post.status ? ` (${d.post.status})` : ""}</summary><pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-surface-2 p-3 text-[12px] leading-relaxed text-ink-2">{JSON.stringify(d.post.json, null, 2)}</pre></details>}
+      </section>
       <section className={cn(card, "p-5")} aria-label="Boost history">
         <h2 className="text-[16px] font-semibold text-ink">Boost History</h2>
         {d.logged.length === 0 && d.sessions.length === 0 ? <p className="mt-2 text-[14px] text-ink-3">This video has not been boosted, as far as the Boost Log and TikTok&apos;s running sessions show.</p> : (

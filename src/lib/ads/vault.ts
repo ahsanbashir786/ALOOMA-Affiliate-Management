@@ -20,7 +20,7 @@ export type VaultVideo = {
   /** Results inside the chosen date range (the group itself is always judged on all history). */ rCost: number; rOrders: number; rRevenue: number; rRoi: number | null;
   firstSpend: string | null; lastSpend: string | null; daysSinceSpend: number | null; spendDays: number;
   /** Sales the video made on its own (Shop sync), with or without ads. */ organicGmv: number; views: number;
-  status: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null;
+  status: string | null; /** The day TikTok's API gave that status. */ statusDay: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null;
   group: GroupKey; why: string; score: number;
 };
 export type Vault = { today: string; rules: Rules; autoRoi: number; accountRoi: number | null; videos: VaultVideo[]; counts: Record<GroupKey, number>; freshest: string | null };
@@ -32,7 +32,7 @@ const median = (xs: number[]) => { if (!xs.length) return 0; const s = [...xs].s
 type Raw = {
   creative_id: string; product_id: string; cost: number; orders: number; revenue: number; imp: number; clk: number;
   cost7: number; rev7: number; orders7: number; cost_r: number; orders_r: number; rev_r: number; first_spend: string | null; last_spend: string | null; spend_days: number;
-  last_status: string | null; ad_title: string | null; account_name: string | null;
+  last_status: string | null; status_day: string | null; ad_title: string | null; account_name: string | null;
   creator: string | null; title: string | null; posted_at: Date | string | null; organic: number; views: number;
   product_key: string | null; boosted_now: boolean; last_logged: string | null;
 };
@@ -54,6 +54,7 @@ const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Pr
         to_char(max(d.day) filter (where coalesce(d.cost, 0) > 0), 'YYYY-MM-DD') as last_spend,
         (count(distinct d.day) filter (where coalesce(d.cost, 0) > 0))::int as spend_days,
         (array_agg(d.delivery_status order by d.day desc) filter (where d.delivery_status is not null))[1] as last_status,
+        to_char(max(d.day) filter (where d.delivery_status is not null), 'YYYY-MM-DD') as status_day,
         (array_agg(d.title order by d.day desc) filter (where d.title is not null))[1] as ad_title,
         (array_agg(d.account_name order by d.day desc) filter (where d.account_name is not null))[1] as account_name
       from ads_creative_daily d group by 1, 2
@@ -61,7 +62,7 @@ const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Pr
       -- Videos that sell on their own and have never appeared in the ads results at all.
       select v.video_id as creative_id, coalesce(v.products->0->>'id', '-') as product_id,
         0::float8 as cost, 0 as orders, 0::float8 as revenue, 0::float8 as imp, 0::float8 as clk, 0::float8 as cost7, 0::float8 as rev7, 0 as orders7, 0::float8 as cost_r, 0 as orders_r, 0::float8 as rev_r,
-        null::text as first_spend, null::text as last_spend, 0 as spend_days, null::text as last_status, null::text as ad_title, null::text as account_name
+        null::text as first_spend, null::text as last_spend, 0 as spend_days, null::text as last_status, null::text as status_day, null::text as ad_title, null::text as account_name
       from tt_videos v where coalesce(v.gmv, 0) > 0 and not exists (select 1 from ads_creative_daily d where d.creative_id = v.video_id)
     ), allv as (select * from agg union all select * from organic)
     select a.*, v.creator, coalesce(v.title, av.title, a.ad_title) as title, coalesce(v.posted_at, av.posted_at) as posted_at,
@@ -104,7 +105,7 @@ export async function vault(rules: { minRoi: number | null; minOrders: number; i
       cost7, revenue7, orders7: num(r.orders7), roi7: cost7 > 0 ? revenue7 / cost7 : null,
       rCost: num(r.cost_r), rOrders: num(r.orders_r), rRevenue: num(r.rev_r), rRoi: num(r.cost_r) > 0 ? num(r.rev_r) / num(r.cost_r) : null,
       firstSpend: r.first_spend, lastSpend: r.last_spend, daysSinceSpend, spendDays: num(r.spend_days), organicGmv: organic, views: num(r.views),
-      status: r.last_status, statusLabel: r.last_status ? (STATUS_LABEL[r.last_status] ?? r.last_status) : null, boostedNow: !!r.boosted_now, lastLogged: r.last_logged,
+      status: r.last_status, statusDay: r.status_day, statusLabel: r.last_status ? (STATUS_LABEL[r.last_status] ?? r.last_status) : null, boostedNow: !!r.boosted_now, lastLogged: r.last_logged,
       group, why: group === "never" && organic > 0 ? `Never in ads, yet it sold RM ${Math.round(organic).toLocaleString("en-MY")} on its own` : why, score,
     };
   }).sort((a, b) => b.score - a.score);

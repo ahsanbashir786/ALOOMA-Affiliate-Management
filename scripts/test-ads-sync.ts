@@ -269,7 +269,7 @@ async function main() {
   const td = await IN.adsToday(RG.lastNDays(todayKL(), 7));
   check("ads today: alerts name the campaign with no sales, and golden videos are counted", td.alerts.some((a2) => /No Orders/.test(a2.title) && /bt-NS/.test(a2.title)) && td.opportunities.find((o) => o.key === "stopped")!.count >= 1 && td.series.length === 7 && td.rangeKpi.cost >= 0 && (await IN.adsToday(RG.makeRange("lifetime", null, todayKL()))).series.length === 120, JSON.stringify(td.alerts.map((a2) => a2.title)));
   const vd = await IN.videoDetail("bt-A");
-  check("video detail: 60 days of results, where it ran, and its boost history", !!vd && vd.series.length === 60 && vd.campaigns.length === 1 && vd.logged.length === 1 && (await IN.videoDetail("nope")) === null);
+  check("video detail: 60 days of results, where it ran, and its boost history", !!vd && vd.series.length === 60 && vd.campaigns.length === 1 && vd.sent.length > 0 && vd.sent[0].delivery === "DELIVERING" && vd.logged.length === 1 && (await IN.videoDetail("nope")) === null);
   const sc = await IN.creatorScoreboard(RG.makeRange("lifetime", null, todayKL()));
   check("creator scoreboard: a creator's unused golden videos are counted", sc.creators.find((c) => c.creator === "bt_creator")?.golden === 1, JSON.stringify(sc.creators.find((c) => c.creator === "bt_creator")));
   await wipeBT();

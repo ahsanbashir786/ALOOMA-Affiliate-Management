@@ -224,6 +224,8 @@ export async function boostLog(range: Range): Promise<LogBatch[]> {
 export type VideoDetail = {
   rows: VaultVideo[]; series: { day: string; cost: number; revenue: number; orders: number }[];
   campaigns: { campaignId: string; name: string; productLabel: string; cost: number; revenue: number; orders: number; roi: number | null; lastSpend: string | null }[];
+  /** The newest rows exactly as TikTok's API sent them. */ sent: { day: string; productId: string; delivery: string | null; exploration: string | null; boost: string | null; authorization: string | null; json: unknown }[];
+  post: { status: string | null; eligible: boolean | null; authorization: string | null; json: unknown } | null;
   logged: { id: number; boostedOn: string; budget: number }[]; sessions: { sessionId: string; status: string | null; budget: number | null; startsAt: string | null; endsAt: string | null; active: boolean }[];
 };
 export async function videoDetail(id: string): Promise<VideoDetail | null> {
@@ -231,19 +233,23 @@ export async function videoDetail(id: string): Promise<VideoDetail | null> {
   const mine = v.videos.filter((x) => x.creativeId === id);
   if (!mine.length) return null;
   const end = v.today, start = addDaysISO(end, -59);
-  const [s, c, logged, sessions] = await Promise.all([
+  const [s, c, logged, sessions, sent, post] = await Promise.all([
     rows<{ day: string; cost: number; revenue: number; orders: number }>(sql`select to_char(day, 'YYYY-MM-DD') as day, coalesce(sum(cost), 0)::float8 as cost, coalesce(sum(gross_revenue), 0)::float8 as revenue, coalesce(sum(orders), 0)::int as orders from ads_creative_daily where creative_id = ${id} and day >= ${start}::date group by 1`),
     rows<{ campaign_id: string; name: string | null; product_id: string; product_key: string | null; cost: number; revenue: number; orders: number; last_spend: string | null }>(sql`
       select d.campaign_id, c.name, d.product_id, pm.product_key, coalesce(sum(d.cost), 0)::float8 as cost, coalesce(sum(d.gross_revenue), 0)::float8 as revenue, coalesce(sum(d.orders), 0)::int as orders, to_char(max(d.day) filter (where coalesce(d.cost, 0) > 0), 'YYYY-MM-DD') as last_spend
       from ads_creative_daily d left join ads_campaigns c on c.campaign_id = d.campaign_id left join product_map pm on pm.product_id = d.product_id where d.creative_id = ${id} group by 1, 2, 3, 4 order by 5 desc`),
     rows<{ id: number; boosted_on: string; budget: number }>(sql`select b.id::int as id, to_char(b.boosted_on, 'YYYY-MM-DD') as boosted_on, bv.budget::float8 as budget from ads_boost_batch_videos bv join ads_boost_batches b on b.id = bv.batch_id where bv.creative_id = ${id} order by b.boosted_on desc`),
     rows<{ session_id: string; status: string | null; budget: number | null; starts_at: Date | null; ends_at: Date | null; active: boolean }>(sql`select session_id, status, budget::float8 as budget, starts_at, ends_at, coalesce(ends_at, now() + interval '1 day') > now() as active from ads_boosts where item_id = ${id} order by starts_at desc nulls last`),
+    rows<{ day: string; product_id: string; delivery_status: string | null; exploration_status: string | null; boost_status: string | null; authorization_type: string | null; raw: unknown }>(sql`select to_char(day, 'YYYY-MM-DD') as day, product_id, delivery_status, exploration_status, boost_status, authorization_type, raw from ads_creative_daily where creative_id = ${id} order by day desc limit 4`),
+    rows<{ status: string | null; eligible: boolean | null; authorization_type: string | null; raw: unknown }>(sql`select status, eligible, authorization_type, raw from ads_videos where item_id = ${id} limit 1`),
   ]);
   const byDay = new Map(s.map((r) => [r.day, r]));
   return {
     rows: mine,
     series: Array.from({ length: 60 }, (_, i) => { const day = addDaysISO(start, i); const r = byDay.get(day); return { day, cost: num(r?.cost), revenue: num(r?.revenue), orders: num(r?.orders) }; }),
     campaigns: c.map((x) => ({ campaignId: x.campaign_id, name: x.name || (x.campaign_id === "-" ? "Campaign not given" : `Campaign ${x.campaign_id.slice(-6)}`), productLabel: x.product_key ? productName(x.product_key) : `Product ${x.product_id.slice(-6)}`, cost: num(x.cost), revenue: num(x.revenue), orders: num(x.orders), roi: num(x.cost) > 0 ? num(x.revenue) / num(x.cost) : null, lastSpend: x.last_spend })),
+    sent: sent.map((x) => ({ day: x.day, productId: x.product_id, delivery: x.delivery_status, exploration: x.exploration_status, boost: x.boost_status, authorization: x.authorization_type, json: x.raw })),
+    post: post[0] ? { status: post[0].status, eligible: post[0].eligible, authorization: post[0].authorization_type, json: post[0].raw } : null,
     logged: logged.map((x) => ({ id: x.id, boostedOn: x.boosted_on, budget: num(x.budget) })),
     sessions: sessions.map((x) => ({ sessionId: x.session_id, status: x.status, budget: x.budget == null ? null : num(x.budget), startsAt: x.starts_at ? new Date(x.starts_at).toISOString().slice(0, 10) : null, endsAt: x.ends_at ? new Date(x.ends_at).toISOString().slice(0, 10) : null, active: !!x.active })),
   };

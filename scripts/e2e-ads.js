@@ -67,7 +67,7 @@ async function login(p, email) {
   ok(/Ad Spend/.test(mainT) && /ROI/.test(mainT) && /Last 7 days/.test(mainT) && /Needs Your Attention/.test(mainT) && /Golden Videos Waiting/.test(mainT), "ads today: totals, chart for the chosen dates, alerts and golden videos");
   ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "ads today: no sideways scroll on desktop");
   await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-picks]");
-  ok(/Stopped While Selling/.test(await o.getByTestId("ads-group-stopped").innerText()) && /Never Started/.test(await o.getByTestId("ads-group-never").innerText()) && /Wasting Money/.test(await o.getByTestId("ads-group-wasting").innerText()), "boost picks: every video is in a group, with counts");
+  ok(/TikTok API Status/i.test(await o.locator("main").innerText()) && /Stopped While Selling/.test(await o.getByTestId("ads-group-stopped").innerText()) && /Never Started/.test(await o.getByTestId("ads-group-never").innerText()) && /Wasting Money/.test(await o.getByTestId("ads-group-wasting").innerText()), "boost picks: every video is in a group, with counts");
   for (const g of ["winning", "underfed", "stopped", "never", "other", "best"]) { await o.getByTestId(`ads-group-${g}`).click(); if (await o.getByTestId("ads-row").count()) break; }
   ok((await o.getByTestId("ads-row").count()) > 0, "boost picks: videos are listed");
   await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1&idle=1"); await o.waitForSelector("[data-testid=ads-picks]");
@@ -95,6 +95,7 @@ async function login(p, email) {
   await Promise.all([o.waitForURL(/\/ads\/video\//), o.getByTestId("ads-row").first().locator("a").first().click()]); await o.waitForSelector("[data-testid=ads-video]");
   const vt = await o.locator("main").innerText();
   ok(/All-Time Ad Spend/.test(vt) && /Last 60 Days/.test(vt) && /Boost History/.test(vt) && (await o.getByTestId("ads-video-verdict").count()) === 1, "video detail: all-time results, 60 days, verdict and boost history");
+  ok(/What TikTok.s API Sent/.test(vt) && ((await o.getByTestId("ads-sent-row").count()) > 0 ? /Delivery Status/i.test(vt) && /Exploration Status/i.test(vt) : /No result rows were saved/.test(vt)), "video detail: shows the raw fields TikTok sent (delivery, exploration, boost, authorization), or says none were saved");
   for (const t of ["picks", "campaigns", "products", "creators", "log"]) { await o.goto(BASE + "/ads?tab=" + t); await o.waitForSelector("h1"); await o.waitForTimeout(300); ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `gmv max: ${t} has no sideways scroll on desktop`); }
 
   // ── date range picker (one for the whole GMV Max section)

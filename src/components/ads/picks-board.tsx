@@ -10,7 +10,7 @@ import { GroupPill, Pill, StatusPill, VideoCell, nfmt, rm, roiFmt, day, th, thr,
 export type PickRow = {
   key: string; creativeId: string; productId: string; title: string | null; creator: string | null; postedOn: string | null; productLabel: string;
   cost: number; orders: number; revenue: number; roi: number | null; rCost: number; rOrders: number; rRevenue: number; rRoi: number | null; cost7: number; organicGmv: number; lastSpend: string | null; daysSinceSpend: number | null;
-  status: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null; group: GroupKey; why: string;
+  status: string | null; statusDay: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null; group: GroupKey; why: string;
 };
 type View = GroupKey | "best";
 /** One batch holds at most this many videos. */
@@ -97,7 +97,7 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
             <table className="w-full min-w-[1080px] border-collapse text-[13.5px]" data-testid="ads-table">
               <thead><tr className="border-y border-line bg-surface-2/60">
                 <th className="w-10 px-4 py-2.5"><input ref={allRef} type="checkbox" aria-label="Select all videos in this list" title={selectable.length ? `Select all ${Math.min(selectable.length, MAX_BATCH)} videos that can be boosted` : "Nothing here can be boosted"} disabled={!selectable.length} checked={allOn} onChange={toggleAll} data-testid="ads-select-all" className="size-4 accent-[var(--brand)] disabled:opacity-40" /></th>
-                <th className={th}>Video</th><th className={th}>Group</th><th className={th}>Product</th><th className={th}>Delivery</th>
+                <th className={th}>Video</th><th className={th}>Group</th><th className={th}>Product</th><th className={th} title="creative_delivery_status, exactly as TikTok's API sent it">TikTok API Status</th>
                 <th className={thr}>Spend</th><th className={thr}>Orders</th><th className={thr}>Sales From Ads</th><th className={thr}>ROI</th><th className={thr}>Sales Without Ads</th><th className={cn(thr, "pr-4")}>Last Spend</th>
               </tr></thead>
               <tbody>
@@ -109,7 +109,7 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
                       <td className={cn(td, "max-w-[340px]")}><VideoCell v={s} />{(s.boostedNow || s.lastLogged) && <p className="mt-1 flex gap-1">{s.boostedNow && <span className="rounded-full bg-good-soft px-2 py-0.5 text-[11.5px] text-good">Boost running now</span>}{s.lastLogged && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11.5px] text-ink-2">You boosted it on {day(s.lastLogged)}</span>}</p>}</td>
                       <td className={td}><GroupPill group={s.group} /></td>
                       <td className={cn(td, "text-ink-2")}><span className="block max-w-[170px] truncate" title={s.productLabel}>{s.productLabel}</span></td>
-                      <td className={td}>{s.daysSinceSpend != null && s.daysSinceSpend <= 1 ? <><Pill tone="good" testId="ads-spending">Spending Now</Pill>{s.status && s.status !== "DELIVERING" && s.status !== "LEARNING" && <p className="mt-0.5 text-[11.5px] text-ink-3" title="TikTok's delivery status at the last sync. It can differ from real spending.">TikTok says: {s.statusLabel}</p>}</> : <StatusPill status={s.status} label={s.statusLabel} />}</td>
+                      <td className={td}>{s.daysSinceSpend != null && s.daysSinceSpend <= 1 && <Pill tone="good" testId="ads-spending">Spending Now</Pill>}<div className={s.daysSinceSpend != null && s.daysSinceSpend <= 1 ? "mt-1" : ""}><StatusPill status={s.status} label={s.statusLabel} />{s.statusDay && <p className="mt-0.5 text-[11.5px] text-ink-3" title="The newest day TikTok's API gave a delivery status for this video">as of {day(s.statusDay)}</p>}</div></td>
                       <td className={tdr}>{rm(s.rCost)}</td><td className={tdr}>{nfmt(s.rOrders)}</td><td className={tdr}>{rm(s.rRevenue)}</td>
                       <td className={cn(tdr, "font-semibold", s.rRoi != null && s.rRoi >= rules.minRoi ? "text-good" : "text-ink")} title={s.roi != null ? `All-time ROI ${roiFmt(s.roi)}` : undefined}>{roiFmt(s.rRoi)}</td>
                       <td className={cn(tdr, "text-ink-2")}>{s.organicGmv > 0 ? rm(s.organicGmv) : "–"}</td>

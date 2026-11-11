@@ -38,7 +38,7 @@ const numOr = (v: string | undefined, d: number, lo: number, hi: number) => { co
 const pick = (v: VaultVideo): PickRow => ({
   key: v.key, creativeId: v.creativeId, productId: v.productId, title: v.title, creator: v.creator, postedOn: v.postedOn, productLabel: v.productLabel,
   cost: v.cost, orders: v.orders, revenue: v.revenue, roi: v.roi, rCost: v.rCost, rOrders: v.rOrders, rRevenue: v.rRevenue, rRoi: v.rRoi, cost7: v.cost7, organicGmv: v.organicGmv, lastSpend: v.lastSpend, daysSinceSpend: v.daysSinceSpend,
-  status: v.status, statusLabel: v.statusLabel, boostedNow: v.boostedNow, lastLogged: v.lastLogged, group: v.group, why: v.why,
+  status: v.status, statusDay: v.statusDay, statusLabel: v.statusLabel, boostedNow: v.boostedNow, lastLogged: v.lastLogged, group: v.group, why: v.why,
 });
 
 export default async function AdsPage({ searchParams }: { searchParams: Promise<SP> }) {
