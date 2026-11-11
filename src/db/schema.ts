@@ -709,4 +709,21 @@ export const adsBoosts = pgTable("ads_boosts", {
   syncedAt: tz("synced_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.advertiserId, t.sessionId] }), index("ads_boosts_campaign").on(t.campaignId), index("ads_boosts_item").on(t.itemId)]);
 
+// The Boost Log (migrations/0028): batches boosted in TikTok Ads Manager and marked in the app.
+export const adsBoostBatches = pgTable("ads_boost_batches", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  boostedOn: date("boosted_on").notNull(),
+  days: integer("days").notNull().default(1),
+  totalBudget: numeric("total_budget", { precision: 14, scale: 2 }).notNull().default("0"),
+  note: text("note"),
+  createdBy: text("created_by"),
+  createdAt: tz("created_at").notNull().defaultNow(),
+}, (t) => [index("ads_boost_batches_day").on(t.boostedOn)]);
+export const adsBoostBatchVideos = pgTable("ads_boost_batch_videos", {
+  batchId: bigint("batch_id", { mode: "number" }).notNull().references(() => adsBoostBatches.id, { onDelete: "cascade" }),
+  creativeId: text("creative_id").notNull(),
+  productId: text("product_id").notNull().default("-"),
+  budget: numeric("budget", { precision: 14, scale: 2 }).notNull().default("0"),
+}, (t) => [primaryKey({ columns: [t.batchId, t.creativeId, t.productId] }), index("ads_boost_batch_videos_creative").on(t.creativeId)]);
+
 // The view ads_creative_summary (migrations/0023) is read with plain SQL; drizzle does not manage it.

@@ -64,6 +64,33 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 | Boosts | `GET /campaign/gmv_max/session/list/` |
 | Later: create / change / stop a boost | `POST /campaign/gmv_max/session/create/` (`advertiser_id`, `campaign_id`, `store_id`, `session` with `budget`, `product_list[{spu_id}]`, `item_id`, schedule), `…/update/`, `…/delete/` |
 
+## The GMV Max screens (what they read)
+
+| Screen | Reads | Rule |
+|---|---|---|
+| Ads Today | `ads_campaign_daily` | Latest day with results against the day before; last 7 and 30 days against the period before; alerts from Campaign Health and the video groups |
+| Boost Picks | `ads_creative_daily` (all time), `tt_videos`, `ads_videos`, `ads_boosts`, Boost Log | One group per video and product, see below |
+| Batch Planner | The ticked videos | Minimum total RM 35 for up to 10 videos (+RM 3.5 for each extra), split by ROI and orders. A plan only |
+| Boost Log | `ads_boost_batches`, `ads_boost_batch_videos` (migration 0028) | Sales a day in the 7 days before the boost date against up to 7 days from it |
+| Campaign Health | `ads_campaign_daily`, `ads_campaigns` | No Sales (spend 10+ and no orders), Stopped Spending (nothing in 3 days), ROI Dropped (under 70% of the period before), Watch, Healthy |
+| Product Performance | `ads_product_daily`, `product_map` | Push More (ROI 15% above your average), Fix Or Pause (no orders, or ROI under 70% of your average), Hold |
+| Creator Scoreboard | The video groups, by creator | All time |
+| Video Detail | All of the above for one video | 60 days of spend and sales |
+
+Video groups (`src/lib/ads/groups.ts`). Good ROI = your all-time ROI rounded up (at least 3) unless you type one; proven = 3 orders or more; stopped = no spend for more than 7 days, or TikTok says not delivering. All three can be changed on the screen.
+
+| Group | Meaning | Boost? |
+|---|---|---|
+| Stopped While Selling | Good ROI and proven, but stopped | Yes |
+| Sold, Then Dropped | Good ROI on 1 or 2 orders, then stopped | Yes |
+| Selling, Low Spend | Good and running, but under half the typical 7-day spend | Yes |
+| Never Started | No ad spend ever. Includes videos that sell on their own (Shop sync) and never appeared in the ads results | Yes |
+| Winning Now | Good and well funded | Leave it |
+| Fading | Good overall, but the last 7 days are under 60% of its own ROI | No |
+| Wasting Money | RM 20+ spent at under half the good ROI | No |
+| Blocked | TikTok will not boost it | No |
+| Not Enough Proof | Too little to judge | No |
+
 ## Delivery status of a video (what can be boosted)
 
 The creative-level report returns `creative_delivery_status` for each video. Values seen on your account: `DELIVERING`, `LEARNING`, `IN_QUEUE`, `NOT_DELIVERYING` (TikTok's own spelling), `NOT_ACTIVE`, `AUTHORIZATION_NEEDED`, `UNAVAILABLE`, `REJECTED` (and `EXCLUDED` in TikTok's documentation). TikTok's rule for a creative boost: the status cannot be `AUTHORIZATION_NEEDED`, `EXCLUDED`, `REJECTED` or `UNAVAILABLE`. The GMV Max screen leaves those videos out and says how many. The status is stored per video and day in `ads_creative_daily.delivery_status`; normal syncs read the last 14 days, so press **Re-Read History** once to fill older days.

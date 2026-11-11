@@ -213,22 +213,55 @@ async function main() {
   await q(sql`update settings set value = jsonb_set(value, '{_sig_product}', '["old"]'::jsonb) where key = 'tiktok_ads_metrics'`);
   const probesBefore = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
   await S.runAdsDataset("product_daily", "manual", null, deps);
-  // ── which videos the GMV Max screen suggests (own rows, so the dates are always the last few days) ──
-  const BD = await import("../src/lib/ads/boost");
+  // ── GMV Max screens: every video judged on all of its history (own rows, so the dates are always relative to today) ──
+  const VA = await import("../src/lib/ads/vault");
+  const GR = await import("../src/lib/ads/groups");
+  const IN = await import("../src/lib/ads/insights");
   const ST = await import("../src/lib/ads/status");
   const { todayKL } = await import("../src/lib/time");
-  await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`);
-  const mk = (id: string, status: string | null, rev: number) => q(sql`insert into ads_creative_daily (advertiser_id, campaign_id, product_id, creative_id, day, cost, orders, gross_revenue, delivery_status) select 'BT', 'BC', 'BP', ${id}, (${todayKL()}::date - g), 10, 3, ${rev}, ${status} from generate_series(0, 4) g`);
-  await mk("bt-A", "DELIVERING", 150); await mk("bt-B", "AUTHORIZATION_NEEDED", 150); await mk("bt-C", "NOT_DELIVERYING", 150); await mk("bt-D", "DELIVERING", 20); await mk("bt-E", null, 150); await mk("bt-F", "REJECTED", 150);
-  const bf = { days: 7 as const, minRoi: 5, minOrders: 10, maxAgeDays: 365, product: null };
-  const all = await BD.boostData({ ...bf, delivery: "any" });
-  const ids = new Set(all.suggestions.filter((x) => x.creativeId.startsWith("bt-")).map((x) => x.creativeId));
-  check("gmv max: videos TikTok will not boost (authorization needed, rejected…) are left out, and counted", !ids.has("bt-B") && !ids.has("bt-F") && all.blocked >= 2 && (all.blockedByStatus.AUTHORIZATION_NEEDED ?? 0) >= 1 && (all.blockedByStatus.REJECTED ?? 0) >= 1, JSON.stringify([[...ids], all.blockedByStatus]));
-  check("gmv max: good videos are suggested; a video with poor ROI is not; a video with no status yet is still allowed", ids.has("bt-A") && ids.has("bt-C") && ids.has("bt-E") && !ids.has("bt-D"), JSON.stringify([...ids]));
-  const idle = new Set((await BD.boostData({ ...bf, delivery: "idle" })).suggestions.map((x) => x.creativeId)), on = new Set((await BD.boostData({ ...bf, delivery: "on" })).suggestions.map((x) => x.creativeId));
-  check("gmv max: 'not delivering now' keeps idle videos only; 'delivering now' keeps running ones only", idle.has("bt-C") && idle.has("bt-E") && !idle.has("bt-A") && on.has("bt-A") && !on.has("bt-C") && !on.has("bt-E"));
+  const wipeBT = async () => { await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`); await q(sql`delete from ads_campaign_daily where advertiser_id = 'BT'`); await q(sql`delete from tt_videos where video_id = 'bt-ORG'`); await q(sql`delete from ads_boost_batches where note = 'bt-test'`); };
+  await wipeBT();
+  const mk = (id: string, status: string | null, cost: number, orders: number, rev: number, fromAgo: number, toAgo: number) => q(sql`insert into ads_creative_daily (advertiser_id, campaign_id, product_id, creative_id, day, cost, orders, gross_revenue, delivery_status) select 'BT', 'BC', 'BP', ${id}, (${todayKL()}::date - g), ${cost}, ${orders}, ${rev}, ${status} from generate_series(${toAgo}::int, ${fromAgo}::int) g`);
+  await mk("bt-A", "DELIVERING", 10, 3, 150, 4, 0);          // good and running
+  await mk("bt-S", null, 10, 3, 150, 34, 30);                // good, stopped a month ago
+  await mk("bt-I", "NOT_DELIVERYING", 10, 3, 150, 4, 0);     // good, TikTok says not delivering
+  await mk("bt-P", null, 5, 1, 80, 40, 40);                  // one sale at good ROI, then dropped
+  await mk("bt-B", "AUTHORIZATION_NEEDED", 10, 3, 150, 4, 0);
+  await mk("bt-W", "DELIVERING", 10, 0, 2, 4, 0);            // spends, poor ROI
+  await mk("bt-N", null, 0, 0, 0, 2, 0);                     // in ads, never spent
+  await q(sql`insert into tt_videos (video_id, creator, title, gmv) values ('bt-ORG', 'bt_creator', 'Sells alone', 500)`);
+  const vt = await VA.vault({ minRoi: 5, minOrders: 10, idleDays: 7 });
+  const grp = (id: string) => vt.videos.find((x) => x.creativeId === id)?.group;
+  check("gmv max: a proven video GMV Max stopped spending on is 'Stopped While Selling', however long ago it ran", grp("bt-S") === "stopped" && grp("bt-I") === "stopped", `${grp("bt-S")} ${grp("bt-I")}`);
+  check("gmv max: a video that sold a little at good ROI and was dropped is 'Sold, Then Dropped'", grp("bt-P") === "promise", String(grp("bt-P")));
+  check("gmv max: videos TikTok will not boost are 'Blocked'; a money loser is 'Wasting Money'", grp("bt-B") === "blocked" && grp("bt-W") === "wasting", `${grp("bt-B")} ${grp("bt-W")}`);
+  check("gmv max: a good video that is still running is not put in a stopped group", ["winning", "underfed"].includes(String(grp("bt-A"))), String(grp("bt-A")));
+  const org = vt.videos.find((x) => x.creativeId === "bt-ORG");
+  check("gmv max: 'Never Started' holds videos ads never spent on, and videos that sell on their own but never appeared in ads", grp("bt-N") === "never" && org?.group === "never" && org.organicGmv === 500 && org.creator === "bt_creator" && /on its own/.test(org.why), `${grp("bt-N")} ${JSON.stringify(org && [org.group, org.organicGmv, org.why])}`);
+  check("gmv max: the groups count every video once", Object.values(vt.counts).reduce((a2, b2) => a2 + b2, 0) === vt.videos.length);
+  const F = { cost: 100, orders: 20, revenue: 1000, cost7: 30, revenue7: 60, daysSinceSpend: 0, blocked: false, idleStatus: false, typical7: 20 };
+  const RU = { minRoi: 5, minOrders: 10, idleDays: 7 };
+  check("gmv max rules: a good video whose last 7 days are far below its own ROI is 'Fading'; one with tiny recent spend is 'Selling, Low Spend'", GR.classify(F, RU).group === "fading" && GR.classify({ ...F, cost7: 3, revenue7: 40 }, RU).group === "underfed" && GR.classify({ ...F, revenue7: 320 }, RU).group === "winning");
   check("gmv max: statuses are read in plain words, TikTok's own spelling included", ST.STATUS_LABEL.NOT_DELIVERYING === "Not delivering" && ST.isBlocked("UNAVAILABLE") && !ST.isBlocked("LEARNING") && !ST.isBlocked(null));
-  await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`);
+  // Boost Log: a batch boosted 2 days ago with bt-A. Before = the 7 days before, after = from the boost date.
+  const [bb] = await q(sql`insert into ads_boost_batches (boosted_on, days, total_budget, note) values ((${todayKL()}::date - 2), 1, 35, 'bt-test') returning id::int as id`) as { id: number }[];
+  await q(sql`insert into ads_boost_batch_videos (batch_id, creative_id, product_id, budget) values (${bb.id}, 'bt-A', 'BP', 35)`);
+  const lg = (await IN.boostLog()).find((x) => x.id === bb.id);
+  check("boost log: results before and after the boost date are compared, per day", !!lg && lg.before.revenue === 300 && lg.after.revenue === 450 && lg.afterDays === 3 && lg.verdict === "better" && lg.videos.length === 1, JSON.stringify(lg && [lg.before.revenue, lg.after.revenue, lg.afterDays, lg.verdict]));
+  check("gmv max: a video in the Boost Log shows when you last boosted it", !!(await VA.vault({ minRoi: 5, minOrders: 10, idleDays: 7 })).videos.find((x) => x.creativeId === "bt-A")?.lastLogged);
+  // Campaign Health
+  await q(sql`insert into ads_campaign_daily (advertiser_id, campaign_id, day, cost, orders, gross_revenue) select 'BT', 'bt-NS', (${todayKL()}::date - g), 20, 0, 0 from generate_series(0, 4) g`);
+  await q(sql`insert into ads_campaign_daily (advertiser_id, campaign_id, day, cost, orders, gross_revenue) select 'BT', 'bt-ST', (${todayKL()}::date - g), 20, 2, 200 from generate_series(8, 12) g`);
+  const ch = await IN.campaignHealth(7);
+  const hOf = (id: string) => ch.campaigns.find((c) => c.id === id)?.health;
+  check("campaign health: spending with no orders is 'No Sales'; one that spent last week and nothing now is 'Stopped Spending'", hOf("bt-NS") === "nosales" && hOf("bt-ST") === "stopped", `${hOf("bt-NS")} ${hOf("bt-ST")}`);
+  const td = await IN.adsToday();
+  check("ads today: alerts name the campaign with no sales, and golden videos are counted", td.alerts.some((a2) => /No Orders/.test(a2.title) && /bt-NS/.test(a2.title)) && td.opportunities.find((o) => o.key === "stopped")!.count >= 2 && td.series.length === 30, JSON.stringify(td.alerts.map((a2) => a2.title)));
+  const vd = await IN.videoDetail("bt-A");
+  check("video detail: 60 days of results, where it ran, and its boost history", !!vd && vd.series.length === 60 && vd.campaigns.length === 1 && vd.logged.length === 1 && (await IN.videoDetail("nope")) === null);
+  const sc = await IN.creatorScoreboard();
+  check("creator scoreboard: a creator's unused golden videos are counted", sc.creators.find((c) => c.creator === "bt_creator")?.golden === 1, JSON.stringify(sc.creators.find((c) => c.creator === "bt_creator")));
+  await wipeBT();
 
   check("metric discovery: a changed list of names is asked about again, an unchanged one is not", seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length > probesBefore);
   const probesMid = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;

@@ -12,7 +12,7 @@ const HELP: Record<string, string> = {
   "/execution": "What to do next to sell more, and who does it",
   "/creators": "Every creator, their sales and follow-ups",
   "/products": "How each product is doing and why",
-  "/ads": "GMV Max results and videos worth boosting",
+  "/ads": "GMV Max: ads today, boost picks, batch planner, boost log, campaign health, products, creators",
   "/sync": "What is synced from TikTok, and when",
   "/settings": "TikTok connections, people and roles",
 };

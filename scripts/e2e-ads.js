@@ -59,18 +59,43 @@ async function login(p, email) {
   ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "sync: no sideways scroll on desktop");
   await o.getByTestId("sync-tab-affiliate").click(); await o.waitForSelector("[data-testid=sync-hero], [data-testid=sync-offline]"); ok(true, "sync: the Affiliate tab still works");
 
-  // ── GMV Max screen
-  await o.goto(BASE + "/ads?roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-board]");
-  ok((await o.getByTestId("ads-row").count()) > 0, "gmv max: videos worth boosting are listed");
-  ok(/Ad Spend/.test(await o.locator("main").innerText()) && /ROI/.test(await o.locator("main").innerText()), "gmv max: the four totals are shown");
-  await o.getByTestId("ads-row").first().locator("input[type=checkbox]").check();
-  ok(/1 video selected/.test(await o.getByTestId("ads-selection").innerText()), "gmv max: picking a video builds a batch");
-  await o.getByTestId("ads-pick-top").click(); await o.getByTestId("ads-suggest-budget").click(); await o.waitForSelector("[data-testid=ads-plan]");
-  ok(/RM 35\.00/.test(await o.getByTestId("ads-plan-total").innerText()), "gmv max: a batch of up to 10 videos gets the RM 35 minimum, split by video");
-  const first = o.getByTestId("ads-plan").locator("input[type=number]").first(); await first.fill("20");
-  ok(!/RM 35\.00/.test(await o.getByTestId("ads-plan-total").innerText()), "gmv max: changing one amount changes the total");
-  await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-board]"); ok(true, "gmv max: opens with the automatic rules");
-  ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "gmv max: no sideways scroll on desktop");
+  // ── GMV Max screens
+  await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-today]");
+  const tabsA = (await o.locator("nav[aria-label='GMV Max sections'] a").allInnerTexts()).map((t) => t.trim());
+  ok(JSON.stringify(tabsA) === JSON.stringify(["Ads Today", "Boost Picks", "Batch Planner", "Boost Log", "Campaign Health", "Product Performance", "Creator Scoreboard"]), `gmv max: the seven sections (${tabsA.join(", ")})`);
+  const mainT = await o.locator("main").innerText();
+  ok(/Ad Spend/.test(mainT) && /ROI/.test(mainT) && /Last 30 Days/.test(mainT) && /Needs Your Attention/.test(mainT) && /Golden Videos Waiting/.test(mainT), "ads today: totals, 30-day chart, alerts and golden videos");
+  ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "ads today: no sideways scroll on desktop");
+  await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-picks]");
+  ok(/Stopped While Selling/.test(await o.getByTestId("ads-group-stopped").innerText()) && /Never Started/.test(await o.getByTestId("ads-group-never").innerText()) && /Wasting Money/.test(await o.getByTestId("ads-group-wasting").innerText()), "boost picks: every video is in a group, with counts");
+  for (const g of ["winning", "underfed", "stopped", "never", "other", "best"]) { await o.getByTestId(`ads-group-${g}`).click(); if (await o.getByTestId("ads-row").count()) break; }
+  ok((await o.getByTestId("ads-row").count()) > 0, "boost picks: videos are listed");
+  await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1&idle=1"); await o.waitForSelector("[data-testid=ads-picks]");
+  let boostable = false;
+  for (const g of ["best", "stopped", "underfed", "promise", "never"]) { await o.getByTestId(`ads-group-${g}`).click(); if (await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").count()) { boostable = true; break; } }
+  ok(boostable, "boost picks: at least one video can be ticked");
+  await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").first().check();
+  ok(/1 video selected/.test(await o.getByTestId("ads-selection").innerText()), "boost picks: ticking a video starts a batch");
+  await Promise.all([o.waitForURL(/tab=planner/), o.getByTestId("ads-open-planner").click()]); await o.waitForSelector("[data-testid=ads-planner]");
+  ok(/RM 35\.00/.test(await o.getByTestId("ads-plan-total").innerText()) && (await o.getByTestId("ads-plan-row").count()) === 1, "batch planner: a batch of up to 10 videos gets the RM 35 minimum");
+  await o.getByTestId("ads-plan-total-input").fill("50");
+  ok(/RM 50\.00/.test(await o.getByTestId("ads-plan-total").innerText()), "batch planner: changing the total re-splits the budget");
+  await Promise.all([o.waitForURL(/tab=log/), o.getByTestId("ads-mark-boosted").click()]); await o.waitForSelector("[data-testid=ads-log-batch]");
+  ok(/Saved/.test(await o.getByTestId("ads-log-saved").innerText()) && /RM 50\.00 A Day/.test(await o.getByTestId("ads-log-batch").first().innerText()) && /Before/.test(await o.getByTestId("ads-log-batch").first().innerText()), "boost log: Mark As Boosted saves the batch with before and after");
+  await o.getByTestId("ads-log-delete").first().click(); await o.getByTestId("ads-log-delete-yes").click();
+  await o.waitForFunction(() => !document.querySelector("[data-testid=ads-log-batch]"), null, { timeout: 15000 }); ok(true, "boost log: a batch can be removed");
+  await o.goto(BASE + "/ads?tab=planner"); await o.waitForSelector("[data-testid=ads-planner-empty]"); ok(true, "batch planner: empty until videos are ticked");
+  await o.goto(BASE + "/ads?tab=campaigns&days=90"); await o.waitForSelector("[data-testid=ads-campaigns]");
+  ok((await o.getByTestId("ads-campaign-row").count()) > 0 && (await o.getByTestId("ads-health").count()) > 0, "campaign health: campaigns with a health label");
+  await o.goto(BASE + "/ads?tab=products&days=90"); await o.waitForSelector("[data-testid=ads-products]");
+  ok((await o.getByTestId("ads-product-row").count()) > 0 && /What To Do/i.test(await o.locator("main").innerText()), "product performance: products with what to do");
+  await o.goto(BASE + "/ads?tab=creators"); await o.waitForSelector("[data-testid=ads-creators], [data-testid=ads-empty-state]"); ok(true, "creator scoreboard opens");
+  await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-picks]");
+  for (const g of ["best", "winning", "underfed", "stopped", "other", "never"]) { await o.getByTestId(`ads-group-${g}`).click(); if (await o.getByTestId("ads-row").count()) break; }
+  await Promise.all([o.waitForURL(/\/ads\/video\//), o.getByTestId("ads-row").first().locator("a").first().click()]); await o.waitForSelector("[data-testid=ads-video]");
+  const vt = await o.locator("main").innerText();
+  ok(/All-Time Ad Spend/.test(vt) && /Last 60 Days/.test(vt) && /Boost History/.test(vt) && (await o.getByTestId("ads-video-verdict").count()) === 1, "video detail: all-time results, 60 days, verdict and boost history");
+  for (const t of ["picks", "campaigns", "products", "creators", "log"]) { await o.goto(BASE + "/ads?tab=" + t); await o.waitForSelector("h1"); await o.waitForTimeout(300); ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `gmv max: ${t} has no sideways scroll on desktop`); }
 
   // ── a viewer cannot use the connection
   const v = await mk(); await login(v, "viewer@test.local");
@@ -94,7 +119,7 @@ async function login(p, email) {
 
   // ── mobile
   const mo = await mk({ width: 390, height: 844 }); await login(mo, "owner@test.local");
-  for (const path of ["/settings", "/settings?tab=connection&src=ads", "/sync?tab=ads", "/ads"]) { await mo.goto(BASE + path); await mo.waitForSelector("h1"); await mo.waitForTimeout(500); ok(!(await mo.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `mobile: ${path} has no sideways scrolling`); }
+  for (const path of ["/settings", "/settings?tab=connection&src=ads", "/sync?tab=ads", "/ads", "/ads?tab=picks", "/ads?tab=campaigns", "/ads?tab=products", "/ads?tab=log"]) { await mo.goto(BASE + path); await mo.waitForSelector("h1"); await mo.waitForTimeout(500); ok(!(await mo.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `mobile: ${path} has no sideways scrolling`); }
   ok(errs.length === 0, "no browser errors"); if (errs.length) console.log(errs);
   console.log(`\n${pass} passed, ${fail} failed`); await b.close();
 })();
