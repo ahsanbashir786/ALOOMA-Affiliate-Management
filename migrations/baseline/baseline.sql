@@ -129,7 +129,8 @@ CREATE TABLE public.ads_creative_daily (
     synced_at timestamp with time zone DEFAULT now() NOT NULL,
     delivery_status text,
     exploration_status text,
-    boost_status text
+    boost_status text,
+    authorization_type text
 );
 
 

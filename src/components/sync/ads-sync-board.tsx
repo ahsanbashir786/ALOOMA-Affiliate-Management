@@ -117,7 +117,9 @@ export function AdsSyncBoard({ initial, connected, configured, canAdmin, canRun,
                 </button>
               </div>
               <p className="mt-3 text-[14px] font-medium text-ink-2">{d.label}</p>
-              <p className="tnum text-[30px] leading-tight font-semibold text-ink">{d.records.toLocaleString("en-MY")}</p>
+              <p className="tnum text-[30px] leading-tight font-semibold text-ink">{d.records.toLocaleString("en-MY")}<span className="ml-1.5 text-[12.5px] font-normal text-ink-3">{d.what}</span></p>
+              {d.distinct && <p className="text-[12.5px] font-medium text-ink-2" data-testid={`ads-distinct-${d.key}`}>{d.distinct}</p>}
+              <p className="mt-1 text-[12px] leading-snug text-ink-3">{d.about}</p>
               <div className="mt-2 flex items-center gap-2 text-[13px] text-ink-3">
                 <span className={cn("size-2 rounded-full", DOT[f], d.running && "animate-pulse")} />
                 {d.running ? `Syncing${d.progress ? ` · ${d.progress.toLocaleString("en-MY")}` : "…"}` : d.lastError ? <span className="text-critical" title={d.lastError}>Failed</span> : ago(d.lastSuccessAt, now)}

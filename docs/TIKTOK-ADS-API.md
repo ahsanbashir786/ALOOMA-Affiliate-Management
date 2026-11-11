@@ -72,6 +72,17 @@ The creative-level report returns `creative_delivery_status` for each video. Val
 
 `POST /campaign/gmv_max/session/create/` with `bid_type` `CREATIVE_NO_BID`: **one video per boost** (`item_id`), its product (`product_list[0].spu_id`), a daily `budget` (documented minimum 10 USD) and a schedule (`SCHEDULE_FROM_NOW`, or `SCHEDULE_START_END` with an end time in **UTC+0**). Conditions: the campaign is active (`STATUS_DELIVERY_OK`), the product has no max delivery session, fewer than 100 boosted videos in the campaign, no overlapping boost for the video, and the video's delivery status is allowed. The batch of several chosen videos made in Ads Manager is not in the public API.
 
+## Checked against TikTok's own documentation (Nov 2026)
+
+| Question | What TikTok's pages say |
+|---|---|
+| Exploration status (Outstanding / Performing / Underperforming / Calculating / Exploring) | **Not in the API.** The only status metric for a video is `creative_delivery_status` (In queue, Learning, Delivering, Not delivering, Authorization needed, Excluded, Unavailable, Rejected, Not active). No permission adds it. |
+| Batch creative boost (several chosen videos, one budget) | **Not in the API.** A creative boost session is for one video (`item_id` required). No permission adds it. |
+| Which videos a boost covers | `/campaign/gmv_max/session/get/` returns `item_id` only for single-video creative boosts. |
+| Ended boosts | `/campaign/gmv_max/session/list/` lists **active** sessions only; ended ones are readable only by their id, so the sync keeps every session it has seen. |
+| Video facts | Title, TikTok account name, authorization type (`tt_account_authorization_type`), content type and status come back only when the request names one campaign and one product (which the video sync does). |
+| Video results | Only days with ad cost are returned. |
+
 ## Safety
 
 | Point | How |

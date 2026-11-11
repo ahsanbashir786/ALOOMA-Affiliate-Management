@@ -647,6 +647,7 @@ export const adsCreativeDaily = pgTable("ads_creative_daily", {
   viewRate6s: numeric("view_rate_6s", { precision: 12, scale: 6 }),
   deliveryStatus: text("delivery_status"),
   explorationStatus: text("exploration_status"),
+  authorizationType: text("authorization_type"),
   boostStatus: text("boost_status"),
   raw: jsonb("raw"),
   h: text("h"),

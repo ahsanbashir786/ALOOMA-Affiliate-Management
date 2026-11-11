@@ -15,15 +15,15 @@ export type AdsDeps = { cfg?: AdsConfig | null; f?: Fetch; sleep?: (ms: number) 
 export type AdsRunResult = { dataset: AdsDatasetKey; status: "ok" | "failed" | "skipped"; pages: number; seen: number; changed: number; error?: string };
 
 /** Display order = run order (each step needs the one before it). */
-export const ADS_DATASETS: { key: AdsDatasetKey; label: string; table: string; icon: string; what: string }[] = [
-  { key: "advertisers", label: "Ad Accounts", table: "ads_advertisers", icon: "building", what: "accounts" },
-  { key: "stores", label: "Shops", table: "ads_stores", icon: "store", what: "shops" },
-  { key: "campaigns", label: "GMV Max Campaigns", table: "ads_campaigns", icon: "target", what: "campaigns" },
-  { key: "campaign_daily", label: "Campaign Results", table: "ads_campaign_daily", icon: "chart", what: "campaign-days" },
-  { key: "product_daily", label: "Product Results", table: "ads_product_daily", icon: "package", what: "product-days" },
-  { key: "creative_daily", label: "Creative Results", table: "ads_creative_daily", icon: "video", what: "creative-days" },
-  { key: "videos", label: "Videos", table: "ads_videos", icon: "film", what: "videos" },
-  { key: "boosts", label: "Creative Boosts", table: "ads_boosts", icon: "rocket", what: "boosts" },
+export const ADS_DATASETS: { key: AdsDatasetKey; label: string; table: string; icon: string; what: string; /** One plain line: exactly what this card holds. */ about: string }[] = [
+  { key: "advertisers", label: "Ad Accounts", table: "ads_advertisers", icon: "building", what: "accounts", about: "The TikTok ad accounts your login covers." },
+  { key: "stores", label: "Shops Linked For GMV Max", table: "ads_stores", icon: "store", what: "shop links", about: "Each TikTok Shop that an ad account can run GMV Max for. One shop linked to two ad accounts counts twice." },
+  { key: "campaigns", label: "GMV Max Campaigns (All Time)", table: "ads_campaigns", icon: "target", what: "campaigns", about: "Every Product and LIVE GMV Max campaign ever created in your ad accounts, on or off." },
+  { key: "campaign_daily", label: "Campaign Daily Results", table: "ads_campaign_daily", icon: "chart", what: "campaign-days", about: "One row per campaign per day: cost, orders, sales and ROI." },
+  { key: "product_daily", label: "Product Daily Results", table: "ads_product_daily", icon: "package", what: "product-days", about: "One row per product per campaign per day, for days with ad spend." },
+  { key: "creative_daily", label: "Video Daily Results", table: "ads_creative_daily", icon: "video", what: "video-days", about: "One row per video per product per campaign per day, only for days the video had ad spend. Not a count of videos." },
+  { key: "videos", label: "Own Account Posts", table: "ads_videos", icon: "film", what: "posts", about: "Posts from the TikTok accounts linked to your shop that GMV Max can use. Affiliate videos are not in this list." },
+  { key: "boosts", label: "Boost Sessions", table: "ads_boosts", icon: "rocket", what: "sessions", about: "Max delivery (product) and creative boost (video) sessions. TikTok lists only the active ones; ended ones stay here once seen." },
 ];
 
 type Table = Parameters<typeof upsertRows>[0];
@@ -36,7 +36,7 @@ const TABLES: Record<string, Table> = {
   ads_videos: { name: "ads_videos", pk: ["advertiser_id", "store_id", "item_id"], cols: { advertiser_id: "text", store_id: "text", item_id: "text", spu_id: "text", title: "text", identity_id: "text", username: "text", posted_at: "timestamptz", authorization_status: "text", authorization_type: "text", eligible: "boolean", status: "text", raw: RAW } },
   ads_boosts: { name: "ads_boosts", pk: ["advertiser_id", "session_id"], cols: { advertiser_id: "text", campaign_id: "text", session_id: "text", store_id: "text", item_id: "text", status: "text", budget: "numeric", bid_type: "text", schedule_type: "text", starts_at: "timestamptz", ends_at: "timestamptz", raw: RAW } },
   ads_product_daily: { name: "ads_product_daily", pk: ["advertiser_id", "campaign_id", "product_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", day: "date", title: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", raw: RAW } },
-  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", delivery_status: "text", exploration_status: "text", boost_status: "text", raw: RAW } },
+  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", delivery_status: "text", exploration_status: "text", boost_status: "text", authorization_type: "text", raw: RAW } },
 };
 
 /** The row that stays open while a whole sync (every dataset) is in progress. */
@@ -224,16 +224,17 @@ async function allowedMetricNames(ctx: Ctx, probe: ReportReq): Promise<string[]>
   return [];
 }
 
-async function discoverMetrics(ctx: Ctx, kind: string, probe: ReportReq): Promise<string[]> {
+async function discoverMetrics(ctx: Ctx, kind: string, probe: ReportReq, skip: string[] = []): Promise<string[]> {
   const known = await metricSupport();
   const sigOf = (list: string[]) => [list.length, list.join(",").length].join(":");
   // Remembered answers are reused while our own list of names (plus the status names found last time) is unchanged. No request is made then.
-  const remembered = [...M.OPTIONAL_METRICS, ...(known._extra ?? [])];
-  if (known[kind] && known._sig?.[0] === sigOf(remembered) && !ctx.deps.backfill) return known[kind];
+  const own = M.OPTIONAL_METRICS.filter((m) => !skip.includes(m));
+  const remembered = [...own, ...(known[`_extra_${kind}`] ?? [])];
+  if (known[kind] && known[`_sig_${kind}`]?.[0] === sigOf(remembered) && !ctx.deps.backfill) return known[kind];
   // Otherwise: our own names, plus every status, exploration or boost metric TikTok says it has.
   const allowed = await allowedMetricNames(ctx, probe).catch(() => [] as string[]);
-  const extra = allowed.filter((n) => M.STATUS_LIKE.test(n) && !M.OPTIONAL_METRICS.includes(n));
-  const candidates = [...M.OPTIONAL_METRICS, ...extra];
+  const extra = allowed.filter((n) => M.STATUS_LIKE.test(n) && !M.OPTIONAL_METRICS.includes(n) && !skip.includes(n));
+  const candidates = [...own, ...extra];
   const accepted: string[] = [];
   const ask = (mets: string[]) => call(ctx, "/gmv_max/report/get/", { query: { ...reportQuery({ ...probe, mets }), page: 1, page_size: 1 } });
   await ask(CORE); // if even the basic numbers are refused, that is the real problem and TikTok's message is shown
@@ -241,7 +242,7 @@ async function discoverMetrics(ctx: Ctx, kind: string, probe: ReportReq): Promis
     try { await ask([...CORE, m]); accepted.push(m); }
     catch (e) { if (!looksLikeBadParam(e)) throw e; }
   }
-  const all = { ...known, [kind]: accepted, _extra: extra, _sig: [sigOf(candidates)] };
+  const all = { ...known, [kind]: accepted, [`_extra_${kind}`]: extra, [`_sig_${kind}`]: [sigOf(candidates)] };
   await rows(sql`insert into settings (key, value) values (${MKEY}, ${JSON.stringify(all)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`);
   return accepted;
 }
@@ -291,7 +292,7 @@ async function runProductDaily(ctx: Ctx, c: Counter) {
       const camps = (await rows<{ campaign_id: string }>(sql`select distinct campaign_id from ads_campaign_daily where advertiser_id = ${adv} and day between ${win.start}::date and ${win.end}::date and coalesce(cost, 0) > 0 order by 1`)).map((r) => r.campaign_id);
       if (!camps.length) continue;
       any = true;
-      mets ??= [...CORE, ...(await discoverMetrics(ctx, "product", { adv, storeIds, dims: ["campaign_id", "item_group_id", "stat_time_day"], mets: CORE, filtering: { campaign_ids: camps.slice(0, 1) }, start: win.start, end: win.end }))];
+      mets ??= [...CORE, ...(await discoverMetrics(ctx, "product", { adv, storeIds, dims: ["campaign_id", "item_group_id", "stat_time_day"], mets: CORE, filtering: { campaign_ids: camps.slice(0, 1) }, start: win.start, end: win.end }, M.ATTRIBUTE_METRICS))];
       for (const group of chunk(camps, batch)) {
         const read = (ids: string[]) => readReport(ctx, c, { adv, storeIds, dims: ["campaign_id", "item_group_id", "stat_time_day"], mets: mets!, filtering: { campaign_ids: ids }, start: win.start, end: win.end }, "ads_product_daily", (l) => M.productDaily(l, adv, { campaign: ids.length === 1 ? ids[0] : undefined }), today);
         try { await read(group); }
@@ -519,7 +520,7 @@ export const adsIsDue = (nowMs: number, lastStartedMs: number | null, s: Pick<Ad
 
 // ───────── what the screen shows ─────────
 const DATE_COL: Record<string, string> = { ads_campaign_daily: "day", ads_creative_daily: "day", ads_product_daily: "day" };
-export type AdsDatasetView = { key: AdsDatasetKey; label: string; icon: string; what: string; records: number; lastSuccessAt: string | null; lastError: string | null; note: string | null; oldest: string | null; newest: string | null; running: boolean; progress: number | null; /** The first row TikTok sent in the last good run, as text. */ sample: string | null };
+export type AdsDatasetView = { key: AdsDatasetKey; label: string; icon: string; what: string; about: string; /** The count of real things behind the rows (e.g. videos behind video-days). */ distinct: string | null; records: number; lastSuccessAt: string | null; lastError: string | null; note: string | null; oldest: string | null; newest: string | null; running: boolean; progress: number | null; /** The first row TikTok sent in the last good run, as text. */ sample: string | null };
 export type AdsRunView = { id: number; dataset: AdsDatasetKey; label: string; startedAt: string; durationSec: number | null; status: string; trigger: string; changed: number; seen: number; error: string | null; by: string | null };
 /** A note that only says how a result was read (not a problem): shown calmly, not as a warning. */
 export const isInfoNote = (note: string | null | undefined) => !!note && note.split(" · ").every((p) => /^Used dimensions /.test(p));
@@ -557,11 +558,30 @@ export async function adsOverview(): Promise<AdsOverview> {
   const live = new Map<string, number>();
   for (const d of ADS_DATASETS) live.set(d.key, await adsLiveCount(d.key));
   const label = new Map(ADS_DATASETS.map((d) => [d.key, d.label]));
+  const n = (x: number) => x.toLocaleString("en-MY");
+  const [dc] = await rows<{ shops: number; camp_on: number; camps: number; prods: number; vids: number; own_acc: number; boosts_video: number; boosts_product: number }>(sql`select
+    (select count(distinct store_id) from ads_stores)::int as shops,
+    (select count(*) from ads_campaigns where upper(coalesce(status, '')) in ('ENABLE', 'ENABLED', 'ACTIVE', 'STATUS_DELIVERY_OK', 'DELIVERY_OK'))::int as camp_on,
+    (select count(distinct campaign_id) from ads_campaign_daily)::int as camps,
+    (select count(distinct product_id) from ads_product_daily)::int as prods,
+    (select count(distinct creative_id) from ads_creative_daily)::int as vids,
+    (select count(distinct coalesce(identity_id, username)) from ads_videos)::int as own_acc,
+    (select count(*) from ads_boosts where bid_type = 'CREATIVE_NO_BID')::int as boosts_video,
+    (select count(*) from ads_boosts where bid_type = 'NO_BID')::int as boosts_product`);
+  const distinct: Partial<Record<AdsDatasetKey, string>> = dc ? {
+    stores: `${n(dc.shops)} different shop${dc.shops === 1 ? "" : "s"}`,
+    campaigns: `${n(dc.camp_on)} switched on now`,
+    campaign_daily: `${n(dc.camps)} campaigns with results`,
+    product_daily: `${n(dc.prods)} products advertised`,
+    creative_daily: `${n(dc.vids)} different videos`,
+    videos: `from ${n(dc.own_acc)} TikTok account${dc.own_acc === 1 ? "" : "s"}`,
+    boosts: `${n(dc.boosts_video)} creative boost · ${n(dc.boosts_product)} max delivery`,
+  } : {};
   const times = states.map((s) => s.last_success_at).filter((x): x is Date => !!x).map((x) => new Date(x).getTime());
   const last = lastSched[0]?.t ? new Date(lastSched[0].t).getTime() : null;
   const datasets: AdsDatasetView[] = ADS_DATASETS.map((d) => {
     const lr = lastRun.get(d.key);
-    return { key: d.key, label: d.label, icon: d.icon, what: d.what, records: live.get(d.key) ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lr?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lr?.status === "ok" ? (lr.error ?? null) : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null, sample: st.get(d.key)?.sample ? JSON.stringify(st.get(d.key)!.sample, null, 2).slice(0, 4000) : null };
+    return { key: d.key, label: d.label, icon: d.icon, what: d.what, about: d.about, distinct: (live.get(d.key) ?? 0) > 0 ? (distinct[d.key] ?? null) : null, records: live.get(d.key) ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lr?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lr?.status === "ok" ? (lr.error ?? null) : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null, sample: st.get(d.key)?.sample ? JSON.stringify(st.get(d.key)!.sample, null, 2).slice(0, 4000) : null };
   });
   return {
     now: Date.now(), datasets,

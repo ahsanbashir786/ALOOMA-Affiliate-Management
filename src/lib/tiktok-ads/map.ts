@@ -103,10 +103,13 @@ export const FUNNEL_METRICS = {
   view_rate_6s: ["ad_video_view_rate_6s", "video_view_rate_6s"],
 } as const;
 /** Every optional metric worth asking for. Which of them TikTok accepts is found out once per account (see discovery in sync.ts). */
-export const DELIVERY_STATUS_METRICS = ["creative_delivery_status", "exploration_secondary_status", "exploration_status", "delivery_status", "creative_status", "item_status"];
+/** TikTok documents exactly one status metric for a video: creative_delivery_status. */
+export const DELIVERY_STATUS_METRICS = ["creative_delivery_status"];
+/** Text facts about a video or product (TikTok calls them attribute metrics). TikTok only returns them when the request names one campaign and one product. */
+export const ATTRIBUTE_METRICS = ["title", "tt_account_name", "tt_account_authorization_type", "shop_content_type", "product_name", "product_status", "bid_type", "creative_delivery_status"];
 /** Metric names that look like a status, an exploration state or a boost state: picked out of TikTok's own list of allowed metrics. */
 export const STATUS_LIKE = /status|explor|boost|authoriz/i;
-export const OPTIONAL_METRICS = ["cost_per_order", "title", "tt_account_name", "shop_content_type", "product_name", ...Object.values(FUNNEL_METRICS).flat(), ...DELIVERY_STATUS_METRICS];
+export const OPTIONAL_METRICS = ["cost_per_order", "title", "tt_account_name", "tt_account_authorization_type", "shop_content_type", "product_name", "product_status", "bid_type", ...Object.values(FUNNEL_METRICS).flat(), "ad_video_view_rate_p25", "ad_video_view_rate_p50", "ad_video_view_rate_p75", "ad_video_view_rate_p100", ...DELIVERY_STATUS_METRICS];
 const funnel = (m: R) => ({
   impressions: int(dec(pick(m, ...FUNNEL_METRICS.impressions))), clicks: int(dec(pick(m, ...FUNNEL_METRICS.clicks))),
   click_rate: dec(pick(m, ...FUNNEL_METRICS.click_rate)), conversion_rate: dec(pick(m, ...FUNNEL_METRICS.conversion_rate)),
@@ -123,10 +126,10 @@ export function creativeDaily(l: ReportLine, advertiserId: string, scope?: { cam
   return {
     advertiser_id: advertiserId, campaign_id: cid, product_id: pid, creative_id: id, day: d,
     title: str(pick(l.mets, "title", "video_title")) ?? str(pick(l.dims, "title")),
-    account_name: str(pick(l.mets, "tt_account_name", "account_name")),
+    account_name: ((v) => (v === "0" || v === "-1" ? null : v))(str(pick(l.mets, "tt_account_name", "account_name"))),
     content_type: str(pick(l.mets, "shop_content_type", "content_type")),
     cost: dec(l.mets.cost), orders: int(dec(l.mets.orders)), gross_revenue: dec(l.mets.gross_revenue), roi: dec(l.mets.roi), cost_per_order: dec(l.mets.cost_per_order),
-    ...funnel(l.mets), view_rate_2s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_2s)), view_rate_6s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_6s)), delivery_status: str(pick(l.mets, ...DELIVERY_STATUS_METRICS) ?? pick(l.dims, ...DELIVERY_STATUS_METRICS)), exploration_status: firstLike(l, /explor/i), boost_status: firstLike(l, /boost/i), raw: raw(l),
+    ...funnel(l.mets), view_rate_2s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_2s)), view_rate_6s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_6s)), delivery_status: str(pick(l.mets, ...DELIVERY_STATUS_METRICS) ?? pick(l.dims, ...DELIVERY_STATUS_METRICS)), exploration_status: firstLike(l, /explor/i), boost_status: firstLike(l, /boost/i), authorization_type: str(pick(l.mets, "tt_account_authorization_type", "authorization_type")), raw: raw(l),
   };
 }
 

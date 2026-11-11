@@ -46,13 +46,14 @@ async function login(p, email) {
   await o.getByTestId("sync-tab-ads").click(); await o.waitForSelector("[data-testid=ads-board]");
   ok(await o.getByTestId("ads-ds-campaign_daily").isVisible(), "sync: the Ads Management tab shows its dataset cards");
   await o.getByTestId("ads-sync-now").click();
-  await o.waitForFunction(() => { const n = document.querySelector("[data-testid=ads-ds-campaign_daily] p.tnum"); return n && Number(n.textContent.replace(/,/g, "")) > 0; }, null, { timeout: 60000 });
+  await o.waitForFunction(() => { const n = document.querySelector("[data-testid=ads-ds-campaign_daily] p.tnum"); return n && parseInt(n.textContent.replace(/,/g, ""), 10) > 0; }, null, { timeout: 60000 });
   await o.waitForFunction(() => document.querySelector("[data-testid=ads-hero]")?.getAttribute("data-state") === "ok", null, { timeout: 60000 });
-  const num = async (k) => Number((await o.getByTestId(`ads-ds-${k}`).locator("p.tnum").innerText()).replace(/,/g, ""));
+  const num = async (k) => parseInt((await o.getByTestId(`ads-ds-${k}`).locator("p.tnum").innerText()).replace(/,/g, ""), 10);
   ok((await num("advertisers")) === 1 && (await num("stores")) === 1 && (await num("campaigns")) === 2, "sync: accounts, shops and campaigns arrive");
   ok((await num("videos")) === 3 && (await num("boosts")) === 1, "sync: videos and creative boosts arrive");
   ok((await num("campaign_daily")) >= 80 && (await num("creative_daily")) >= 80 && (await num("product_daily")) >= 80, `sync: daily results arrive (${await num("campaign_daily")} campaign-days)`);
   ok(/Everything Is Up To Date/.test(await o.getByTestId("ads-hero").innerText()), "sync: the hero says everything is up to date");
+  ok(/different videos/.test(await o.getByTestId("ads-distinct-creative_daily").innerText()) && /Not a count of videos/.test(await o.getByTestId("ads-ds-creative_daily").innerText()), "sync: each card says what it holds and how many real things are behind its rows");
   await o.getByTestId("ads-ds-campaigns").locator("summary").click();
   ok(/campaign_id/.test(await o.getByTestId("ads-ds-campaigns").locator("pre").innerText()), "sync: 'What TikTok sent' shows the first record");
   ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "sync: no sideways scroll on desktop");

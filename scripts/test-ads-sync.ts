@@ -34,7 +34,7 @@ async function main() {
   let rejectProductDim = false;
   let videosOnlyViaIdentity = false;
   let oldestAllowed = "";
-  const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks", "creative_delivery_status", "exploration_status", "boost_status"];
+  const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks", "creative_delivery_status", "exploration_status", "boost_status", "tt_account_authorization_type"];
   const failAccount222 = true;
   let bump: Record<string, string> = {};
   const seen: { path: string; headers: Record<string, string>; q: Record<string, string>; body: unknown }[] = [];
@@ -119,7 +119,7 @@ async function main() {
           const items = creativeLevel ? ["V1", "V22"] : productLevel ? ["P1"] : [""];
           for (const it of items) {
             const v = val(camp, d, it) as Record<string, string>;
-            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it; v.creative_delivery_status = it === "V1" ? "DELIVERING" : "AUTHORIZATION_NEEDED"; v.exploration_status = it === "V1" ? "OUTSTANDING" : "UNDERPERFORMING"; v.boost_status = it === "V1" ? "BOOSTED" : "NOT_BOOSTED";
+            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it; v.creative_delivery_status = it === "V1" ? "DELIVERING" : "AUTHORIZATION_NEEDED"; v.tt_account_authorization_type = "AFFILIATE"; v.exploration_status = it === "V1" ? "OUTSTANDING" : "UNDERPERFORMING"; v.boost_status = it === "V1" ? "BOOSTED" : "NOT_BOOSTED";
             if (bump[`${camp}|${d}`] && !it) v.gross_revenue = bump[`${camp}|${d}`];
             const m: Record<string, string> = Object.fromEntries(mets.map((k) => [renameMetrics ? "x_" + k : k, v[k] ?? ""]));
             const dm: Record<string, string> = { stat_time_day: d + " 00:00:00" };
@@ -206,11 +206,11 @@ async function main() {
   const cr = (await q(sql`select title, impressions::int as imp, clicks::int as clk, cost_per_order::float8 as cpo from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
   check("creative results: the extra numbers TikTok accepts are saved (title, impressions, clicks, cost per order)", cr.title === "Video V1" && cr.imp === 1000 && cr.clk === 50 && cr.cpo === 10, JSON.stringify(cr));
   const support = (await q(sql`select value from settings where key = 'tiktok_ads_metrics'`))[0]?.value as Record<string, string[]> | undefined;
-  const expl = (await q(sql`select exploration_status, boost_status from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
-  check("creative results: the exploration status and boost status are found from TikTok's own list of allowed metrics and saved", expl.exploration_status === "OUTSTANDING" && expl.boost_status === "BOOSTED", JSON.stringify(expl));
+  const expl = (await q(sql`select exploration_status, boost_status, authorization_type from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
+  check("creative results: the exploration status and boost status are found from TikTok's own list of allowed metrics and saved", expl.exploration_status === "OUTSTANDING" && expl.boost_status === "BOOSTED" && expl.authorization_type === "AFFILIATE", JSON.stringify(expl));
   const dl = (await q(sql`select delivery_status from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
   check("creative results: the delivery status TikTok gives (Delivering, Learning, Authorization needed…) is saved", dl.delivery_status === "DELIVERING", JSON.stringify(dl));
-  await q(sql`update settings set value = jsonb_set(value, '{_sig}', '["old"]'::jsonb) where key = 'tiktok_ads_metrics'`);
+  await q(sql`update settings set value = jsonb_set(value, '{_sig_product}', '["old"]'::jsonb) where key = 'tiktok_ads_metrics'`);
   const probesBefore = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
   await S.runAdsDataset("product_daily", "manual", null, deps);
   // ── which videos the GMV Max screen suggests (own rows, so the dates are always the last few days) ──
@@ -234,7 +234,7 @@ async function main() {
   const probesMid = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
   await S.runAdsDataset("product_daily", "manual", null, deps);
   check("metric discovery: remembered answers are reused", seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length === probesMid);
-  check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title", "creative_delivery_status", "exploration_status", "boost_status"].sort()) && !(support?.product ?? []).includes("tt_account_name"), JSON.stringify(support));
+  check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title", "creative_delivery_status", "exploration_status", "boost_status", "tt_account_authorization_type"].sort()) && !(support?.product ?? []).includes("tt_account_name") && !(support?.product ?? []).includes("title"), JSON.stringify(support));
   const realReports = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size !== "1");
   check("requests: after discovery every report asks only for metrics TikTok accepts", realReports.every((x) => (JSON.parse(x.q.metrics) as string[]).every((m) => ACCEPTED.includes(m))));
   check("requests: product and creative requests always name their campaign (and product)", realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_id")).every((x) => { const f = JSON.parse(x.q.filtering); return f.campaign_ids.length === 1 && f.item_group_ids.length === 1; }) && realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_group_id") && !JSON.parse(x.q.dimensions).includes("item_id")).every((x) => JSON.parse(x.q.filtering).campaign_ids.length >= 1));
@@ -250,6 +250,7 @@ async function main() {
   const ov1 = await S.adsOverview();
   check("info notes: how a result was read is not shown as a warning", S.isInfoNote("Used dimensions a + b") && S.isInfoNote("Used dimensions a · Used dimensions b") && !S.isInfoNote("1 of 2 accounts skipped (x)") && !S.isInfoNote("Used dimensions a · 1 lines skipped") && !S.isInfoNote(null));
   check("overview: records, dates and a sample of what TikTok sent", ov1.datasets.find((d) => d.key === "campaign_daily")?.records === nDays * 2 && ov1.datasets.find((d) => d.key === "campaign_daily")?.oldest === FIRST_AD_DAY && /dimensions/.test(ov1.datasets.find((d) => d.key === "campaigns")?.sample ?? "") === false && /campaign_id/.test(ov1.datasets.find((d) => d.key === "campaigns")?.sample ?? ""), JSON.stringify(ov1.datasets.map((d) => [d.key, d.records, d.sample?.length])));
+  check("overview: every card says what it holds and how many real things are behind its rows", ov1.datasets.every((d) => d.about.length > 20) && /different videos/.test(ov1.datasets.find((d) => d.key === "creative_daily")?.distinct ?? "") && /1 different shop/.test(ov1.datasets.find((d) => d.key === "stores")?.distinct ?? "") && ov1.datasets.find((d) => d.key === "creative_daily")?.label === "Video Daily Results", JSON.stringify(ov1.datasets.map((d) => [d.label, d.distinct])));
   check("overview: accounts, shops and active campaigns", ov1.accounts.length === 2 && ov1.shops === 1 && ov1.activeCampaigns === 2 && !ov1.needsReconnect);
 
   // ── idempotent, and TikTok restating a recent day ──
