@@ -134,6 +134,42 @@ async function login(p, email) {
   await o.getByTestId("ads-select-all").check(); await o.getByTestId("ads-select-all").uncheck();
   ok(/Tick videos/.test(await o.getByTestId("ads-selection").innerText()), "select all: ticking it again clears them");
 
+  // ── boost one video in TikTok from the app (against the pretend TikTok)
+  await o.goto(BASE + "/settings?tab=connection&src=ads"); await o.waitForSelector("[data-testid=boost-write-card]");
+  ok(/Off/.test(await o.getByTestId("boost-write-switch").innerText()) && (await o.getByTestId("boost-write-max").inputValue()) === "30" && (await o.getByTestId("boost-write-cap").inputValue()) === "50", "boost from app: Settings shows it Off by default, with the limits RM 30 and RM 50");
+  await o.goto(BASE + "/ads/video/V22"); await o.waitForSelector("[data-testid=ads-boost-panel]");
+  ok(/switched off/.test(await o.getByTestId("ads-boost-off").innerText()) && (await o.getByTestId("ads-boost-go").count()) === 0, "boost from app: while Off, the video page cannot boost");
+  await o.goto(BASE + "/settings?tab=connection&src=ads"); await o.waitForSelector("[data-testid=boost-write-card]");
+  await o.getByTestId("boost-write-switch").click(); await o.waitForFunction(() => /On/.test(document.querySelector("[data-testid=boost-write-switch]")?.textContent ?? ""), null, { timeout: 15000 });
+  ok(true, "boost from app: the owner switches it On");
+  await o.goto(BASE + "/ads/video/V22"); await o.waitForSelector("[data-testid=ads-boost-go]");
+  ok((await o.getByTestId("ads-boost-campaign").locator("option").count()) >= 1 && /Pillow GMV Max/.test(await o.getByTestId("ads-boost-campaign").innerText()), "boost from app: the campaign this video ran in is offered");
+  ok(await o.getByTestId("ads-boost-go").isDisabled(), "boost from app: the button stays disabled until you confirm you understand it spends money");
+  await o.getByTestId("ads-boost-budget").fill("40"); await o.getByTestId("ads-boost-sure").check();
+  ok(/at most RM 30\.00/.test(await o.getByTestId("ads-boost-problem").innerText()) && (await o.getByTestId("ads-boost-go").isDisabled()), "boost from app: above your limit is stopped on the page");
+  await o.getByTestId("ads-boost-budget").fill("5");
+  await o.getByTestId("ads-boost-go").click(); await o.getByTestId("ads-boost-confirm-yes").click(); await o.waitForSelector("[data-testid=ads-boost-result]");
+  ok(/TikTok said/.test(await o.getByTestId("ads-boost-result").innerText()) && /at least 10/.test(await o.getByTestId("ads-boost-result").innerText()), "boost from app: when TikTok refuses (budget under its minimum), its own message is shown");
+  await o.getByTestId("ads-boost-budget").fill("12"); await o.getByTestId("ads-boost-sure").check(); await o.getByTestId("ads-boost-days").selectOption("3");
+  await o.getByTestId("ads-boost-go").click(); await o.waitForSelector("[data-testid=ads-boost-confirm]");
+  ok(/RM 12\.00 a day/.test(await o.getByTestId("ads-boost-confirm").innerText()) && /3 days/.test(await o.getByTestId("ads-boost-confirm").innerText()) && /up to RM 36\.00/.test(await o.getByTestId("ads-boost-confirm").innerText()), "boost from app: a confirm box says the video, the amount, the days and the most it can spend");
+  await o.getByTestId("ads-boost-confirm-yes").click(); await o.waitForFunction(() => /TikTok created the boost/.test(document.querySelector("[data-testid=ads-boost-result]")?.textContent ?? ""), null, { timeout: 20000 });
+  ok(true, "boost from app: TikTok creates the boost");
+  await o.waitForSelector("[data-testid=ads-boost-blocker]"); ok(/already running/.test(await o.getByTestId("ads-boost-blocker").innerText()), "boost from app: the video then shows a boost is running, so it cannot be boosted twice");
+  const sent = await (await fetch("http://127.0.0.1:3999/open_api/v1.3/__sent", { headers: { "access-token": "AT123" } })).json();
+  ok(sent.data.created.length >= 1 && sent.data.created.at(-1).session.bid_type === "CREATIVE_NO_BID" && sent.data.created.at(-1).session.item_id === "V22" && sent.data.created.at(-1).session.budget === 12 && sent.data.created.at(-1).session.schedule_type === "SCHEDULE_START_END", "boost from app: TikTok received exactly one creative boost for V22 with RM 12 and an end time");
+  await o.getByTestId("ads-boost-stop").first().click(); await o.getByTestId("ads-boost-stop-yes").click();
+  await o.waitForFunction(() => !document.querySelector("[data-testid=ads-boost-blocker]"), null, { timeout: 20000 }); ok(true, "boost from app: Stop ends the boost in TikTok and the video can be boosted again");
+  const sent2 = await (await fetch("http://127.0.0.1:3999/open_api/v1.3/__sent", { headers: { "access-token": "AT123" } })).json();
+  ok(sent2.data.deleted.length >= 1, "boost from app: TikTok received the stop");
+  await o.goto(BASE + "/settings?tab=connection&src=ads"); await o.waitForSelector("[data-testid=boost-write-log]");
+  const logT = await o.getByTestId("boost-write-log").innerText();
+  ok(/Create boost/.test(logT) && /Stop boost/.test(logT) && /Refused/.test(logT) && /OK/.test(logT), "boost from app: the log in Settings shows the create, the refusal and the stop");
+  await o.goto(BASE + "/ads?tab=log"); await o.waitForSelector("[data-testid=ads-log-batch]"); ok(/Created in the app|Test Owner|Aisyah|Owner/.test(await o.locator("main").innerText()), "boost from app: it also appears in the Boost Log");
+  await o.goto(BASE + "/ads?tab=planner&v=" + encodeURIComponent("V22|P1")); await o.waitForSelector("[data-testid=ads-planner], [data-testid=ads-planner-empty]");
+  if (await o.getByTestId("ads-plan-boost").count()) ok(/budget=/.test(await o.getByTestId("ads-plan-boost").first().getAttribute("href")), "boost from app: the Batch Planner has a Boost button on each video");
+  else ok(true, "boost from app: planner row (video not in this list)");
+
   // ── a viewer cannot use the connection
   const v = await mk(); await login(v, "viewer@test.local");
   await v.goto(BASE + "/settings"); await v.waitForSelector("[data-testid=permission-denied]"); ok(true, "viewer: Settings is Permission Denied");

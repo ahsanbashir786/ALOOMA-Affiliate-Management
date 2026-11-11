@@ -726,4 +726,25 @@ export const adsBoostBatchVideos = pgTable("ads_boost_batch_videos", {
   budget: numeric("budget", { precision: 14, scale: 2 }).notNull().default("0"),
 }, (t) => [primaryKey({ columns: [t.batchId, t.creativeId, t.productId] }), index("ads_boost_batch_videos_creative").on(t.creativeId)]);
 
+// Everything the app sent to TikTok about boosts (migrations/0029).
+export const adsBoostActions = pgTable("ads_boost_actions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  createdAt: tz("created_at").notNull().defaultNow(),
+  action: text("action").notNull(),
+  userName: text("user_name"),
+  advertiserId: text("advertiser_id").notNull(),
+  campaignId: text("campaign_id"),
+  itemId: text("item_id"),
+  productId: text("product_id"),
+  sessionId: text("session_id"),
+  budget: numeric("budget", { precision: 14, scale: 2 }),
+  days: integer("days"),
+  endsAt: tz("ends_at"),
+  ok: boolean("ok").notNull().default(false),
+  message: text("message"),
+  stoppedAt: tz("stopped_at"),
+  request: jsonb("request"),
+  response: jsonb("response"),
+}, (t) => [index("ads_boost_actions_created").on(t.createdAt), index("ads_boost_actions_item").on(t.itemId), index("ads_boost_actions_session").on(t.sessionId)]);
+
 // The view ads_creative_summary (migrations/0023) is read with plain SQL; drizzle does not manage it.

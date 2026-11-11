@@ -239,7 +239,12 @@ export async function videoDetail(id: string): Promise<VideoDetail | null> {
       select d.campaign_id, c.name, d.product_id, pm.product_key, coalesce(sum(d.cost), 0)::float8 as cost, coalesce(sum(d.gross_revenue), 0)::float8 as revenue, coalesce(sum(d.orders), 0)::int as orders, to_char(max(d.day) filter (where coalesce(d.cost, 0) > 0), 'YYYY-MM-DD') as last_spend
       from ads_creative_daily d left join ads_campaigns c on c.campaign_id = d.campaign_id left join product_map pm on pm.product_id = d.product_id where d.creative_id = ${id} group by 1, 2, 3, 4 order by 5 desc`),
     rows<{ id: number; boosted_on: string; budget: number }>(sql`select b.id::int as id, to_char(b.boosted_on, 'YYYY-MM-DD') as boosted_on, bv.budget::float8 as budget from ads_boost_batch_videos bv join ads_boost_batches b on b.id = bv.batch_id where bv.creative_id = ${id} order by b.boosted_on desc`),
-    rows<{ session_id: string; status: string | null; budget: number | null; starts_at: Date | null; ends_at: Date | null; active: boolean }>(sql`select session_id, status, budget::float8 as budget, starts_at, ends_at, coalesce(ends_at, now() + interval '1 day') > now() as active from ads_boosts where item_id = ${id} order by starts_at desc nulls last`),
+    rows<{ session_id: string; status: string | null; budget: number | null; starts_at: Date | null; ends_at: Date | null; active: boolean }>(sql`
+      select session_id, status, budget::float8 as budget, starts_at, ends_at, coalesce(ends_at, now() + interval '1 day') > now() as active from ads_boosts where item_id = ${id}
+      union all
+      select a.session_id, 'CREATED_IN_APP', a.budget::float8, a.created_at, a.ends_at, a.stopped_at is null and (a.ends_at is null or a.ends_at > now()) from ads_boost_actions a
+        where a.item_id = ${id} and a.action = 'create' and a.ok and a.session_id is not null and not exists (select 1 from ads_boosts b where b.session_id = a.session_id)
+      order by starts_at desc nulls last`),
     rows<{ day: string; product_id: string; delivery_status: string | null; exploration_status: string | null; boost_status: string | null; authorization_type: string | null; raw: unknown }>(sql`select to_char(day, 'YYYY-MM-DD') as day, product_id, delivery_status, exploration_status, boost_status, authorization_type, raw from ads_creative_daily where creative_id = ${id} order by day desc limit 4`),
     rows<{ status: string | null; eligible: boolean | null; authorization_type: string | null; raw: unknown }>(sql`select status, eligible, authorization_type, raw from ads_videos where item_id = ${id} limit 1`),
   ]);

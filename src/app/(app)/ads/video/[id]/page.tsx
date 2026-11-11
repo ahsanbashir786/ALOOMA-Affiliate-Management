@@ -4,6 +4,11 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { gate } from "@/lib/gate";
 import { videoDetail } from "@/lib/ads/insights";
+import { boostOptions, getBoostWriteSettings } from "@/lib/tiktok-ads/boost-write";
+import { adsConnectionInfo } from "@/lib/tiktok-ads/client";
+import { BoostPanel, StopBoostButton } from "@/components/ads/boost-panel";
+import { can } from "@/lib/auth";
+import { one, type SP } from "@/lib/url";
 import { GROUP } from "@/lib/ads/groups";
 import { Person } from "@/components/execution/ui";
 import { GroupPill, Pill, SpendSalesBars, StatusPill, Tile, day, nfmt, rm, rm2, roiFmt, th, thr, td, tdr } from "@/components/ads/ui";
@@ -12,12 +17,15 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = { title: "Video · GMV Max" };
 export const dynamic = "force-dynamic";
 
-export default async function AdsVideoPage({ params }: { params: Promise<{ id: string }> }) {
-  const { denied } = await gate("ads", "GMV Max");
+export default async function AdsVideoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SP> }) {
+  const { user, denied } = await gate("ads", "GMV Max");
   if (denied) return denied;
   const { id } = await params;
+  const sp = await searchParams;
   const d = await videoDetail(decodeURIComponent(id));
   if (!d) notFound();
+  const [opt, bw, conn] = await Promise.all([boostOptions(d.rows[0].creativeId), getBoostWriteSettings(), adsConnectionInfo()]);
+  const wantBudget = Number(one(sp.budget));
   const v = d.rows[0];
   const cost = d.rows.reduce((a, r) => a + r.cost, 0), revenue = d.rows.reduce((a, r) => a + r.revenue, 0), orders = d.rows.reduce((a, r) => a + r.orders, 0);
   const cost7 = d.rows.reduce((a, r) => a + r.cost7, 0), rev7 = d.rows.reduce((a, r) => a + r.revenue7, 0);
@@ -59,6 +67,7 @@ export default async function AdsVideoPage({ params }: { params: Promise<{ id: s
           </table></div>
         </section>
       )}
+      {conn.connected && <BoostPanel itemId={v.creativeId} campaigns={opt.campaigns} blockers={opt.blockers} enabled={bw.enabled} canWrite={can(user, "settings")} maxBudget={bw.maxBudget} dailyCap={bw.dailyCap} committed={opt.committed} defaultBudget={Number.isFinite(wantBudget) && wantBudget > 0 ? wantBudget : 10} />}
       <section className={cn(card, "p-5")} aria-label="What TikTok sent" data-testid="ads-sent">
         <h2 className="text-[16px] font-semibold text-ink">What TikTok&apos;s API Sent For This Video</h2>
         <p className="mt-0.5 text-[13px] text-ink-3">Nothing here is our guess. These are the newest rows we saved, field by field. TikTok&apos;s Exploration status (Explored, Performing, Underperforming) is only shown when TikTok&apos;s API sends it; an empty box below means it did not.</p>
@@ -76,7 +85,7 @@ export default async function AdsVideoPage({ params }: { params: Promise<{ id: s
         {d.logged.length === 0 && d.sessions.length === 0 ? <p className="mt-2 text-[14px] text-ink-3">This video has not been boosted, as far as the Boost Log and TikTok&apos;s running sessions show.</p> : (
           <ul className="mt-2 divide-y divide-line text-[14px]">
             {d.logged.map((l) => <li key={`l${l.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className="text-ink">In your batch of {day(l.boostedOn)}</span><span className="text-ink-3">{rm2(l.budget)} a day · <Link href="/ads?tab=log" className="text-brand hover:underline">Boost Log</Link></span></li>)}
-            {d.sessions.map((s) => <li key={`s${s.sessionId}`} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className="text-ink">TikTok boost session{s.startsAt ? ` from ${day(s.startsAt)}` : ""}{s.endsAt ? ` to ${day(s.endsAt)}` : ""}</span><span className="flex items-center gap-2 text-ink-3">{s.budget != null ? `${rm2(s.budget)} budget` : ""}<Pill tone={s.active ? "good" : "muted"}>{s.active ? "Active Now" : "Ended"}</Pill></span></li>)}
+            {d.sessions.map((s) => <li key={`s${s.sessionId}`} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className="text-ink">TikTok boost session{s.startsAt ? ` from ${day(s.startsAt)}` : ""}{s.endsAt ? ` to ${day(s.endsAt)}` : ""}</span><span className="flex items-center gap-2 text-ink-3">{s.budget != null ? `${rm2(s.budget)} budget` : ""}<Pill tone={s.active ? "good" : "muted"}>{s.active ? "Active Now" : "Ended"}</Pill>{s.active && can(user, "settings") && <StopBoostButton sessionId={s.sessionId} itemId={v.creativeId} />}</span></li>)}
           </ul>
         )}
       </section>

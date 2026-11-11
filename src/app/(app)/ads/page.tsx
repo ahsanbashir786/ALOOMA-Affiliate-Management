@@ -51,7 +51,7 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
   const spR = { range: one(sp.range), from: one(sp.from), to: one(sp.to) };
   const range = resolveRange(spR, today, DEFAULT_RANGE[tab]);
   const carry = rangeSuffix(spR);
-  const header = <PageHeader title="GMV Max" description="How your GMV Max ads are doing, which videos deserve a boost, and what happened after you boosted. Read only: nothing here changes your ads in TikTok." />;
+  const header = <PageHeader title="GMV Max" description="How your GMV Max ads are doing, which videos deserve a boost, and what happened after you boosted. Nothing here changes your ads in TikTok, except a single-video boost that the owner creates or stops on purpose (off until switched on in Settings)." />;
   if (!conn.connected)
     return (
       <div className="space-y-6">{header}

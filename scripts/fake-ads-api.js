@@ -14,6 +14,7 @@ const CAMPAIGNS = [
   { campaign_id: "C1", campaign_name: "Pillow GMV Max", operation_status: "ENABLE", store_id: "S1", gmv_max_promotion_type: "PRODUCT_GMV_MAX", budget: "200.00", roas_bid: "4.5", create_time: "2026-08-20 10:00:00" },
   { campaign_id: "C2", campaign_name: "LIVE GMV Max", operation_status: "DISABLE", store_id: "S1", gmv_max_promotion_type: "LIVE_GMV_MAX", budget: "100", roas_bid: "3", create_time: "2026-09-01 10:00:00" },
 ];
+const SESSIONS = [], DELETED = [];
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://127.0.0.1:${PORT}`);
   const p = u.pathname.replace(/^.*\/open_api\/v1\.3/, "");
@@ -36,6 +37,16 @@ const server = http.createServer(async (req, res) => {
     const all = [1, 2, 3].map((n) => ({ item_id: "VID" + n, spu_id: "P1", text: "Video number " + n, identity_name: "amy", create_time: "2026-10-0" + n + " 10:00:00", authorization_status: "AUTHORIZED", is_eligible: true }));
     return reply(res, 0, { list: all, page_info: { page: 1, page_size: 50, total_number: 3, total_page: 1 } });
   }
+  if (p === "/campaign/gmv_max/session/create/") {
+    const se = body.session || {};
+    SESSIONS.push(body);
+    if (se.bid_type !== "CREATIVE_NO_BID" || !se.item_id || !Array.isArray(se.product_list) || se.product_list.length !== 1 || !se.product_list[0].spu_id || !body.store_id || !body.campaign_id) return reply(res, 40002, null, "session: missing or wrong fields");
+    if (Number(se.budget) < 10) return reply(res, 40002, null, "session.budget: value must be at least 10");
+    if (se.item_id === "VBAD") return reply(res, 40002, null, "The video is not eligible for creative boost");
+    return reply(res, 0, { session_id: "NEW-" + SESSIONS.length });
+  }
+  if (p === "/campaign/gmv_max/session/delete/") { DELETED.push(body.session_id); return body.session_id && body.advertiser_id ? reply(res, 0, {}) : reply(res, 40002, null, "session_id is required"); }
+  if (p === "/__sent") return reply(res, 0, { created: SESSIONS, deleted: DELETED });
   if (p === "/campaign/gmv_max/session/list/") return reply(res, 0, { list: q.campaign_id === "C1" ? [{ session_id: "S-1", item_id: "V1", status: "ACTIVE", budget: "50.00" }] : [] });
   if (p === "/gmv_max/report/get/") {
     const dims = JSON.parse(q.dimensions), mets = JSON.parse(q.metrics);

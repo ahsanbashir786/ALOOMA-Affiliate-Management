@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth";
 import { rows } from "@/lib/sql";
 import { todayKL } from "@/lib/time";
+import { createBoost, saveBoostWriteSettings, stopBoost, type BoostResult, type BoostWriteSettings } from "@/lib/tiktok-ads/boost-write";
 
 export type BatchInput = { boostedOn: string; days: number; note?: string; videos: { creativeId: string; productId: string; budget: number }[] };
 
@@ -31,4 +32,30 @@ export async function deleteBoostBatch(id: number): Promise<{ ok: true }> {
   await rows(sql`delete from ads_boost_batches where id = ${Math.round(Number(id))}`);
   revalidatePath("/ads");
   return { ok: true };
+}
+
+// ── Creating and stopping a boost in TikTok. Spends real money, so only the owner-level permission (Settings) may do it. ──
+
+/** Creates a creative boost for one video in TikTok. */
+export async function createBoostNow(input: { itemId: string; advertiserId: string; campaignId: string; budget: number; days: number | null }): Promise<BoostResult> {
+  const user = await requirePermission("settings");
+  const r = await createBoost({ itemId: String(input.itemId ?? ""), advertiserId: String(input.advertiserId ?? ""), campaignId: String(input.campaignId ?? ""), budget: Number(input.budget), days: input.days == null ? null : Number(input.days), user: user.name });
+  revalidatePath("/ads"); revalidatePath(`/ads/video/${input.itemId}`); revalidatePath("/settings");
+  return r;
+}
+
+/** Stops a running boost in TikTok. */
+export async function stopBoostNow(sessionId: string, itemId?: string): Promise<BoostResult> {
+  const user = await requirePermission("settings");
+  const r = await stopBoost(String(sessionId ?? ""), user.name);
+  revalidatePath("/ads"); if (itemId) revalidatePath(`/ads/video/${itemId}`); revalidatePath("/settings");
+  return r;
+}
+
+/** The limits and the on/off switch for boosting from the app. */
+export async function setBoostWriteSettings(patch: Partial<BoostWriteSettings>): Promise<BoostWriteSettings> {
+  await requirePermission("settings");
+  const s = await saveBoostWriteSettings({ enabled: patch.enabled, maxBudget: patch.maxBudget, dailyCap: patch.dailyCap });
+  revalidatePath("/settings"); revalidatePath("/ads");
+  return s;
 }

@@ -12,6 +12,8 @@ import { connectionInfo, tiktokConfig } from "@/lib/tiktok/client";
 import { adsConfig, adsConnectionInfo, redirectUriFor } from "@/lib/tiktok-ads/client";
 import { TikTokActions } from "@/components/settings/tiktok-card";
 import { TikTokAdsActions } from "@/components/settings/tiktok-ads-card";
+import { BoostWriteCard } from "@/components/settings/boost-write-card";
+import { getBoostWriteSettings, recentBoostActions } from "@/lib/tiktok-ads/boost-write";
 import { UsersPanel } from "@/components/users/users-panel";
 import { fmtDayLabel, dayKL } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
@@ -99,6 +101,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                 <TikTokAdsActions v={{ configured: !!adsCfg, connected: ads.connected, connectedLabel: ads.connectedAt ? fmtDayLabel(dayKL(ads.connectedAt)) : null, accounts: accountList, shops: shops[0]?.n ?? 0, permissions: ads.scopes.length, redirectUri: redirect }} />
               </div>
             </Card>
+            {ads.connected && <BoostWriteCard initial={await getBoostWriteSettings()} actions={await recentBoostActions(15)} />}
           </>
         )}
       </div>

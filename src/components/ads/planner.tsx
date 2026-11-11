@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ClipboardCheck, Copy, Info, X } from "lucide-react";
+import { Check, ClipboardCheck, Copy, Info, Rocket, X } from "lucide-react";
 import { minBatchTotal, suggestBudgets } from "@/lib/ads/budget";
 import { saveBoostBatch } from "@/app/actions/ads-boost";
 import type { PickRow } from "./picks-board";
@@ -66,6 +66,7 @@ export function Planner({ videos, today }: { videos: PickRow[]; today: string })
               <GroupPill group={v.group} />
               <span className="tnum w-28 text-right text-[12.5px] text-ink-3">{v.cost > 0 ? `ROI ${roiFmt(v.roi)} · ${v.orders} orders` : v.organicGmv > 0 ? `${rm(v.organicGmv)} without ads` : "no history"}</span>
               <label className="flex items-center gap-1.5 text-[12.5px] text-ink-3">RM<input type="number" min={1} step={0.5} value={budgetOf(v.key)} onChange={(e) => setEdits((x) => ({ ...x, [v.key]: Math.max(0, Number(e.target.value) || 0) }))} className="h-9 w-24 rounded-lg border border-line-strong bg-surface px-2 text-right text-[14px] text-ink focus:border-brand focus:outline-none" aria-label={`Budget for ${v.title ?? v.creativeId}`} /></label>
+              <Link href={`/ads/video/${encodeURIComponent(v.creativeId)}?budget=${budgetOf(v.key)}#boost`} data-testid="ads-plan-boost" title="Open this video to boost it in TikTok from here" className="inline-flex h-8 items-center gap-1 rounded-lg border border-line-strong px-2.5 text-[12.5px] font-medium text-brand-strong hover:bg-brand-soft"><Rocket className="size-3.5" />Boost</Link>
               <button type="button" onClick={() => { setList((l) => l.filter((x) => x.key !== v.key)); setEdits({}); setTotal(null); }} aria-label="Remove from batch" title="Remove from batch" className="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"><X className="size-4" /></button>
             </li>
           ))}
@@ -79,7 +80,7 @@ export function Planner({ videos, today }: { videos: PickRow[]; today: string })
           <button type="button" disabled={busy} data-testid="ads-mark-boosted" onClick={() => start(async () => { setError(null); const r = await saveBoostBatch({ boostedOn: date, days, note, videos: list.map((v) => ({ creativeId: v.creativeId, productId: v.productId, budget: budgetOf(v.key) })) }); if (r.ok) router.push("/ads?tab=log&saved=1"); else setError(r.error); })} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-4 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-60"><ClipboardCheck className="size-4" />{busy ? "Saving…" : "Mark As Boosted"}</button>
           <Link href="/ads?tab=picks" className="inline-flex h-10 items-center rounded-lg px-3 text-[14px] text-ink-2 hover:bg-surface-2">Back To Boost Picks</Link>
         </div>
-        <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-ink-3"><Info className="mt-0.5 size-3.5 shrink-0" />This is a plan. Create the batch in TikTok Ads Manager with these videos, then press Mark As Boosted so the Boost Log can show the results before and after. Nothing is sent to TikTok from here.</p>
+        <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-ink-3"><Info className="mt-0.5 size-3.5 shrink-0" />This is a plan. Create the batch in TikTok Ads Manager with these videos, then press Mark As Boosted so the Boost Log can show the results before and after. Nothing is sent to TikTok from this page. To boost one video through the app, press Boost on its row (the owner must switch it on in Settings first).</p>
       </section>
     </div>
   );

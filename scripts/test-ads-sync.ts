@@ -133,6 +133,14 @@ async function main() {
       const page = Number(qq.page), size = Number(qq.page_size);
       return reply(0, { list: lines.slice((page - 1) * size, page * size), page_info: { page, page_size: size, total_number: lines.length, total_page: Math.max(1, Math.ceil(lines.length / size)) } });
     }
+    if (p === "/campaign/gmv_max/session/create/") {
+      const b = body as { store_id?: string; campaign_id?: string; session?: { bid_type?: string; item_id?: string; budget?: number; product_list?: { spu_id?: string }[] } };
+      const se = b.session ?? {};
+      if (se.bid_type !== "CREATIVE_NO_BID" || !se.item_id || se.product_list?.length !== 1 || !se.product_list[0].spu_id || !b.store_id || !b.campaign_id) return reply(40002, null, "session: missing or wrong fields");
+      if (Number(se.budget) < 10) return reply(40002, null, "session.budget: value must be at least 10");
+      return reply(0, { session_id: "NEW-" + seen.filter((x) => x.path === "/campaign/gmv_max/session/create/").length });
+    }
+    if (p === "/campaign/gmv_max/session/delete/") { const b = body as { session_id?: string; advertiser_id?: string }; return b.session_id && b.advertiser_id ? reply(0, {}) : reply(40002, null, "session_id is required"); }
     return reply(40002, null, "unknown path " + p);
   };
   const deps = { cfg, f: fake, sleep, pauseMs: 0, now };
@@ -273,6 +281,58 @@ async function main() {
   const sc = await IN.creatorScoreboard(RG.makeRange("lifetime", null, todayKL()));
   check("creator scoreboard: a creator's unused golden videos are counted", sc.creators.find((c) => c.creator === "bt_creator")?.golden === 1, JSON.stringify(sc.creators.find((c) => c.creator === "bt_creator")));
   await wipeBT();
+
+
+  // ── creating and stopping a boost from the app (a pretend TikTok; the real one is never called) ──
+  const BW = await import("../src/lib/tiktok-ads/boost-write");
+  const wipeBW = async () => { await q(sql`delete from ads_boost_actions`); await q(sql`delete from ads_boost_batches where note = 'Created in the app'`); await q(sql`delete from ads_creative_daily where advertiser_id = 'BW'`); await q(sql`delete from ads_campaigns where advertiser_id = 'BW'`); await q(sql`delete from settings where key = 'ads_boost_write'`); };
+  await wipeBW();
+  await q(sql`insert into ads_campaigns (advertiser_id, campaign_id, store_id, name, status, promotion_type) values ('BW', 'BWC', 'BWS', 'Boost test campaign', 'ENABLE', 'PRODUCT_GMV_MAX'), ('BW', 'BWL', 'BWS', 'Live campaign', 'ENABLE', 'LIVE_GMV_MAX'), ('BW', 'BWD', 'BWS', 'Off campaign', 'DISABLE', 'PRODUCT_GMV_MAX')`);
+  const mkw = (id: string, status: string | null, camp = "BWC") => q(sql`insert into ads_creative_daily (advertiser_id, campaign_id, product_id, creative_id, day, cost, orders, gross_revenue, delivery_status) select 'BW', ${camp}, 'BWP', ${id}, (${todayKL()}::date - g), 5, 2, 90, ${status} from generate_series(0, 3) g`);
+  for (const v of ["bw-1", "bw-2", "bw-3", "bw-4"]) await mkw(v, "NOT_DELIVERYING");
+  await mkw("bw-auth", "AUTHORIZATION_NEEDED"); await mkw("bw-live", "DELIVERING", "BWL");
+  const sent = (path: string) => seen.filter((x) => x.path === path);
+  const U = { user: "Test Owner" };
+  const mk1 = (item: string, budget: number, days: number | null = null, camp = "BWC") => BW.createBoost({ itemId: item, advertiserId: "BW", campaignId: camp, budget, days, ...U }, deps);
+  const before0 = sent("/campaign/gmv_max/session/create/").length;
+  const off = await mk1("bw-1", 20);
+  check("boost from the app: switched off until the owner turns it on; TikTok is not asked", !off.ok && /switched off/.test((off as { error: string }).error) && sent("/campaign/gmv_max/session/create/").length === before0, JSON.stringify(off));
+  const def = await BW.getBoostWriteSettings();
+  check("boost from the app: defaults are off, RM 30 for one boost, RM 50 for all", def.enabled === false && def.maxBudget === 30 && def.dailyCap === 50);
+  const sv = await BW.saveBoostWriteSettings({ enabled: true, maxBudget: 30, dailyCap: 50 });
+  check("boost from the app: settings are saved; the all-boosts limit can never be below the one-boost limit", sv.enabled && (await BW.saveBoostWriteSettings({ maxBudget: 80 })).dailyCap === 80 && (await BW.saveBoostWriteSettings({ maxBudget: 30, dailyCap: 50 })).maxBudget === 30);
+  const opt = await BW.boostOptions("bw-1");
+  check("boost options: only Product GMV Max campaigns that are not switched off, where the video ran", opt.campaigns.length === 1 && opt.campaigns[0].campaignId === "BWC" && opt.campaigns[0].storeId === "BWS" && opt.campaigns[0].productId === "BWP" && opt.campaigns[0].ranHere && opt.blockers.length === 0, JSON.stringify(opt));
+  check("boost options: a video TikTok will not boost, and a video that is in no campaign, say so before asking TikTok", /Authorization/i.test((await BW.boostOptions("bw-auth")).blockers.join(" ")) && /No Product GMV Max campaign/.test((await BW.boostOptions("bw-nowhere")).blockers.join(" ")) && (await BW.boostOptions("bw-live")).campaigns.length === 0);
+  const tooBig = await mk1("bw-1", 40);
+  check("boost from the app: more than the one-boost limit is refused before TikTok is asked", !tooBig.ok && /limit of RM 30/.test((tooBig as { error: string }).error) && sent("/campaign/gmv_max/session/create/").length === before0, JSON.stringify(tooBig));
+  const bwr1 = await mk1("bw-1", 20);
+  const body1 = sent("/campaign/gmv_max/session/create/").at(-1)?.body as { advertiser_id: string; campaign_id: string; store_id: string; session: Record<string, unknown> };
+  check("boost from the app: creates the boost the way TikTok documents it (CREATIVE_NO_BID, one product, the video, budget, from now)", bwr1.ok && body1.advertiser_id === "BW" && body1.campaign_id === "BWC" && body1.store_id === "BWS" && body1.session.bid_type === "CREATIVE_NO_BID" && JSON.stringify(body1.session.product_list) === '[{"spu_id":"BWP"}]' && body1.session.item_id === "bw-1" && body1.session.budget === 20 && body1.session.schedule_type === "SCHEDULE_FROM_NOW" && !("schedule_end_time" in body1.session), JSON.stringify([bwr1, body1]));
+  const lg1 = (await q(sql`select ok, session_id, budget::float8 as b, user_name from ads_boost_actions where item_id = 'bw-1' and action = 'create' order by id desc limit 1`))[0];
+  check("boost from the app: the try is kept (who, which video, how much, TikTok's session)", lg1.ok === true && String(lg1.session_id).startsWith("NEW-") && Number(lg1.b) === 20 && lg1.user_name === "Test Owner");
+  check("boost from the app: it also enters the Boost Log, so before and after can be compared", Number((await q(sql`select count(*)::int as n from ads_boost_batch_videos v join ads_boost_batches b on b.id = v.batch_id where v.creative_id = 'bw-1' and b.note = 'Created in the app'`))[0].n) === 1);
+  const again = await mk1("bw-1", 10);
+  check("boost from the app: the same video cannot be boosted twice at once", !again.ok && /already running|just boosted/.test((again as { error: string }).error), JSON.stringify(again));
+  const bwr2 = await mk1("bw-2", 10, 3);
+  const body2 = sent("/campaign/gmv_max/session/create/").at(-1)?.body as { session: Record<string, string> };
+  check("boost from the app: a boost for some days has an end time in UTC, in TikTok's format", bwr2.ok && body2.session.schedule_type === "SCHEDULE_START_END" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(body2.session.schedule_end_time), JSON.stringify(body2));
+  const over = await mk1("bw-3", 25);
+  check("boost from the app: all boosts started here together may not pass the daily limit", !over.ok && /limit of RM 50/.test((over as { error: string }).error), JSON.stringify(over));
+  const calls3 = sent("/campaign/gmv_max/session/create/").length;
+  const small = await mk1("bw-3", 5);
+  check("boost from the app: TikTok's refusal is shown as TikTok said it, kept, and not counted as spending", !small.ok && /^TikTok said no \(40002\): session\.budget: value must be at least 10$/.test((small as { error: string }).error) && sent("/campaign/gmv_max/session/create/").length === calls3 + 1 && Number((await q(sql`select coalesce(sum(budget), 0)::float8 as n from ads_boost_actions where action = 'create' and ok and stopped_at is null`))[0].n) === 30, JSON.stringify(small));
+  check("boost from the app: a video with a status TikTok refuses is not sent to TikTok", !(await mk1("bw-auth", 10)).ok && sent("/campaign/gmv_max/session/create/").length === calls3 + 1);
+  const sid = (bwr1 as { sessionId: string }).sessionId;
+  const st = await BW.stopBoost(sid, "Test Owner", deps);
+  const del = sent("/campaign/gmv_max/session/delete/").at(-1)?.body as { advertiser_id: string; session_id: string };
+  check("stop: asks TikTok to delete that session and marks it stopped", st.ok && del.session_id === sid && del.advertiser_id === "BW" && (await q(sql`select 1 from ads_boost_actions where session_id = ${sid} and action = 'create' and stopped_at is not null`)).length === 1, JSON.stringify([st, del]));
+  const bwr3 = await mk1("bw-3", 30);
+  check("stop: the stopped boost's budget is free again, so another can start", bwr3.ok, JSON.stringify(bwr3));
+  check("stop: an unknown session is refused with a clear message", !(await BW.stopBoost("nope", "Test Owner", deps)).ok);
+  const acts = await BW.recentBoostActions(50);
+  check("boost from the app: the log lists creates, refusals and stops", acts.some((a) => a.action === "stop" && a.ok) && acts.some((a) => a.action === "create" && !a.ok) && acts.some((a) => a.action === "create" && a.ok));
+  await wipeBW();
 
   check("metric discovery: a changed list of names is asked about again, an unchanged one is not", seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length > probesBefore);
   const probesMid = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
