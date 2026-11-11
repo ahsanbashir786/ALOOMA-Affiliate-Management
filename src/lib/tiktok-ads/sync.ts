@@ -36,7 +36,7 @@ const TABLES: Record<string, Table> = {
   ads_videos: { name: "ads_videos", pk: ["advertiser_id", "store_id", "item_id"], cols: { advertiser_id: "text", store_id: "text", item_id: "text", spu_id: "text", title: "text", identity_id: "text", username: "text", posted_at: "timestamptz", authorization_status: "text", authorization_type: "text", eligible: "boolean", status: "text", raw: RAW } },
   ads_boosts: { name: "ads_boosts", pk: ["advertiser_id", "session_id"], cols: { advertiser_id: "text", campaign_id: "text", session_id: "text", store_id: "text", item_id: "text", status: "text", budget: "numeric", bid_type: "text", schedule_type: "text", starts_at: "timestamptz", ends_at: "timestamptz", raw: RAW } },
   ads_product_daily: { name: "ads_product_daily", pk: ["advertiser_id", "campaign_id", "product_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", day: "date", title: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", raw: RAW } },
-  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", delivery_status: "text", raw: RAW } },
+  ads_creative_daily: { name: "ads_creative_daily", pk: ["advertiser_id", "campaign_id", "product_id", "creative_id", "day"], cols: { advertiser_id: "text", campaign_id: "text", product_id: "text", creative_id: "text", day: "date", title: "text", account_name: "text", content_type: "text", cost: "numeric", orders: "int", gross_revenue: "numeric", roi: "numeric", cost_per_order: "numeric", impressions: "bigint", clicks: "bigint", click_rate: "numeric", conversion_rate: "numeric", view_rate_2s: "numeric", view_rate_6s: "numeric", delivery_status: "text", exploration_status: "text", boost_status: "text", raw: RAW } },
 };
 
 /** The row that stays open while a whole sync (every dataset) is in progress. */
@@ -213,19 +213,35 @@ async function metricSupport(): Promise<Record<string, string[]>> {
   const [r] = await rows<{ value: Record<string, string[]> }>(sql`select value from settings where key = ${MKEY}`);
   return r?.value ?? {};
 }
+/** TikTok's own list of allowed metric names: asked with a wrong name, its message lists the right ones. Empty when it does not say. */
+async function allowedMetricNames(ctx: Ctx, probe: ReportReq): Promise<string[]> {
+  try { await call(ctx, "/gmv_max/report/get/", { query: { ...reportQuery({ ...probe, mets: ["PROBE_METRIC"] }), page: 1, page_size: 1 } }); }
+  catch (e) {
+    const m = e instanceof Error ? e.message : "";
+    const list = m.match(/correct is ([\s\S]+?)(?:\(request|$)/i)?.[1];
+    if (list) return list.split(",").map((x) => x.trim()).filter((x) => /^[a-z0-9_]+$/i.test(x));
+  }
+  return [];
+}
+
 async function discoverMetrics(ctx: Ctx, kind: string, probe: ReportReq): Promise<string[]> {
   const known = await metricSupport();
-  // Remembered answers are used only while the list of names we ask about is the same (a new name added in an update is tried once).
-  const sig = [M.OPTIONAL_METRICS.length, M.OPTIONAL_METRICS.join(",").length].join(":");
-  if (known[kind] && known._sig?.[0] === sig && !ctx.deps.backfill) return known[kind];
+  const sigOf = (list: string[]) => [list.length, list.join(",").length].join(":");
+  // Remembered answers are reused while our own list of names (plus the status names found last time) is unchanged. No request is made then.
+  const remembered = [...M.OPTIONAL_METRICS, ...(known._extra ?? [])];
+  if (known[kind] && known._sig?.[0] === sigOf(remembered) && !ctx.deps.backfill) return known[kind];
+  // Otherwise: our own names, plus every status, exploration or boost metric TikTok says it has.
+  const allowed = await allowedMetricNames(ctx, probe).catch(() => [] as string[]);
+  const extra = allowed.filter((n) => M.STATUS_LIKE.test(n) && !M.OPTIONAL_METRICS.includes(n));
+  const candidates = [...M.OPTIONAL_METRICS, ...extra];
   const accepted: string[] = [];
   const ask = (mets: string[]) => call(ctx, "/gmv_max/report/get/", { query: { ...reportQuery({ ...probe, mets }), page: 1, page_size: 1 } });
   await ask(CORE); // if even the basic numbers are refused, that is the real problem and TikTok's message is shown
-  for (const m of M.OPTIONAL_METRICS) {
+  for (const m of candidates) {
     try { await ask([...CORE, m]); accepted.push(m); }
     catch (e) { if (!looksLikeBadParam(e)) throw e; }
   }
-  const all = { ...known, [kind]: accepted, _sig: [sig] };
+  const all = { ...known, [kind]: accepted, _extra: extra, _sig: [sigOf(candidates)] };
   await rows(sql`insert into settings (key, value) values (${MKEY}, ${JSON.stringify(all)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`);
   return accepted;
 }

@@ -127,7 +127,9 @@ CREATE TABLE public.ads_creative_daily (
     raw jsonb,
     h text,
     synced_at timestamp with time zone DEFAULT now() NOT NULL,
-    delivery_status text
+    delivery_status text,
+    exploration_status text,
+    boost_status text
 );
 
 

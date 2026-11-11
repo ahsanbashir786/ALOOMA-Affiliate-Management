@@ -21,6 +21,9 @@ async function main() {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const addDays = (s: string, n: number) => iso(new Date(Date.parse(s + "T00:00:00Z") + n * 86400_000));
   const TODAY = "2026-11-10";
+  // The connection check uses the real date (the syncs use the fixed one above), so "the future" starts after whichever is later.
+  const REAL_TODAY = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const LAST_OK_DAY = REAL_TODAY > TODAY ? REAL_TODAY : TODAY;
   const FIRST_AD_DAY = "2026-08-20"; // the account had no ads before this day
 
   // ── a pretend TikTok Business API ──
@@ -31,7 +34,7 @@ async function main() {
   let rejectProductDim = false;
   let videosOnlyViaIdentity = false;
   let oldestAllowed = "";
-  const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks", "creative_delivery_status"];
+  const ACCEPTED = ["cost", "net_cost", "orders", "cost_per_order", "gross_revenue", "roi", "title", "product_impressions", "product_clicks", "creative_delivery_status", "exploration_status", "boost_status"];
   const failAccount222 = true;
   let bump: Record<string, string> = {};
   const seen: { path: string; headers: Record<string, string>; q: Record<string, string>; body: unknown }[] = [];
@@ -95,7 +98,7 @@ async function main() {
     if (p === "/gmv_max/report/get/") {
       const dims = JSON.parse(qq.dimensions) as string[], mets = JSON.parse(qq.metrics) as string[];
       const start = qq.start_date, end = qq.end_date;
-      if (end > TODAY) return reply(40002, null, "end_date can not be in the future");
+      if (end > LAST_OK_DAY) return reply(40002, null, "end_date can not be in the future");
       if (!JSON.parse(qq.store_ids).includes("S1")) return reply(40002, null, "Invalid store_ids");
       // TikTok's real rules (its own messages): product and creative results need the campaign (and product) named in the filter.
       const filt = (qq.filtering ? JSON.parse(qq.filtering) : {}) as { campaign_ids?: string[]; item_group_ids?: string[] };
@@ -105,7 +108,7 @@ async function main() {
       if (productLevel && filt.campaign_ids!.length > maxCampaignIds) return reply(40002, null, "Invalid param: campaign_ids can hold at most " + maxCampaignIds + " ids");
       if (rejectProductDim && creativeLevel && dims.includes("item_group_id")) return reply(40002, null, "Invalid dimensions: item_group_id can not be used with item_id");
       if (oldestAllowed && start < oldestAllowed && (creativeLevel || productLevel)) return reply(40002, null, "The date range is out of the allowed limit");
-      if (mets.includes("PROBE_METRIC")) return reply(40002, null, "metrics.0: value is not one of the allowed values, value is PROBE_METRIC ,correct is cost, orders, gross_revenue, roi, creative_delivery_status, exploration_status (request X)");
+      if (mets.includes("PROBE_METRIC")) return reply(40002, null, "metrics.0: value is not one of the allowed values, value is PROBE_METRIC ,correct is cost, orders, gross_revenue, roi, creative_delivery_status, exploration_status, boost_status, creative_boost_state (request X)");
       if (dims.includes("PROBE_DIM")) return reply(40002, null, "dimensions.0: value is not one of the allowed values, value is PROBE_DIM ,correct is campaign_id, item_id, item_group_id, stat_time_day");
       const bad = mets.find((m) => !ACCEPTED.includes(m));
       if (bad) return reply(40002, null, "Invalid metric: " + bad);
@@ -116,7 +119,7 @@ async function main() {
           const items = creativeLevel ? ["V1", "V22"] : productLevel ? ["P1"] : [""];
           for (const it of items) {
             const v = val(camp, d, it) as Record<string, string>;
-            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it; v.creative_delivery_status = it === "V1" ? "DELIVERING" : "AUTHORIZATION_NEEDED";
+            v.product_impressions = "1000"; v.product_clicks = "50"; v.title = "Video " + it; v.creative_delivery_status = it === "V1" ? "DELIVERING" : "AUTHORIZATION_NEEDED"; v.exploration_status = it === "V1" ? "OUTSTANDING" : "UNDERPERFORMING"; v.boost_status = it === "V1" ? "BOOSTED" : "NOT_BOOSTED";
             if (bump[`${camp}|${d}`] && !it) v.gross_revenue = bump[`${camp}|${d}`];
             const m: Record<string, string> = Object.fromEntries(mets.map((k) => [renameMetrics ? "x_" + k : k, v[k] ?? ""]));
             const dm: Record<string, string> = { stat_time_day: d + " 00:00:00" };
@@ -203,6 +206,8 @@ async function main() {
   const cr = (await q(sql`select title, impressions::int as imp, clicks::int as clk, cost_per_order::float8 as cpo from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
   check("creative results: the extra numbers TikTok accepts are saved (title, impressions, clicks, cost per order)", cr.title === "Video V1" && cr.imp === 1000 && cr.clk === 50 && cr.cpo === 10, JSON.stringify(cr));
   const support = (await q(sql`select value from settings where key = 'tiktok_ads_metrics'`))[0]?.value as Record<string, string[]> | undefined;
+  const expl = (await q(sql`select exploration_status, boost_status from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
+  check("creative results: the exploration status and boost status are found from TikTok's own list of allowed metrics and saved", expl.exploration_status === "OUTSTANDING" && expl.boost_status === "BOOSTED", JSON.stringify(expl));
   const dl = (await q(sql`select delivery_status from ads_creative_daily where creative_id = 'V1' limit 1`))[0];
   check("creative results: the delivery status TikTok gives (Delivering, Learning, Authorization needed…) is saved", dl.delivery_status === "DELIVERING", JSON.stringify(dl));
   await q(sql`update settings set value = jsonb_set(value, '{_sig}', '["old"]'::jsonb) where key = 'tiktok_ads_metrics'`);
@@ -229,7 +234,7 @@ async function main() {
   const probesMid = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length;
   await S.runAdsDataset("product_daily", "manual", null, deps);
   check("metric discovery: remembered answers are reused", seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size === "1").length === probesMid);
-  check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title", "creative_delivery_status"].sort()) && !(support?.product ?? []).includes("tt_account_name"), JSON.stringify(support));
+  check("metric discovery: only the optional names TikTok accepts are remembered", JSON.stringify([...(support?.creative ?? [])].sort()) === JSON.stringify(["cost_per_order", "product_impressions", "product_clicks", "title", "creative_delivery_status", "exploration_status", "boost_status"].sort()) && !(support?.product ?? []).includes("tt_account_name"), JSON.stringify(support));
   const realReports = seen.filter((x) => x.path === "/gmv_max/report/get/" && x.q.page_size !== "1");
   check("requests: after discovery every report asks only for metrics TikTok accepts", realReports.every((x) => (JSON.parse(x.q.metrics) as string[]).every((m) => ACCEPTED.includes(m))));
   check("requests: product and creative requests always name their campaign (and product)", realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_id")).every((x) => { const f = JSON.parse(x.q.filtering); return f.campaign_ids.length === 1 && f.item_group_ids.length === 1; }) && realReports.filter((x) => JSON.parse(x.q.dimensions).includes("item_group_id") && !JSON.parse(x.q.dimensions).includes("item_id")).every((x) => JSON.parse(x.q.filtering).campaign_ids.length >= 1));
@@ -240,7 +245,7 @@ async function main() {
   const bst = (await q(sql`select session_id, campaign_id, item_id, status, budget::float8 as budget, starts_at is not null as has_start from ads_boosts order by session_id`));
   check("boosts: the sessions of each campaign saved with item, status (from the detail call), budget and schedule; a campaign TikTok refuses is skipped and reported", bst.length === 2 && bst[0].campaign_id === "C1" && bst[0].item_id === "V1" && bst[0].budget === 50 && bst[0].has_start === true && bst[0].status === "BOOSTING" && bst[1].status === "BOOSTED" && /1 of 3 campaigns skipped/.test(String(r1.find((r) => r.dataset === "boosts")?.error)), JSON.stringify([bst, r1.find((r) => r.dataset === "boosts")]));
   check("requests: every call carries the login in the Access-Token header", seen.filter((s) => !s.path.startsWith("/oauth2/")).every((s) => s.headers["access-token"] === "AT123"));
-  check("requests: the last day asked for is never in the future", reqs.every((r) => r.q.end_date <= TODAY));
+  check("requests: the last day asked for is never in the future", reqs.every((r) => r.q.end_date <= LAST_OK_DAY));
   check("requests: asks for the shop ids of that account only", reqs.every((r) => r.q.store_ids === '["S1"]'));
   const ov1 = await S.adsOverview();
   check("info notes: how a result was read is not shown as a warning", S.isInfoNote("Used dimensions a + b") && S.isInfoNote("Used dimensions a · Used dimensions b") && !S.isInfoNote("1 of 2 accounts skipped (x)") && !S.isInfoNote("Used dimensions a · 1 lines skipped") && !S.isInfoNote(null));

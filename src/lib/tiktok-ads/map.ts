@@ -104,11 +104,16 @@ export const FUNNEL_METRICS = {
 } as const;
 /** Every optional metric worth asking for. Which of them TikTok accepts is found out once per account (see discovery in sync.ts). */
 export const DELIVERY_STATUS_METRICS = ["creative_delivery_status", "exploration_secondary_status", "exploration_status", "delivery_status", "creative_status", "item_status"];
+/** Metric names that look like a status, an exploration state or a boost state: picked out of TikTok's own list of allowed metrics. */
+export const STATUS_LIKE = /status|explor|boost|authoriz/i;
 export const OPTIONAL_METRICS = ["cost_per_order", "title", "tt_account_name", "shop_content_type", "product_name", ...Object.values(FUNNEL_METRICS).flat(), ...DELIVERY_STATUS_METRICS];
 const funnel = (m: R) => ({
   impressions: int(dec(pick(m, ...FUNNEL_METRICS.impressions))), clicks: int(dec(pick(m, ...FUNNEL_METRICS.clicks))),
   click_rate: dec(pick(m, ...FUNNEL_METRICS.click_rate)), conversion_rate: dec(pick(m, ...FUNNEL_METRICS.conversion_rate)),
 });
+
+/** The first metric (or dimension) whose name matches, as text. */
+const firstLike = (l: ReportLine, re: RegExp): string | null => { for (const o of [l.mets, l.dims]) for (const [k, v] of Object.entries(o)) if (re.test(k) && v != null && v !== "" && v !== "-") return str(v); return null; };
 
 /** One video's result for one product in one campaign on one day. `product` is the product the request was filtered to (used when TikTok does not repeat it in the line). */
 export function creativeDaily(l: ReportLine, advertiserId: string, scope?: { campaign?: string; product?: string }): Row | null {
@@ -121,7 +126,7 @@ export function creativeDaily(l: ReportLine, advertiserId: string, scope?: { cam
     account_name: str(pick(l.mets, "tt_account_name", "account_name")),
     content_type: str(pick(l.mets, "shop_content_type", "content_type")),
     cost: dec(l.mets.cost), orders: int(dec(l.mets.orders)), gross_revenue: dec(l.mets.gross_revenue), roi: dec(l.mets.roi), cost_per_order: dec(l.mets.cost_per_order),
-    ...funnel(l.mets), view_rate_2s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_2s)), view_rate_6s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_6s)), delivery_status: str(pick(l.mets, ...DELIVERY_STATUS_METRICS) ?? pick(l.dims, ...DELIVERY_STATUS_METRICS)), raw: raw(l),
+    ...funnel(l.mets), view_rate_2s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_2s)), view_rate_6s: dec(pick(l.mets, ...FUNNEL_METRICS.view_rate_6s)), delivery_status: str(pick(l.mets, ...DELIVERY_STATUS_METRICS) ?? pick(l.dims, ...DELIVERY_STATUS_METRICS)), exploration_status: firstLike(l, /explor/i), boost_status: firstLike(l, /boost/i), raw: raw(l),
   };
 }
 
