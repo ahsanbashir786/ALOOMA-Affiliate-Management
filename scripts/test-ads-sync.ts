@@ -217,6 +217,7 @@ async function main() {
   const VA = await import("../src/lib/ads/vault");
   const GR = await import("../src/lib/ads/groups");
   const IN = await import("../src/lib/ads/insights");
+  const RG = await import("../src/lib/ads/range");
   const ST = await import("../src/lib/ads/status");
   const { todayKL } = await import("../src/lib/time");
   const wipeBT = async () => { await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`); await q(sql`delete from ads_campaign_daily where advertiser_id = 'BT'`); await q(sql`delete from tt_videos where video_id = 'bt-ORG'`); await q(sql`delete from ads_boost_batches where note = 'bt-test'`); };
@@ -246,20 +247,30 @@ async function main() {
   // Boost Log: a batch boosted 2 days ago with bt-A. Before = the 7 days before, after = from the boost date.
   const [bb] = await q(sql`insert into ads_boost_batches (boosted_on, days, total_budget, note) values ((${todayKL()}::date - 2), 1, 35, 'bt-test') returning id::int as id`) as { id: number }[];
   await q(sql`insert into ads_boost_batch_videos (batch_id, creative_id, product_id, budget) values (${bb.id}, 'bt-A', 'BP', 35)`);
-  const lg = (await IN.boostLog()).find((x) => x.id === bb.id);
+  const lg = (await IN.boostLog(RG.makeRange("lifetime", null, todayKL()))).find((x) => x.id === bb.id);
   check("boost log: results before and after the boost date are compared, per day", !!lg && lg.before.revenue === 300 && lg.after.revenue === 450 && lg.afterDays === 3 && lg.verdict === "better" && lg.videos.length === 1, JSON.stringify(lg && [lg.before.revenue, lg.after.revenue, lg.afterDays, lg.verdict]));
   check("gmv max: a video in the Boost Log shows when you last boosted it", !!(await VA.vault({ minRoi: 5, minOrders: 10, idleDays: 7 })).videos.find((x) => x.creativeId === "bt-A")?.lastLogged);
+  // Date ranges
+  const T = "2026-11-11"; // a Wednesday
+  const rr = (r: Record<string, string>, d = "7d" as const) => RG.resolveRange(r, T, d);
+  check("date range: quick choices (today, yesterday, last 7, this week, last week, this month, last month, lifetime)", [rr({ range: "today" }), rr({ range: "yesterday" }), rr({ range: "7d" }), rr({ range: "this_week" }), rr({ range: "last_week" }), rr({ range: "this_month" }), rr({ range: "last_month" }), rr({ range: "lifetime" })].map((r) => `${r.from}..${r.to}`).join(" ") === "2026-11-11..2026-11-11 2026-11-10..2026-11-10 2026-11-05..2026-11-11 2026-11-09..2026-11-11 2026-11-02..2026-11-08 2026-11-01..2026-11-11 2026-10-01..2026-10-31 null..2026-11-11", [rr({ range: "this_week" }), rr({ range: "last_month" })].map((r) => `${r.from}..${r.to}`).join(" "));
+  const cu = rr({ range: "custom", from: "2026-10-01", to: "2026-10-10" });
+  check("date range: a custom range is compared with the period of the same length just before; lifetime has none; the future is cut back to today; nonsense falls back", cu.days === 10 && cu.prevFrom === "2026-09-21" && cu.prevTo === "2026-09-30" && rr({ range: "lifetime" }).prevFrom === null && rr({ range: "custom", from: "2026-10-01", to: "2030-01-01" }).to === T && rr({ range: "custom", from: "2026-10-09", to: "2026-10-01" }).from === "2026-10-01" && rr({ range: "nope" }).key === "7d" && rr({}, "lifetime" as never).key === "lifetime" && RG.rangeSuffix({ range: "custom", from: "2026-10-01", to: "2026-10-10" }) === "&range=custom&from=2026-10-01&to=2026-10-10" && RG.rangeSuffix({}) === "");
+  // the range changes the numbers on Boost Picks (group stays all history)
+  const vr = await VA.vault({ minRoi: 5, minOrders: 10, idleDays: 7 }, RG.makeRange("custom", todayKL(), todayKL()));
+  const vA = vr.videos.find((x) => x.creativeId === "bt-A"), vS = vr.videos.find((x) => x.creativeId === "bt-S");
+  check("date range: Boost Picks numbers follow the dates (bt-A spent RM 10 today, bt-S nothing today) while the group stays the same", vA?.rCost === 10 && vA.cost === 50 && vS?.rCost === 0 && vS.cost > 0 && vS.group === "stopped", JSON.stringify([vA?.rCost, vA?.cost, vS?.rCost, vS?.group]));
   // Campaign Health
   await q(sql`insert into ads_campaign_daily (advertiser_id, campaign_id, day, cost, orders, gross_revenue) select 'BT', 'bt-NS', (${todayKL()}::date - g), 20, 0, 0 from generate_series(0, 4) g`);
   await q(sql`insert into ads_campaign_daily (advertiser_id, campaign_id, day, cost, orders, gross_revenue) select 'BT', 'bt-ST', (${todayKL()}::date - g), 20, 2, 200 from generate_series(8, 12) g`);
-  const ch = await IN.campaignHealth(7);
+  const ch = await IN.campaignHealth(RG.lastNDays(todayKL(), 7));
   const hOf = (id: string) => ch.campaigns.find((c) => c.id === id)?.health;
   check("campaign health: spending with no orders is 'No Sales'; one that spent last week and nothing now is 'Stopped Spending'", hOf("bt-NS") === "nosales" && hOf("bt-ST") === "stopped", `${hOf("bt-NS")} ${hOf("bt-ST")}`);
-  const td = await IN.adsToday();
-  check("ads today: alerts name the campaign with no sales, and golden videos are counted", td.alerts.some((a2) => /No Orders/.test(a2.title) && /bt-NS/.test(a2.title)) && td.opportunities.find((o) => o.key === "stopped")!.count >= 1 && td.series.length === 30, JSON.stringify(td.alerts.map((a2) => a2.title)));
+  const td = await IN.adsToday(RG.lastNDays(todayKL(), 7));
+  check("ads today: alerts name the campaign with no sales, and golden videos are counted", td.alerts.some((a2) => /No Orders/.test(a2.title) && /bt-NS/.test(a2.title)) && td.opportunities.find((o) => o.key === "stopped")!.count >= 1 && td.series.length === 7 && td.rangeKpi.cost >= 0 && (await IN.adsToday(RG.makeRange("lifetime", null, todayKL()))).series.length === 120, JSON.stringify(td.alerts.map((a2) => a2.title)));
   const vd = await IN.videoDetail("bt-A");
   check("video detail: 60 days of results, where it ran, and its boost history", !!vd && vd.series.length === 60 && vd.campaigns.length === 1 && vd.logged.length === 1 && (await IN.videoDetail("nope")) === null);
-  const sc = await IN.creatorScoreboard();
+  const sc = await IN.creatorScoreboard(RG.makeRange("lifetime", null, todayKL()));
   check("creator scoreboard: a creator's unused golden videos are counted", sc.creators.find((c) => c.creator === "bt_creator")?.golden === 1, JSON.stringify(sc.creators.find((c) => c.creator === "bt_creator")));
   await wipeBT();
 

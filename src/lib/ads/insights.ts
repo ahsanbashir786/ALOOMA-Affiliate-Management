@@ -1,18 +1,17 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
-import { addDaysISO, todayKL } from "@/lib/time";
+import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { productName, productRank } from "@/lib/products/catalog";
 import { vault, type VaultVideo } from "./vault";
 import { BOOST_GROUPS } from "./groups";
+import { lastNDays, sqlFrom, sqlPrev, type Range } from "./range";
 
 // Read-only numbers for the GMV Max screens. Everything comes from the Ads sync tables (ads_*).
 
 export type Kpi = { cost: number; revenue: number; orders: number; roi: number | null };
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 const kpiOf = (cost: number, revenue: number, orders: number): Kpi => ({ cost, revenue, orders, roi: cost > 0 ? revenue / cost : null });
-export type Period = 7 | 30 | 90;
-export const asPeriod = (v: string | undefined): Period => ([7, 30, 90] as const).find((d) => d === Number(v)) ?? 7;
 
 async function kpiBetween(from: string, to: string): Promise<Kpi> {
   const [r] = await rows<{ cost: number; revenue: number; orders: number }>(sql`
@@ -24,25 +23,28 @@ async function kpiBetween(from: string, to: string): Promise<Kpi> {
 // ───────────────────────────── Ads Today ─────────────────────────────
 export type Alert = { level: "critical" | "warn" | "info"; title: string; detail: string; href?: string };
 export type TodayData = {
-  hasData: boolean; today: string; latestDay: string | null; latest: Kpi; dayBefore: Kpi; week: Kpi; weekBefore: Kpi; month: Kpi; monthBefore: Kpi;
-  series: { day: string; cost: number; revenue: number }[]; alerts: Alert[];
+  hasData: boolean; today: string; latestDay: string | null; latest: Kpi; dayBefore: Kpi; range: Range; rangeKpi: Kpi; rangePrev: Kpi; hasPrev: boolean;
+  series: { day: string; cost: number; revenue: number }[]; seriesCapped: boolean; alerts: Alert[];
   opportunities: { key: string; label: string; count: number }[]; topPicks: VaultVideo[]; activeBoosts: number; activeCampaigns: number;
 };
 
-export async function adsToday(): Promise<TodayData> {
+export async function adsToday(range: Range): Promise<TodayData> {
   const today = todayKL();
   const [l] = await rows<{ d: string | null }>(sql`select to_char(max(day), 'YYYY-MM-DD') as d from ads_campaign_daily where coalesce(cost, 0) > 0 or coalesce(orders, 0) > 0`);
   const latestDay = l?.d ?? null;
   const end = latestDay ?? today;
   const d = (n: number) => addDaysISO(end, n);
-  const [latest, dayBefore, week, weekBefore, month, monthBefore, seriesRaw, v, camp, boosts] = await Promise.all([
-    kpiBetween(end, end), kpiBetween(d(-1), d(-1)), kpiBetween(d(-6), end), kpiBetween(d(-13), d(-7)), kpiBetween(d(-29), end), kpiBetween(d(-59), d(-30)),
-    rows<{ day: string; cost: number; revenue: number }>(sql`select to_char(day, 'YYYY-MM-DD') as day, coalesce(sum(cost), 0)::float8 as cost, coalesce(sum(gross_revenue), 0)::float8 as revenue from ads_campaign_daily where day between ${d(-29)}::date and ${end}::date group by 1 order by 1`),
-    vault(), campaignHealth(7),
+  const [pf, pt] = sqlPrev(range);
+  const chartFrom = (() => { const f = sqlFrom(range); const cap = addDaysISO(range.to, -119); return f < cap ? cap : f; })();
+  const [latest, dayBefore, rangeKpi, rangePrev, seriesRaw, v, camp, boosts] = await Promise.all([
+    kpiBetween(end, end), kpiBetween(d(-1), d(-1)), kpiBetween(sqlFrom(range), range.to), range.prevFrom ? kpiBetween(pf, pt) : Promise.resolve(kpiOf(0, 0, 0)),
+    rows<{ day: string; cost: number; revenue: number }>(sql`select to_char(day, 'YYYY-MM-DD') as day, coalesce(sum(cost), 0)::float8 as cost, coalesce(sum(gross_revenue), 0)::float8 as revenue from ads_campaign_daily where day between ${chartFrom}::date and ${range.to}::date group by 1 order by 1`),
+    vault(), campaignHealth(lastNDays(today, 7)),
     rows<{ n: number }>(sql`select count(*)::int as n from ads_boosts where coalesce(ends_at, now() + interval '1 day') > now()`),
   ]);
   const byDay = new Map(seriesRaw.map((r) => [r.day, r]));
-  const series = Array.from({ length: 30 }, (_, i) => { const day = d(i - 29); const r = byDay.get(day); return { day, cost: num(r?.cost), revenue: num(r?.revenue) }; });
+  const nDays = daysBetweenISO(chartFrom, range.to) + 1;
+  const series = Array.from({ length: nDays }, (_, i) => { const day = addDaysISO(chartFrom, i); const r = byDay.get(day); return { day, cost: num(r?.cost), revenue: num(r?.revenue) }; });
 
   const alerts: Alert[] = [];
   if (latestDay && latestDay < addDaysISO(today, -2)) alerts.push({ level: "warn", title: "Ads Data Is Old", detail: `The newest results are from ${latestDay}. Press Sync Now in Data Sync.`, href: "/sync?tab=ads" });
@@ -62,7 +64,7 @@ export async function adsToday(): Promise<TodayData> {
 
   const label: Record<string, string> = { stopped: "Stopped While Selling", promise: "Sold, Then Dropped", underfed: "Selling, Low Spend", never: "Never Started" };
   return {
-    hasData: !!latestDay || v.videos.length > 0, today, latestDay, latest, dayBefore, week, weekBefore, month, monthBefore, series, alerts,
+    hasData: !!latestDay || v.videos.length > 0, today, latestDay, latest, dayBefore, range, rangeKpi, rangePrev, hasPrev: !!range.prevFrom, series, seriesCapped: !!range.from ? chartFrom > range.from : true, alerts,
     opportunities: BOOST_GROUPS.map((k) => ({ key: k, label: label[k], count: v.counts[k] })),
     // Proven videos first; a never-started video only when it already sells without ads.
     topPicks: [...v.videos.filter((x) => !x.boostedNow && (x.group === "stopped" || x.group === "promise" || x.group === "underfed")), ...v.videos.filter((x) => x.group === "never" && x.organicGmv > 0)].slice(0, 5),
@@ -77,11 +79,8 @@ export type CampaignRow = {
   id: string; name: string; account: string | null; status: string | null; type: string | null; budget: number | null; roasTarget: number | null;
   now: Kpi; before: Kpi; all: Kpi; lastSpend: string | null; latestCost: number; trend: number[]; health: Health; note: string;
 };
-export async function campaignHealth(days: Period): Promise<{ days: Period; from: string; to: string; campaigns: CampaignRow[]; total: Kpi; totalBefore: Kpi }> {
-  const today = todayKL();
-  const [l] = await rows<{ d: string | null }>(sql`select to_char(max(day), 'YYYY-MM-DD') as d from ads_campaign_daily`);
-  const to = l?.d && l.d < today ? l.d : today;
-  const from = addDaysISO(to, -(days - 1)), pTo = addDaysISO(from, -1), pFrom = addDaysISO(pTo, -(days - 1)), t3 = addDaysISO(to, -2), t14 = addDaysISO(to, -13);
+export async function campaignHealth(range: Range): Promise<{ range: Range; campaigns: CampaignRow[]; total: Kpi; totalBefore: Kpi; hasPrev: boolean }> {
+  const to = range.to, from = sqlFrom(range), [pFrom, pTo] = sqlPrev(range), t3 = addDaysISO(to, -2), t14 = addDaysISO(to, -13);
   const raw = await rows<{
     campaign_id: string; name: string | null; account: string | null; status: string | null; promotion_type: string | null; budget: number | null; roas_target: number | null;
     c: number; r: number; o: number; pc: number; pr: number; po: number; ac: number; ar: number; ao: number; last_spend: string | null; c3: number; latest_cost: number; trend: number[] | null;
@@ -120,22 +119,21 @@ export async function campaignHealth(days: Period): Promise<{ days: Period; from
     };
   });
   const sum = (f: (c: CampaignRow) => Kpi) => campaigns.reduce((a, c) => kpiOf(a.cost + f(c).cost, a.revenue + f(c).revenue, a.orders + f(c).orders), kpiOf(0, 0, 0));
-  return { days, from, to, campaigns, total: sum((c) => c.now), totalBefore: sum((c) => c.before) };
+  return { range, campaigns, total: sum((c) => c.now), totalBefore: sum((c) => c.before), hasPrev: !!range.prevFrom };
 }
 
 // ───────────────────────────── Product Performance ─────────────────────────────
 export type ProductRow = { key: string; label: string; now: Kpi; before: Kpi; costPerOrder: number | null; share: number; videosWithSpend: number; golden: number; verdict: "push" | "hold" | "fix" | "idle"; note: string };
-export async function productPerformance(days: Period): Promise<{ days: Period; from: string; to: string; products: ProductRow[]; accountRoi: number | null }> {
-  const today = todayKL();
-  const from = addDaysISO(today, -(days - 1)), pTo = addDaysISO(from, -1), pFrom = addDaysISO(pTo, -(days - 1));
+export async function productPerformance(range: Range): Promise<{ range: Range; products: ProductRow[]; accountRoi: number | null }> {
+  const from = sqlFrom(range), to = range.to, [pFrom, pTo] = sqlPrev(range);
   const [raw, v] = await Promise.all([
     rows<{ product_id: string; product_key: string | null; title: string | null; c: number; r: number; o: number; pc: number; pr: number; po: number }>(sql`
       select d.product_id, pm.product_key, max(d.title) as title,
-        coalesce(sum(d.cost) filter (where d.day >= ${from}::date), 0)::float8 as c, coalesce(sum(d.gross_revenue) filter (where d.day >= ${from}::date), 0)::float8 as r, coalesce(sum(d.orders) filter (where d.day >= ${from}::date), 0)::int as o,
+        coalesce(sum(d.cost) filter (where d.day between ${from}::date and ${to}::date), 0)::float8 as c, coalesce(sum(d.gross_revenue) filter (where d.day between ${from}::date and ${to}::date), 0)::float8 as r, coalesce(sum(d.orders) filter (where d.day between ${from}::date and ${to}::date), 0)::int as o,
         coalesce(sum(d.cost) filter (where d.day between ${pFrom}::date and ${pTo}::date), 0)::float8 as pc, coalesce(sum(d.gross_revenue) filter (where d.day between ${pFrom}::date and ${pTo}::date), 0)::float8 as pr, coalesce(sum(d.orders) filter (where d.day between ${pFrom}::date and ${pTo}::date), 0)::int as po
       from ads_product_daily d left join product_map pm on pm.product_id = d.product_id
-      where d.day >= ${pFrom}::date and coalesce(pm.product_key, '') <> 'excluded' group by 1, 2`),
-    vault(),
+      where d.day between least(${pFrom}::date, ${from}::date) and ${to}::date and coalesce(pm.product_key, '') <> 'excluded' group by 1, 2`),
+    vault(undefined, range),
   ]);
   type Acc = { key: string; label: string; c: number; r: number; o: number; pc: number; pr: number; po: number; rank: number };
   const m = new Map<string, Acc>();
@@ -155,38 +153,38 @@ export async function productPerformance(days: Period): Promise<{ days: Period; 
     if (now.cost <= 0) { verdict = "idle"; note = golden ? "No ad spend now, but it has proven videos" : "No ad spend in this period"; }
     else if (now.roi != null && accountRoi != null && now.roi >= accountRoi * 1.15) { verdict = "push"; note = `ROI ${now.roi.toFixed(1)}× is above your average ${accountRoi.toFixed(1)}×`; }
     else if (now.orders === 0 || (now.roi != null && accountRoi != null && now.roi < accountRoi * 0.7)) { verdict = "fix"; note = now.orders === 0 ? "Spending with no orders" : `ROI ${now.roi?.toFixed(1)}× is well under your average`; }
-    return { key: a.key, label: a.label, now, before, costPerOrder: now.orders > 0 ? now.cost / now.orders : null, share: totalCost > 0 ? now.cost / totalCost : 0, videosWithSpend: mine.filter((x) => x.cost7 > 0).length, golden, verdict, note };
+    return { key: a.key, label: a.label, now, before, costPerOrder: now.orders > 0 ? now.cost / now.orders : null, share: totalCost > 0 ? now.cost / totalCost : 0, videosWithSpend: mine.filter((x) => x.rCost > 0).length, golden, verdict, note };
   }).sort((a, b) => b.now.revenue - a.now.revenue || b.before.revenue - a.before.revenue);
-  return { days, from, to: today, products, accountRoi };
+  return { range, products, accountRoi };
 }
 
 // ───────────────────────────── Creator Ad Scoreboard ─────────────────────────────
 export type CreatorRow = { creator: string; videos: number; sellers: number; all: Kpi; week: Kpi; golden: number; blocked: number; best: VaultVideo | null };
-export async function creatorScoreboard(): Promise<{ creators: CreatorRow[]; unknownVideos: number; accountRoi: number | null }> {
-  const v = await vault();
+export async function creatorScoreboard(range: Range): Promise<{ range: Range; creators: CreatorRow[]; unknownVideos: number; accountRoi: number | null }> {
+  const v = await vault(undefined, range);
   const m = new Map<string, CreatorRow & { c: number; r: number; o: number; c7: number; r7: number; o7: number }>();
   let unknown = 0;
   for (const x of v.videos) {
-    if (x.cost <= 0 && x.organicGmv <= 0) continue;
+    if (x.rCost <= 0 && !(x.cost <= 0 && x.organicGmv > 0 && !range.from)) continue;
     if (!x.creator) { unknown++; continue; }
     const a = m.get(x.creator) ?? { creator: x.creator, videos: 0, sellers: 0, all: kpiOf(0, 0, 0), week: kpiOf(0, 0, 0), golden: 0, blocked: 0, best: null, c: 0, r: 0, o: 0, c7: 0, r7: 0, o7: 0 };
     a.videos++; if (x.orders > 0) a.sellers++;
-    a.c += x.cost; a.r += x.revenue; a.o += x.orders; a.c7 += x.cost7; a.r7 += x.revenue7; a.o7 += x.orders7;
+    a.c += x.rCost; a.r += x.rRevenue; a.o += x.rOrders; a.c7 += x.cost7; a.r7 += x.revenue7; a.o7 += x.orders7;
     if (x.group === "stopped" || x.group === "promise" || (x.group === "never" && x.organicGmv > 0)) a.golden++;
     if (x.group === "blocked") a.blocked++;
-    if (!a.best || x.revenue > a.best.revenue) a.best = x;
+    if (!a.best || x.rRevenue > a.best.rRevenue) a.best = x;
     m.set(x.creator, a);
   }
   const creators = [...m.values()].map(({ c, r, o, c7, r7, o7, ...a }) => ({ ...a, all: kpiOf(c, r, o), week: kpiOf(c7, r7, o7) })).sort((a, b) => b.all.revenue - a.all.revenue);
-  return { creators, unknownVideos: unknown, accountRoi: v.accountRoi };
+  return { range, creators, unknownVideos: unknown, accountRoi: v.accountRoi };
 }
 
 // ───────────────────────────── Boost Log ─────────────────────────────
 export type LogVideo = { creativeId: string; productId: string; budget: number; title: string | null; creator: string | null; before: Kpi; after: Kpi };
 export type LogBatch = { id: number; boostedOn: string; days: number; totalBudget: number; note: string | null; createdBy: string | null; afterDays: number; before: Kpi; after: Kpi; videos: LogVideo[]; verdict: "better" | "same" | "worse" | "early" };
 export const LOG_WINDOW = 7;
-export async function boostLog(): Promise<LogBatch[]> {
-  const today = todayKL();
+export async function boostLog(range: Range): Promise<LogBatch[]> {
+  const today = todayKL(), rf = sqlFrom(range), rt = range.to;
   const raw = await rows<{
     id: number; boosted_on: string; days: number; total_budget: number; note: string | null; created_by: string | null;
     creative_id: string; product_id: string; budget: number; title: string | null; creator: string | null; bc: number; br: number; bo: number; ac: number; ar: number; ao: number;
@@ -202,6 +200,7 @@ export async function boostLog(): Promise<LogBatch[]> {
         sum(d.cost) filter (where d.day >= b.boosted_on and d.day < b.boosted_on + ${LOG_WINDOW}::int) as ac, sum(d.gross_revenue) filter (where d.day >= b.boosted_on and d.day < b.boosted_on + ${LOG_WINDOW}::int) as ar, sum(d.orders) filter (where d.day >= b.boosted_on and d.day < b.boosted_on + ${LOG_WINDOW}::int) as ao
       from ads_creative_daily d where d.creative_id = bv.creative_id and (bv.product_id = '-' or d.product_id = bv.product_id)
     ) s on true
+    where b.boosted_on between ${rf}::date and ${rt}::date
     order by b.boosted_on desc, b.id desc, bv.budget desc`);
   const m = new Map<number, LogBatch>();
   for (const x of raw) {

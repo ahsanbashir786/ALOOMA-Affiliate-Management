@@ -66,6 +66,8 @@ Every row also keeps **TikTok's full answer** (`raw` column), so a field we did 
 
 ## The GMV Max screens (what they read)
 
+**Date range.** One picker for the whole GMV Max section (quick choices Lifetime, Today, Yesterday, Last 7/14/30/90 days, This week, Last week, This month, Last month, or any two days on the calendar). It is kept in the address (`?range=30d` or `?range=custom&from=…&to=…`) and follows you from tab to tab. Each tab opens with its own choice when none is made: Ads Today and Campaign Health Last 7 days, Product Performance Last 30 days, Boost Picks, Creator Scoreboard and Boost Log Lifetime. The comparison is always the period of the same length just before (none for Lifetime). The Batch Planner has no picker. On Boost Picks the numbers follow the dates but the group of a video is always judged on all history. Code: `src/lib/ads/range.ts`, `src/components/ads/range-picker.tsx`.
+
 | Screen | Reads | Rule |
 |---|---|---|
 | Ads Today | `ads_campaign_daily` | Latest day with results against the day before; last 7 and 30 days against the period before; alerts from Campaign Health and the video groups |

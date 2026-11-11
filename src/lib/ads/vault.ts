@@ -6,6 +6,7 @@ import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { productName } from "@/lib/products/catalog";
 import { STATUS_LABEL, isBlocked } from "./status";
 import { classify, type GroupKey, type Rules } from "./groups";
+import { sqlFrom, type Range } from "./range";
 
 // Every video GMV Max knows, judged on ALL of its history. Read only.
 // Sources: Video Daily Results (ads_creative_daily), the Shop sync for who made a video and its sales without ads (tt_videos),
@@ -16,6 +17,7 @@ export type VaultVideo = {
   postedOn: string | null; ageDays: number | null; productKey: string | null; productLabel: string;
   cost: number; orders: number; revenue: number; roi: number | null; costPerOrder: number | null; impressions: number; clicks: number;
   cost7: number; revenue7: number; orders7: number; roi7: number | null;
+  /** Results inside the chosen date range (the group itself is always judged on all history). */ rCost: number; rOrders: number; rRevenue: number; rRoi: number | null;
   firstSpend: string | null; lastSpend: string | null; daysSinceSpend: number | null; spendDays: number;
   /** Sales the video made on its own (Shop sync), with or without ads. */ organicGmv: number; views: number;
   status: string | null; statusLabel: string | null; boostedNow: boolean; lastLogged: string | null;
@@ -29,13 +31,13 @@ const median = (xs: number[]) => { if (!xs.length) return 0; const s = [...xs].s
 
 type Raw = {
   creative_id: string; product_id: string; cost: number; orders: number; revenue: number; imp: number; clk: number;
-  cost7: number; rev7: number; orders7: number; first_spend: string | null; last_spend: string | null; spend_days: number;
+  cost7: number; rev7: number; orders7: number; cost_r: number; orders_r: number; rev_r: number; first_spend: string | null; last_spend: string | null; spend_days: number;
   last_status: string | null; ad_title: string | null; account_name: string | null;
   creator: string | null; title: string | null; posted_at: Date | string | null; organic: number; views: number;
   product_key: string | null; boosted_now: boolean; last_logged: string | null;
 };
 
-const load = cache(async (today: string): Promise<{ raw: Raw[]; freshest: string | null }> => {
+const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Promise<{ raw: Raw[]; freshest: string | null }> => {
   const from7 = addDaysISO(today, -6);
   const raw = await rows<Raw>(sql`
     with agg as (
@@ -45,6 +47,9 @@ const load = cache(async (today: string): Promise<{ raw: Raw[]; freshest: string
         coalesce(sum(d.cost) filter (where d.day >= ${from7}::date), 0)::float8 as cost7,
         coalesce(sum(d.gross_revenue) filter (where d.day >= ${from7}::date), 0)::float8 as rev7,
         coalesce(sum(d.orders) filter (where d.day >= ${from7}::date), 0)::int as orders7,
+        coalesce(sum(d.cost) filter (where d.day between ${rangeFrom}::date and ${rangeTo}::date), 0)::float8 as cost_r,
+        (coalesce(sum(d.orders) filter (where d.day between ${rangeFrom}::date and ${rangeTo}::date), 0))::int as orders_r,
+        coalesce(sum(d.gross_revenue) filter (where d.day between ${rangeFrom}::date and ${rangeTo}::date), 0)::float8 as rev_r,
         to_char(min(d.day) filter (where coalesce(d.cost, 0) > 0), 'YYYY-MM-DD') as first_spend,
         to_char(max(d.day) filter (where coalesce(d.cost, 0) > 0), 'YYYY-MM-DD') as last_spend,
         (count(distinct d.day) filter (where coalesce(d.cost, 0) > 0))::int as spend_days,
@@ -55,7 +60,7 @@ const load = cache(async (today: string): Promise<{ raw: Raw[]; freshest: string
     ), organic as (
       -- Videos that sell on their own and have never appeared in the ads results at all.
       select v.video_id as creative_id, coalesce(v.products->0->>'id', '-') as product_id,
-        0::float8 as cost, 0 as orders, 0::float8 as revenue, 0::float8 as imp, 0::float8 as clk, 0::float8 as cost7, 0::float8 as rev7, 0 as orders7,
+        0::float8 as cost, 0 as orders, 0::float8 as revenue, 0::float8 as imp, 0::float8 as clk, 0::float8 as cost7, 0::float8 as rev7, 0 as orders7, 0::float8 as cost_r, 0 as orders_r, 0::float8 as rev_r,
         null::text as first_spend, null::text as last_spend, 0 as spend_days, null::text as last_status, null::text as ad_title, null::text as account_name
       from tt_videos v where coalesce(v.gmv, 0) > 0 and not exists (select 1 from ads_creative_daily d where d.creative_id = v.video_id)
     ), allv as (select * from agg union all select * from organic)
@@ -73,9 +78,9 @@ const load = cache(async (today: string): Promise<{ raw: Raw[]; freshest: string
 });
 
 /** All videos, each in its group. `rules.minRoi` null = automatic (your all-time ROI, rounded up, at least 3). */
-export async function vault(rules: { minRoi: number | null; minOrders: number; idleDays: number } = { minRoi: null, ...DEFAULT_RULES }): Promise<Vault> {
+export async function vault(rules: { minRoi: number | null; minOrders: number; idleDays: number } = { minRoi: null, ...DEFAULT_RULES }, range?: Pick<Range, "from" | "to">): Promise<Vault> {
   const today = todayKL();
-  const { raw, freshest } = await load(today);
+  const { raw, freshest } = await load(today, range ? sqlFrom(range) : sqlFrom({ from: null }), range?.to ?? today);
   const tc = raw.reduce((a, r) => a + num(r.cost), 0), tr = raw.reduce((a, r) => a + num(r.revenue), 0);
   const accountRoi = tc > 0 ? tr / tc : null;
   const autoRoi = Math.max(3, Math.ceil(accountRoi ?? 5));
@@ -97,6 +102,7 @@ export async function vault(rules: { minRoi: number | null; minOrders: number; i
       productKey: r.product_key, productLabel: r.product_key ? productName(r.product_key) : r.product_id === "-" ? "Unknown product" : `Product ${r.product_id.slice(-6)}`,
       cost, orders, revenue, roi, costPerOrder: orders > 0 && cost > 0 ? cost / orders : null, impressions: num(r.imp), clicks: num(r.clk),
       cost7, revenue7, orders7: num(r.orders7), roi7: cost7 > 0 ? revenue7 / cost7 : null,
+      rCost: num(r.cost_r), rOrders: num(r.orders_r), rRevenue: num(r.rev_r), rRoi: num(r.cost_r) > 0 ? num(r.rev_r) / num(r.cost_r) : null,
       firstSpend: r.first_spend, lastSpend: r.last_spend, daysSinceSpend, spendDays: num(r.spend_days), organicGmv: organic, views: num(r.views),
       status: r.last_status, statusLabel: r.last_status ? (STATUS_LABEL[r.last_status] ?? r.last_status) : null, boostedNow: !!r.boosted_now, lastLogged: r.last_logged,
       group, why: group === "never" && organic > 0 ? `Never in ads, yet it sold RM ${Math.round(organic).toLocaleString("en-MY")} on its own` : why, score,

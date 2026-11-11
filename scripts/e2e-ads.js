@@ -64,7 +64,7 @@ async function login(p, email) {
   const tabsA = (await o.locator("nav[aria-label='GMV Max sections'] a").allInnerTexts()).map((t) => t.trim());
   ok(JSON.stringify(tabsA) === JSON.stringify(["Ads Today", "Boost Picks", "Batch Planner", "Boost Log", "Campaign Health", "Product Performance", "Creator Scoreboard"]), `gmv max: the seven sections (${tabsA.join(", ")})`);
   const mainT = await o.locator("main").innerText();
-  ok(/Ad Spend/.test(mainT) && /ROI/.test(mainT) && /Last 30 Days/.test(mainT) && /Needs Your Attention/.test(mainT) && /Golden Videos Waiting/.test(mainT), "ads today: totals, 30-day chart, alerts and golden videos");
+  ok(/Ad Spend/.test(mainT) && /ROI/.test(mainT) && /Last 7 days/.test(mainT) && /Needs Your Attention/.test(mainT) && /Golden Videos Waiting/.test(mainT), "ads today: totals, chart for the chosen dates, alerts and golden videos");
   ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "ads today: no sideways scroll on desktop");
   await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-picks]");
   ok(/Stopped While Selling/.test(await o.getByTestId("ads-group-stopped").innerText()) && /Never Started/.test(await o.getByTestId("ads-group-never").innerText()) && /Wasting Money/.test(await o.getByTestId("ads-group-wasting").innerText()), "boost picks: every video is in a group, with counts");
@@ -85,9 +85,9 @@ async function login(p, email) {
   await o.getByTestId("ads-log-delete").first().click(); await o.getByTestId("ads-log-delete-yes").click();
   await o.waitForFunction(() => !document.querySelector("[data-testid=ads-log-batch]"), null, { timeout: 15000 }); ok(true, "boost log: a batch can be removed");
   await o.goto(BASE + "/ads?tab=planner"); await o.waitForSelector("[data-testid=ads-planner-empty]"); ok(true, "batch planner: empty until videos are ticked");
-  await o.goto(BASE + "/ads?tab=campaigns&days=90"); await o.waitForSelector("[data-testid=ads-campaigns]");
+  await o.goto(BASE + "/ads?tab=campaigns&range=90d"); await o.waitForSelector("[data-testid=ads-campaigns]");
   ok((await o.getByTestId("ads-campaign-row").count()) > 0 && (await o.getByTestId("ads-health").count()) > 0, "campaign health: campaigns with a health label");
-  await o.goto(BASE + "/ads?tab=products&days=90"); await o.waitForSelector("[data-testid=ads-products]");
+  await o.goto(BASE + "/ads?tab=products&range=90d"); await o.waitForSelector("[data-testid=ads-products]");
   ok((await o.getByTestId("ads-product-row").count()) > 0 && /What To Do/i.test(await o.locator("main").innerText()), "product performance: products with what to do");
   await o.goto(BASE + "/ads?tab=creators"); await o.waitForSelector("[data-testid=ads-creators], [data-testid=ads-empty-state]"); ok(true, "creator scoreboard opens");
   await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1"); await o.waitForSelector("[data-testid=ads-picks]");
@@ -96,6 +96,42 @@ async function login(p, email) {
   const vt = await o.locator("main").innerText();
   ok(/All-Time Ad Spend/.test(vt) && /Last 60 Days/.test(vt) && /Boost History/.test(vt) && (await o.getByTestId("ads-video-verdict").count()) === 1, "video detail: all-time results, 60 days, verdict and boost history");
   for (const t of ["picks", "campaigns", "products", "creators", "log"]) { await o.goto(BASE + "/ads?tab=" + t); await o.waitForSelector("h1"); await o.waitForTimeout(300); ok(!(await o.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `gmv max: ${t} has no sideways scroll on desktop`); }
+
+  // ── date range picker (one for the whole GMV Max section)
+  await o.goto(BASE + "/ads"); await o.waitForSelector("[data-testid=ads-range]");
+  ok(/Last 7 days/.test(await o.getByTestId("ads-range-label").innerText()), "range: Ads Today opens with Last 7 days");
+  await o.getByTestId("ads-range").click(); await o.waitForSelector("[data-testid=ads-range-dialog]");
+  const presets = (await o.locator("[data-testid=ads-range-dialog] ul li").allInnerTexts()).map((t) => t.trim());
+  ok(presets[0] === "Lifetime" && presets.includes("Yesterday") && presets.includes("Last 30 days") && presets.includes("Last week") && presets.includes("This month"), `range: quick choices on the left (${presets.join(", ")})`);
+  ok((await o.locator("[data-testid=ads-range-dialog] [data-day]").count()) >= 50 && /UTC\+08:00/.test(await o.getByTestId("ads-range-dialog").innerText()) && /Confirm/.test(await o.getByTestId("ads-range-dialog").innerText()), "range: a two-month calendar, UTC+08:00, Cancel and Confirm");
+  await o.getByTestId("ads-range-30d").click(); await Promise.all([o.waitForURL(/range=30d/), o.getByTestId("ads-range-confirm").click()]);
+  await o.waitForSelector("[data-testid=ads-today]"); ok(/Last 30 days/.test(await o.getByTestId("ads-range-label").innerText()), "range: choosing Last 30 days and Confirm changes the page");
+  await o.getByTestId("ads-tab-campaigns").click(); await o.waitForSelector("[data-testid=ads-campaigns]");
+  ok(/range=30d/.test(o.url()) && /Last 30 days/.test(await o.getByTestId("ads-range-label").innerText()), "range: the choice follows you to the next tab");
+  await o.getByTestId("ads-range").click();
+  const days = o.locator("[data-testid=ads-range-dialog] [data-day]:not([disabled])");
+  const d1 = await days.nth(2).getAttribute("data-day"), d2 = await days.nth(9).getAttribute("data-day");
+  await days.nth(2).click(); await days.nth(9).click();
+  ok(/–/.test(await o.getByTestId("ads-range-draft").innerText()), "range: click a first day and a last day in the calendar");
+  await Promise.all([o.waitForURL(/range=custom/), o.getByTestId("ads-range-confirm").click()]); await o.waitForSelector("[data-testid=ads-campaigns], [data-testid=ads-empty-state]");
+  ok(o.url().includes(`from=${d1}`) && o.url().includes(`to=${d2}`), `range: a custom range is in the address (${d1} to ${d2})`);
+  await o.getByTestId("ads-tab-picks").click(); await o.waitForSelector("[data-testid=ads-picks]");
+  ok(/range=custom/.test(o.url()), "range: a custom range also reaches Boost Picks");
+  await o.getByTestId("ads-range").click(); await o.getByTestId("ads-range-lifetime").click(); await Promise.all([o.waitForURL(/range=lifetime/), o.getByTestId("ads-range-confirm").click()]); await o.waitForSelector("[data-testid=ads-picks]");
+  ok(/Lifetime/.test(await o.getByTestId("ads-range-label").innerText()), "range: Lifetime");
+  await o.getByTestId("ads-tab-planner").click(); await o.waitForSelector("[data-testid=ads-planner-empty]"); ok((await o.getByTestId("ads-range").count()) === 0, "range: the Batch Planner has no date picker (it plans, it does not report)");
+
+  // ── select all
+  await o.goto(BASE + "/ads?tab=picks&roi=1&orders=1&idle=1"); await o.waitForSelector("[data-testid=ads-picks]");
+  for (const g of ["best", "stopped", "underfed", "promise", "never"]) { await o.getByTestId(`ads-group-${g}`).click(); if (await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").count() > 1) break; }
+  const nBoostable = await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").count();
+  ok(await o.getByTestId("ads-select-all").isVisible() && nBoostable > 1, `select all: a checkbox in the first column header (${nBoostable} videos can be ticked)`);
+  await o.getByTestId("ads-select-all").check();
+  ok(new RegExp(`${Math.min(nBoostable, 50)} videos? selected`).test(await o.getByTestId("ads-selection").innerText()) && await o.getByTestId("ads-select-all").isChecked(), "select all: ticks every video that can be boosted");
+  await o.locator("[data-testid=ads-row] input[type=checkbox]:not([disabled])").first().uncheck();
+  ok(await o.getByTestId("ads-select-all").evaluate((e) => e.indeterminate), "select all: shows a dash when only some are ticked");
+  await o.getByTestId("ads-select-all").check(); await o.getByTestId("ads-select-all").uncheck();
+  ok(/Tick videos/.test(await o.getByTestId("ads-selection").innerText()), "select all: ticking it again clears them");
 
   // ── a viewer cannot use the connection
   const v = await mk(); await login(v, "viewer@test.local");

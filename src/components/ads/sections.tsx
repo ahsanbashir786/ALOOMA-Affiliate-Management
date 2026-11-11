@@ -2,28 +2,22 @@ import Link from "next/link";
 import { AlertTriangle, ArrowRight, CircleAlert, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/viz/sparkline";
-import { HEALTH_LABEL, LOG_WINDOW, type CampaignRow, type CreatorRow, type Health, type LogBatch, type Period, type ProductRow, type TodayData, type Kpi } from "@/lib/ads/insights";
+import { HEALTH_LABEL, LOG_WINDOW, type CampaignRow, type CreatorRow, type Health, type LogBatch, type ProductRow, type TodayData, type Kpi } from "@/lib/ads/insights";
+import type { Range } from "@/lib/ads/range";
 import { LogDelete } from "./log-delete";
 import { Delta, Empty, GroupPill, Pill, SpendSalesBars, Tile, VideoCell, day, nfmt, rm, rm2, roiFmt, th, thr, td, tdr } from "./ui";
 
 const card = "overflow-hidden rounded-2xl border border-line bg-surface";
 const head = "border-y border-line bg-surface-2/60";
 
-export function PeriodLinks({ tab, days }: { tab: string; days: Period }) {
-  return (
-    <nav aria-label="Period" className="inline-flex rounded-lg border border-line-strong bg-surface p-0.5">
-      {([7, 30, 90] as const).map((d) => <Link key={d} href={`/ads?tab=${tab}&days=${d}`} scroll={false} aria-current={d === days ? "page" : undefined} className={cn("inline-flex h-8 items-center rounded-md px-3 text-[13.5px] font-medium", d === days ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2")}>Last {d} Days</Link>)}
-    </nav>
-  );
-}
-
-function KpiTiles({ now, before, label }: { now: Kpi; before: Kpi; label: string }) {
+function KpiTiles({ now, before, label, compare = true }: { now: Kpi; before: Kpi; label: string; compare?: boolean }) {
+  const delta = (n: number | null, b: number | null, neutral?: boolean) => (compare ? <Delta now={n} before={b} neutral={neutral} /> : <span className="text-[12.5px] text-ink-3">no earlier period</span>);
   return (
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label={label}>
-      <Tile label="Ad Spend" value={rm(now.cost)} sub={<Delta now={now.cost} before={before.cost} neutral />} testId="ads-kpi-spend" />
-      <Tile label="Sales From Ads" value={rm(now.revenue)} sub={<Delta now={now.revenue} before={before.revenue} />} />
-      <Tile label="Orders" value={nfmt(now.orders)} sub={<Delta now={now.orders} before={before.orders} />} />
-      <Tile label="ROI" value={roiFmt(now.roi)} sub={<Delta now={now.roi} before={before.roi} />} />
+      <Tile label="Ad Spend" value={rm(now.cost)} sub={delta(now.cost, before.cost, true)} testId="ads-kpi-spend" />
+      <Tile label="Sales From Ads" value={rm(now.revenue)} sub={delta(now.revenue, before.revenue)} />
+      <Tile label="Orders" value={nfmt(now.orders)} sub={delta(now.orders, before.orders)} />
+      <Tile label="ROI" value={roiFmt(now.roi)} sub={delta(now.roi, before.roi)} />
     </section>
   );
 }
@@ -38,14 +32,14 @@ export function TodaySection({ d }: { d: TodayData }) {
         <KpiTiles now={d.latest} before={d.dayBefore} label="Latest day" />
       </div>
       <div>
-        <h2 className="mb-2 text-[13px] font-semibold tracking-wide text-ink-3 uppercase">Last 7 Days <span className="font-normal normal-case">compared with the 7 days before</span></h2>
-        <KpiTiles now={d.week} before={d.weekBefore} label="Last 7 days" />
+        <h2 className="mb-2 text-[13px] font-semibold tracking-wide text-ink-3 uppercase">{d.range.label} <span className="font-normal normal-case">{d.hasPrev ? `compared with the ${d.range.days} day${d.range.days === 1 ? "" : "s"} before` : "nothing to compare with"}</span></h2>
+        <KpiTiles now={d.rangeKpi} before={d.rangePrev} label="Selected dates" compare={d.hasPrev} />
       </div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <section className={cn(card, "p-5")} aria-label="Last 30 days">
+        <section className={cn(card, "p-5")} aria-label="Selected dates">
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-[16px] font-semibold text-ink">Last 30 Days</h2>
-            <p className="text-[13px] text-ink-3">Spend {rm(d.month.cost)} · Sales {rm(d.month.revenue)} · ROI {roiFmt(d.month.roi)} <span className="ml-1"><Delta now={d.month.roi} before={d.monthBefore.roi} label="ROI vs 30 days before" /></span></p>
+            <h2 className="text-[16px] font-semibold text-ink">{d.range.label}</h2>
+            <p className="text-[13px] text-ink-3">Spend {rm(d.rangeKpi.cost)} · Sales {rm(d.rangeKpi.revenue)} · ROI {roiFmt(d.rangeKpi.roi)}{d.seriesCapped ? " · chart shows the last 120 days" : ""}</p>
           </div>
           <SpendSalesBars series={d.series} />
         </section>
@@ -85,13 +79,13 @@ export function TodaySection({ d }: { d: TodayData }) {
 
 // ───────────────────────────── 4. Boost Log ─────────────────────────────
 const VERDICT: Record<LogBatch["verdict"], { label: string; tone: string }> = { better: { label: "Sales Went Up", tone: "good" }, same: { label: "About The Same", tone: "muted" }, worse: { label: "Sales Went Down", tone: "critical" }, early: { label: "Too Early To Say", tone: "brand" } };
-export function LogSection({ batches, saved }: { batches: LogBatch[]; saved: boolean }) {
-  if (!batches.length) return <Empty title="No Boosts Logged Yet" action={{ href: "/ads?tab=picks", label: "Open Boost Picks" }}>When you boost a batch in TikTok, plan it here and press Mark As Boosted. The log then shows the results of those videos before and after.</Empty>;
+export function LogSection({ batches, saved, range }: { batches: LogBatch[]; saved: boolean; range: Range }) {
+  if (!batches.length) return <Empty title={range.from ? "No Boosts Logged In These Dates" : "No Boosts Logged Yet"} action={{ href: "/ads?tab=picks", label: "Open Boost Picks" }}>When you boost a batch in TikTok, plan it here and press Mark As Boosted. The log then shows the results of those videos before and after.</Empty>;
   const perDay = (k: Kpi, days: number) => (days > 0 ? k.revenue / days : 0);
   return (
     <div className="space-y-4" data-testid="ads-log">
       {saved && <p className="rounded-xl border border-good/30 bg-good-soft px-4 py-2.5 text-[14px] text-good" data-testid="ads-log-saved">Saved. The results after the boost fill in as new days are synced.</p>}
-      <p className="text-[13px] text-ink-3">Each batch compares the {LOG_WINDOW} days before the boost with up to {LOG_WINDOW} days from the boost date. Sales a day is used so an unfinished period is compared fairly.</p>
+      <p className="text-[13px] text-ink-3">Batches boosted in {range.label}. Each batch compares the {LOG_WINDOW} days before the boost with up to {LOG_WINDOW} days from the boost date. Sales a day is used so an unfinished period is compared fairly.</p>
       {batches.map((b) => (
         <section key={b.id} className={card} data-testid="ads-log-batch">
           <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4 pb-3">
@@ -124,13 +118,13 @@ export function LogSection({ batches, saved }: { batches: LogBatch[]; saved: boo
 
 // ───────────────────────────── 5. Campaign Health ─────────────────────────────
 const HEALTH_TONE: Record<Health, string> = { healthy: "good", watch: "warn", losing: "critical", nosales: "critical", stopped: "warn", idle: "muted" };
-export function CampaignSection({ d }: { d: { days: Period; from: string; to: string; campaigns: CampaignRow[]; total: Kpi; totalBefore: Kpi } }) {
+export function CampaignSection({ d }: { d: { range: Range; campaigns: CampaignRow[]; total: Kpi; totalBefore: Kpi; hasPrev: boolean } }) {
   if (!d.campaigns.length) return <Empty title="No Campaign Results Yet" action={{ href: "/sync?tab=ads", label: "Open Data Sync" }}>Press Sync Now in Data Sync → Ads Management.</Empty>;
   const shown = d.campaigns.filter((c) => c.health !== "idle"), idle = d.campaigns.length - shown.length;
   return (
     <div className="space-y-5" data-testid="ads-campaigns">
-      <div className="flex flex-wrap items-center justify-between gap-3"><PeriodLinks tab="campaigns" days={d.days} /><p className="text-[13px] text-ink-3">{day(d.from)} – {day(d.to)}, compared with the {d.days} days before</p></div>
-      <KpiTiles now={d.total} before={d.totalBefore} label="All campaigns" />
+      <p className="text-[13px] text-ink-3">{d.range.label}{d.hasPrev ? `, compared with the ${d.range.days} day${d.range.days === 1 ? "" : "s"} before` : ""}. Health is judged at the end of the range (last 3 days, ROI against the period before).</p>
+      <KpiTiles now={d.total} before={d.totalBefore} label="All campaigns" compare={d.hasPrev} />
       <section className={card}>
         <div className="px-5 pt-4 pb-3"><h2 className="text-[16px] font-semibold text-ink">Campaigns</h2><p className="mt-0.5 text-[13px] text-ink-3">{shown.length} with spend in this period or the one before{idle ? ` · ${idle} older campaign${idle === 1 ? "" : "s"} not running are hidden` : ""}.</p></div>
         <div className="overflow-x-auto">
@@ -157,11 +151,11 @@ export function CampaignSection({ d }: { d: { days: Period; from: string; to: st
 
 // ───────────────────────────── 6. Product Performance ─────────────────────────────
 const VERDICT_P: Record<ProductRow["verdict"], { label: string; tone: string }> = { push: { label: "Push More", tone: "good" }, hold: { label: "Hold", tone: "muted" }, fix: { label: "Fix Or Pause", tone: "critical" }, idle: { label: "No Spend", tone: "muted" } };
-export function ProductSection({ d }: { d: { days: Period; from: string; to: string; products: ProductRow[]; accountRoi: number | null } }) {
-  if (!d.products.length) return <div className="space-y-5"><PeriodLinks tab="products" days={d.days} /><Empty title="No Product Results In These Days" action={{ href: "/sync?tab=ads", label: "Open Data Sync" }}>Choose a longer period, or press Sync Now in Data Sync → Ads Management.</Empty></div>;
+export function ProductSection({ d }: { d: { range: Range; products: ProductRow[]; accountRoi: number | null } }) {
+  if (!d.products.length) return <Empty title="No Product Results In These Dates" action={{ href: "/sync?tab=ads", label: "Open Data Sync" }}>Choose other dates, or press Sync Now in Data Sync → Ads Management.</Empty>;
   return (
     <div className="space-y-5" data-testid="ads-products">
-      <div className="flex flex-wrap items-center justify-between gap-3"><PeriodLinks tab="products" days={d.days} /><p className="text-[13px] text-ink-3">{day(d.from)} – {day(d.to)} · your ROI in this period is {roiFmt(d.accountRoi)}</p></div>
+      <p className="text-[13px] text-ink-3">{d.range.label} · your ROI in these dates is {roiFmt(d.accountRoi)}</p>
       <section className={card}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1040px] border-collapse text-[13.5px]">
@@ -169,7 +163,7 @@ export function ProductSection({ d }: { d: { days: Period; from: string; to: str
             <tbody>
               {d.products.map((p) => (
                 <tr key={p.key} className="border-b border-line" data-testid="ads-product-row">
-                  <td className={cn(td, "max-w-[260px] pl-5")}><p className="truncate font-medium text-ink" title={p.label}>{p.label}</p><p className="text-[12.5px] text-ink-3">{p.videosWithSpend} video{p.videosWithSpend === 1 ? "" : "s"} spending in the last 7 days</p></td>
+                  <td className={cn(td, "max-w-[260px] pl-5")}><p className="truncate font-medium text-ink" title={p.label}>{p.label}</p><p className="text-[12.5px] text-ink-3">{p.videosWithSpend} video{p.videosWithSpend === 1 ? "" : "s"} spending in these dates</p></td>
                   <td className={td}><Pill tone={VERDICT_P[p.verdict].tone}>{VERDICT_P[p.verdict].label}</Pill><p className="mt-0.5 max-w-[200px] text-[12.5px] text-ink-3">{p.note}</p></td>
                   <td className={tdr}>{rm(p.now.cost)}</td><td className={cn(tdr, "text-ink-2")}>{(p.share * 100).toFixed(0)}%</td><td className={tdr}>{rm(p.now.revenue)}</td><td className={tdr}>{nfmt(p.now.orders)}</td>
                   <td className={cn(tdr, "font-semibold")}>{roiFmt(p.now.roi)}</td><td className={cn(tdr, "text-ink-2")}>{roiFmt(p.before.roi)}</td><td className={cn(tdr, "text-ink-2")}>{p.costPerOrder != null ? rm2(p.costPerOrder) : "–"}</td>
@@ -185,12 +179,12 @@ export function ProductSection({ d }: { d: { days: Period; from: string; to: str
 }
 
 // ───────────────────────────── 7. Creator Ad Scoreboard ─────────────────────────────
-export function CreatorSection({ d }: { d: { creators: CreatorRow[]; unknownVideos: number; accountRoi: number | null } }) {
+export function CreatorSection({ d }: { d: { range: Range; creators: CreatorRow[]; unknownVideos: number; accountRoi: number | null } }) {
   if (!d.creators.length) return <Empty title="No Creator Results Yet" action={{ href: "/sync", label: "Open Data Sync" }}>Creators appear when videos in the ads results match videos from the Shop sync.</Empty>;
   const list = d.creators.slice(0, 200);
   return (
     <div className="space-y-5" data-testid="ads-creators">
-      <p className="text-[13px] text-ink-3">All time. {nfmt(d.creators.length)} creators have videos in your ads{d.creators.length > list.length ? `; the top ${list.length} by sales are shown` : ""}. Your all-time ROI is {roiFmt(d.accountRoi)}.{d.unknownVideos ? ` ${nfmt(d.unknownVideos)} videos have no known creator (not in the Shop sync).` : ""}</p>
+      <p className="text-[13px] text-ink-3">{d.range.label}. {nfmt(d.creators.length)} creators have videos in your ads{d.creators.length > list.length ? `; the top ${list.length} by sales are shown` : ""}. Your all-time ROI is {roiFmt(d.accountRoi)}. Golden Unused is always judged on all history.{d.unknownVideos ? ` ${nfmt(d.unknownVideos)} videos have no known creator (not in the Shop sync).` : ""}</p>
       <section className={card}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] border-collapse text-[13.5px]">
