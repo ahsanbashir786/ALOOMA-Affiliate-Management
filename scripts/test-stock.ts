@@ -6,6 +6,7 @@ import path from "node:path";
 import { runFifo, explode, type BundleMap, type Layer, type Sale } from "../src/lib/stock/fifo";
 import { estimateArrival, mergeOpening, parseBundles, parseCosting, parseDates, parseInventoryReport, parseSkuList } from "../src/lib/stock/parse";
 import { normSku } from "../src/lib/stock/sku";
+import { splitOpening } from "../src/lib/stock/save";
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, extra = "") => { ok ? pass++ : fail++; console.log((ok ? "PASS  " : "FAIL  ") + name + (ok ? "" : "  " + extra)); };
@@ -50,6 +51,12 @@ const near = (a: number, b: number, e = 0.005) => Math.abs(a - b) <= e;
   check("arrival: 'Late Mar 2026 (in stock by 1 Apr)' is the 25th of March", estimateArrival("Late Mar 2026 (in stock by 1 Apr)") === "2026-03-25");
   check("arrival: 'Late Jan – Feb 2026' uses February", estimateArrival("Late Jan – Feb 2026") === "2026-02-15");
   check("arrival: nothing readable gives no date", estimateArrival("soon") === null && estimateArrival(null) === null);
+
+  // ── Bundles and FBS codes in an inventory report become single pieces
+  const sp = splitOpening([{ sku: "SET-Q", closing: 3 }, { sku: "PC", closing: 4 }, { sku: "FBS-PC", closing: 2 }, { sku: "FBS-SET-Q", closing: 1 }], new Map([["SET-Q", [{ sku: "BS-Q", qty: 1 }, { sku: "PC", qty: 2 }]]]));
+  const q = (k: string) => sp.items.find((i) => i.sku === k)?.closing;
+  check("opening: a bundle is split into parts, an FBS code is the plain SKU, all added up (BS-Q 4, PC 3×2 + 4 + 2 + 1×2 = 14)", q("BS-Q") === 4 && q("PC") === 14 && sp.items.length === 2, JSON.stringify(sp.items));
+  check("opening: every split is explained in a note", sp.notes.length === 3);
 
   // ── Several inventory reports
   const mo = mergeOpening([{ asOf: "2025-05-31", items: [{ sku: "A", closing: 5 }, { sku: "B", closing: 2 }], samples: 1, warnings: [] }, { asOf: "2025-05-31", items: [{ sku: "A", closing: 3 }], samples: 2, warnings: [] }]);

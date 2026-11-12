@@ -10,7 +10,7 @@ The first step of the profit system: what every piece really cost, and how much 
 | Bundles and their parts | the three `Set SKU / BOM` files. A part listed twice counts twice. The FBS (Fulfilled by Shopee) code of a bundle has the same parts |
 | Stock-in orders: pieces and landed cost per piece | `ALOOMA All Order Costing` |
 | Purchase date and arrival date of every order | `Order Inbound and Purchase Dates` |
-| Opening stock | the warehouse inventory report for the last month before the first costed order arrived (May 2025). Costed like the same SKU in order 1B. Sample pieces are not counted |
+| Opening stock | the warehouse inventory report for the last month before the first costed order arrived (May 2025). Costed like the same SKU in order 1B. Sample pieces are not counted. Stock is kept as single pieces: a bundle in the report is split into its parts (so import the Bundle Lists first) and a Shopee FBS code counts as the plain SKU |
 
 Import them in the order above on the **Import Files** tab. Importing a file again replaces its own rows only; nothing is counted twice. A file that is not the right kind is refused and nothing is saved.
 

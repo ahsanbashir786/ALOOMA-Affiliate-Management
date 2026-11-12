@@ -3,6 +3,7 @@ import { sql as pg } from "@/db";
 import type { BundleRow, CostingFile, DatesRow, OpeningFile, SkuRow } from "./parse";
 import { orderSort } from "./parse";
 import { normSku } from "./sku";
+import { explode, type BundleMap } from "./fifo";
 
 export const OPENING_ORDER = "OPENING";
 
@@ -64,6 +65,22 @@ export async function saveDates(rows: DatesRow[]): Promise<SaveResult> {
   return { saved, notes };
 }
 
+/**
+ * A report can list a bundle (a set, a "2PCS" pack) or the Shopee FBS copy of a SKU. Stock is kept as single pieces:
+ * a bundle becomes its parts (times the quantity) and an FBS code becomes the plain SKU. Everything is added up per SKU.
+ */
+export function splitOpening(items: { sku: string; closing: number }[], bundles: BundleMap): { items: { sku: string; closing: number }[]; notes: string[] } {
+  const by = new Map<string, number>();
+  const notes: string[] = [];
+  for (const i of items) {
+    const parts = explode(i.sku, i.closing, bundles);
+    if (bundles.has(i.sku) || bundles.has(i.sku.replace(/^FBS-/, ""))) notes.push(`${i.sku} (${i.closing}) is a bundle: split into ${parts.map((p) => `${p.qty} × ${p.sku}`).join(", ")}.`);
+    else if (parts[0].sku !== i.sku) notes.push(`${i.sku} (${i.closing}) is the Shopee FBS copy of ${parts[0].sku}: counted as that SKU.`);
+    for (const p of parts) by.set(p.sku, (by.get(p.sku) ?? 0) + p.qty);
+  }
+  return { items: [...by.entries()].map(([sku, closing]) => ({ sku, closing })), notes };
+}
+
 /** Stock on hand before the first costed order arrived. It is costed like the same SKU in order 1B (the nearest known cost). */
 export async function saveOpening(file: OpeningFile, costFromOrder = "1B"): Promise<SaveResult> {
   const notes: string[] = [...file.warnings];
@@ -71,13 +88,18 @@ export async function saveOpening(file: OpeningFile, costFromOrder = "1B"): Prom
   const costs = new Map<string, number>();
   for (const r of await pg`select sku, total_cost_rm::float8 as total, (paid_qty + free_qty)::int as qty from stock_layers where order_no = ${costFromOrder}`) costs.set(String(r.sku), Number(r.total) / Number(r.qty));
   if (!costs.size) notes.push(`Order ${costFromOrder} is not imported yet, so the opening stock has no cost. Import the costing file, then this report again.`);
+  const bundles: BundleMap = new Map();
+  for (const r of await pg`select set_sku, part_sku, qty::int as qty from stock_bundle_parts`) { const a = bundles.get(String(r.set_sku)) ?? []; a.push({ sku: String(r.part_sku), qty: Number(r.qty) }); bundles.set(String(r.set_sku), a); }
+  const split = splitOpening(file.items, bundles);
+  notes.push(...split.notes);
+  if (!bundles.size && file.items.some((i) => /SET|\dPCS/.test(i.sku))) notes.push("Some SKUs look like bundles but no bundle list is imported yet. Import the Bundle Lists first, then this report again.");
   let total = 0;
   await pg.begin(async (tx) => {
     await tx`insert into stock_orders (order_no, sort_no, kind, supplier_file, arrival_date, arrival_exact, arrival_note, note)
       values (${OPENING_ORDER}, 0, 'opening', ${"Warehouse inventory report"}, ${file.asOf}, true, ${"Closing stock on " + file.asOf}, ${`Costed like order ${costFromOrder}. ${file.samples} sample pieces are not counted.`})
       on conflict (order_no) do update set arrival_date = excluded.arrival_date, arrival_note = excluded.arrival_note, note = excluded.note`;
     await tx`delete from stock_layers where order_no = ${OPENING_ORDER}`;
-    for (const i of file.items) {
+    for (const i of split.items) {
       const unit = costs.get(i.sku) ?? 0;
       if (!costs.has(i.sku)) notes.push(`${i.sku}: ${i.closing} pieces have no cost in order ${costFromOrder}, so they are counted at RM 0.`);
       await tx`insert into stock_layers (order_no, sku, paid_qty, free_qty, unit_rm, total_cost_rm) values (${OPENING_ORDER}, ${i.sku}, ${i.closing}, 0, ${unit}, ${unit * i.closing})`;
