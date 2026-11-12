@@ -222,7 +222,7 @@ export function SyncBoard({ initial, connected, canAdmin, canRun, serverNow }: {
               </div>
               {d.oldest && <p className="mt-0.5 text-[12px] text-ink-3" data-testid={`span-${d.key}`}>{span(d.oldest, d.newest)}</p>}
               {d.detail && <p className="mt-0.5 text-[12px] text-ink-3">{d.detail}</p>}
-              {d.lastError && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-critical">{d.lastError}</p>}
+              {d.lastError && <ErrText text={d.lastError} testId={`error-${d.key}`} />}
               {!d.lastError && d.note && <p className="mt-1 line-clamp-6 text-[12px] leading-snug text-warn" title={d.note} data-testid={`note-${d.key}`}>{d.note}</p>}
             </article>
           );
@@ -297,5 +297,14 @@ export function SyncBoard({ initial, connected, canAdmin, canRun, serverNow }: {
         </section>
       </div>
     </div>
+  );
+}
+
+/** TikTok's full answer. Click to read all of it (and copy it for support). */
+function ErrText({ text, testId }: { text: string; testId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button type="button" onClick={() => setOpen((o) => !o)} title={open ? "Click to fold" : "Click to read all"} data-testid={testId}
+      className={cn("mt-1 block w-full text-left text-[12px] leading-snug text-critical select-text", !open && "line-clamp-2")}>{text}</button>
   );
 }
