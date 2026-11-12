@@ -1,7 +1,8 @@
 import "server-only";
 import { sql as pg } from "@/db";
-import { runFifo, type Costed, type Remaining } from "./fifo";
-import { loadBundles, loadLayers, loadTikTokSales } from "./load";
+import { loadLayers } from "./load";
+import { loadCosting } from "./costing";
+import type { Remaining } from "./fifo";
 
 export type SkuRow = {
   sku: string; name: string | null; family: string | null;
@@ -9,7 +10,7 @@ export type SkuRow = {
 };
 export type OrderRow = {
   orderNo: string; kind: "opening" | "order"; purchaseDate: string | null; arrival: string | null; exact: boolean; arrivalNote: string | null;
-  paid: number; free: number; productRm: number; freightRm: number; landed: number; perPiece: number | null; left: number; leftValue: number; skuCount: number;
+  paid: number; free: number; productRm: number; freightRm: number; landed: number; perPiece: number | null; left: number; leftValue: number; skuCount: number; source: string;
 };
 export type Overview = {
   skus: SkuRow[]; orders: OrderRow[];
@@ -21,13 +22,12 @@ export type Overview = {
 const f = (v: unknown) => (v == null ? 0 : Number(v));
 
 export async function stockOverview(): Promise<Overview> {
-  const [{ layers }, bundles] = await Promise.all([loadLayers(), loadBundles()]);
-  const { sales } = await loadTikTokSales(bundles);
-  const { costed, remaining } = runFifo(layers, sales);
+  const { costed, remaining, orders: saleOrders } = await loadCosting();
+  const sales = saleOrders;
 
   const [skuMeta, orderRows, layerRows, counts] = await Promise.all([
     pg`select sku, name, family from stock_skus`,
-    pg`select order_no, kind, to_char(purchase_date, 'YYYY-MM-DD') as purchase, to_char(arrival_date, 'YYYY-MM-DD') as arrival, arrival_exact, arrival_note, product_rm::float8 as product_rm, freight_rm::float8 as freight_rm, sort_no from stock_orders order by arrival_date nulls last, sort_no`,
+    pg`select order_no, kind, to_char(purchase_date, 'YYYY-MM-DD') as purchase, to_char(arrival_date, 'YYYY-MM-DD') as arrival, arrival_exact, arrival_note, source, product_rm::float8 as product_rm, freight_rm::float8 as freight_rm, sort_no from stock_orders order by arrival_date nulls last, sort_no`,
     pg`select order_no, count(*)::int as skus, sum(paid_qty)::int as paid, sum(free_qty)::int as free, sum(total_cost_rm)::float8 as landed from stock_layers group by order_no`,
     pg`select (select count(*)::int from stock_skus) as skus, (select count(*)::int from stock_bundles) as bundles, (select count(*)::int from stock_orders where kind = 'order') as orders, (select count(*)::int from stock_layers) as layers, (select coalesce(sum(paid_qty + free_qty), 0)::int from stock_layers where order_no = 'OPENING') as opening`,
   ]);
@@ -54,7 +54,7 @@ export async function stockOverview(): Promise<Overview> {
   }
   const unknownMap = new Map<string, number>();
   let shortPieces = 0;
-  for (const c of costed as Costed[]) {
+  for (const c of costed) {
     if (!c) continue;
     const r = row(c.sku);
     r.sold += c.qty;
@@ -71,7 +71,7 @@ export async function stockOverview(): Promise<Overview> {
     const lf = leftByOrder.get(String(o.order_no));
     return {
       orderNo: String(o.order_no), kind: o.kind as "opening" | "order", purchaseDate: (o.purchase as string) ?? null, arrival: (o.arrival as string) ?? null, exact: !!o.arrival_exact, arrivalNote: (o.arrival_note as string) ?? null,
-      paid, free, productRm: f(o.product_rm), freightRm: f(o.freight_rm), landed, perPiece: paid + free ? landed / (paid + free) : null, left: lf?.left ?? 0, leftValue: lf?.value ?? 0, skuCount: f(a?.skus),
+      paid, free, productRm: f(o.product_rm), freightRm: f(o.freight_rm), landed, perPiece: paid + free ? landed / (paid + free) : null, left: lf?.left ?? 0, leftValue: lf?.value ?? 0, skuCount: f(a?.skus), source: String(o.source ?? "file"),
     };
   });
 
@@ -94,9 +94,7 @@ export async function stockOverview(): Promise<Overview> {
 
 /** One SKU: its layers and how much of each is left after the TikTok sales so far. */
 export async function skuDetail(sku: string) {
-  const [{ layers }, bundles] = await Promise.all([loadLayers(), loadBundles()]);
-  const { sales } = await loadTikTokSales(bundles);
-  const { costed, remaining } = runFifo(layers, sales);
+  const [{ layers }, { costed, remaining }] = await Promise.all([loadLayers(), loadCosting()]);
   const mine = layers.filter((l) => l.sku === sku);
   const left = new Map(remaining.filter((r) => r.sku === sku).map((r) => [r.layerId, r.left]));
   const [meta] = await pg`select sku, name, family from stock_skus where sku = ${sku}`;

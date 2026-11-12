@@ -21,7 +21,8 @@
     "test:execution": "tsx --conditions=react-server scripts/test-execution.ts",
     "seed:demo": "tsx --conditions=react-server scripts/seed-creators-demo.ts",
     "test:permissions": "tsx --conditions=react-server scripts/test-permissions.ts",
-    "test:stock": "tsx --conditions=react-server scripts/test-stock.ts"
+    "test:stock": "tsx --conditions=react-server scripts/test-stock.ts",
+    "test:profit": "tsx --conditions=react-server scripts/test-profit.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

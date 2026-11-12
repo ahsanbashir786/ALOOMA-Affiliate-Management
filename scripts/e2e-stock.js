@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-expressions */
 // Browser check of Stock And Costing: imports the real files through the screen, then reads the tabs.
-// Needs the app on :3100, the demo users (scripts/seed-creators-demo.ts) and STOCK_FILES = a folder with the owner's files.
+// Needs empty stock tables (run it before scripts/test-profit.ts, which leaves a few pretend orders), the app on :3100, the demo users (scripts/seed-creators-demo.ts) and STOCK_FILES = a folder with the owner's files.
 const { chromium } = require("playwright");
 const fs = require("fs"), path = require("path");
 const BASE = "http://localhost:3100";

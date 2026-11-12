@@ -89,3 +89,32 @@ export async function saveOpening(file: OpeningFile, costFromOrder = "1B"): Prom
 }
 
 export { normSku };
+
+/** A stock-in order added later in the app (order 31 onward). */
+export async function saveNewOrder(o: { orderNo: string; purchaseDate: string | null; arrivalDate: string; file: string; freightRm: number; priced: ReturnType<typeof import("./neworder").priceOrder> }): Promise<SaveResult> {
+  const notes: string[] = [];
+  const exists = await pg`select 1 from stock_orders where order_no = ${o.orderNo}`;
+  if (exists.length) return { saved: 0, notes: [`Order ${o.orderNo} already exists. Use another order number, or remove the old one first.`] };
+  const [{ next }] = await pg`select coalesce(max(sort_no) filter (where kind = 'order'), 0)::int + 1 as next from stock_orders`;
+  const known = new Set((await pg`select sku from stock_skus`).map((r) => String(r.sku)));
+  await pg.begin(async (tx) => {
+    await tx`insert into stock_orders (order_no, sort_no, kind, supplier_file, purchase_date, arrival_date, arrival_exact, arrival_note, product_rmb, product_rm, freight_rm, source, note)
+      values (${o.orderNo}, ${Math.max(next, orderSortNumber(o.orderNo))}, 'order', ${o.file}, ${o.purchaseDate}, ${o.arrivalDate}, true, ${"Added in the app"}, ${o.priced.productRmb}, ${o.priced.productRm}, ${o.freightRm}, 'app', ${"Freight shared over paid pieces"})`;
+    for (const l of o.priced.lines) {
+      await tx`insert into stock_layers (order_no, sku, paid_qty, free_qty, unit_rmb, rmb_per_rm, unit_rm, freight_per_paid, total_cost_rm)
+        values (${o.orderNo}, ${l.sku}, ${l.paid}, ${l.free}, ${l.unitRmb}, ${l.rmbPerRm}, ${l.unitRm}, ${l.freightPerPaid}, ${l.totalCostRm})
+        on conflict (order_no, sku) do update set paid_qty = stock_layers.paid_qty + excluded.paid_qty, free_qty = stock_layers.free_qty + excluded.free_qty, total_cost_rm = stock_layers.total_cost_rm + excluded.total_cost_rm`;
+      await tx`insert into stock_skus (sku) values (${l.sku}) on conflict do nothing`;
+      if (!known.has(l.sku)) notes.push(`${l.sku} is a new SKU (it was not in the SKU list).`);
+    }
+  });
+  return { saved: o.priced.lines.length, notes };
+}
+
+function orderSortNumber(orderNo: string): number { const m = /^(\d+)/.exec(orderNo); return m ? Number(m[1]) * 10 : 0; }
+
+/** Only orders added in the app can be removed here. The first 30 orders come from the costing file. */
+export async function removeAppOrder(orderNo: string): Promise<boolean> {
+  const r = await pg`delete from stock_orders where order_no = ${orderNo} and source = 'app' returning order_no`;
+  return r.length > 0;
+}

@@ -6,6 +6,7 @@ import { Badge, Card, CardHeader, EmptyState, PageHeader, Td, Th, buttonClasses 
 import { StatTile } from "@/components/ui/stat-tile";
 import { TabLinks } from "@/components/ui/tab-links";
 import { ImportBoard, type ImportCardInfo } from "@/components/stock/import-board";
+import { RemoveOrder } from "@/components/stock/remove-order";
 import { bundleList, stockOverview, type Overview } from "@/lib/stock/overview";
 import { fmtInt, fmtRM } from "@/lib/utils";
 import { fmtDayLabel } from "@/lib/time";
@@ -43,7 +44,7 @@ export default async function StockPage({ searchParams }: PageProps<"/stock">) {
       {tab === "stock" && (empty ? <Empty /> : <StockTable ov={ov} q={q} family={family} />)}
       {tab === "orders" && (empty ? <Empty /> : <OrdersTable ov={ov} />)}
       {tab === "bundles" && <Bundles q={q} />}
-      {tab === "import" && <ImportBoard cards={importCards(ov)} />}
+      {tab === "import" && <ImportBoard cards={importCards(ov)} nextOrder={String(Math.max(30, ...ov.orders.map((o) => parseInt(o.orderNo, 10)).filter((n) => Number.isFinite(n))) + 1)} />}
     </div>
   );
 }
@@ -121,7 +122,7 @@ function OrdersTable({ ov }: { ov: Overview }) {
       <CardHeader title="Stock-In Orders" description="Oldest first. The landed cost is the product price plus freight, counted on paid pieces only. Free pieces cost nothing." />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] border-collapse" data-testid="orders-table">
-          <thead><tr><Th>Order</Th><Th>Purchased</Th><Th>Arrived</Th><Th align="right">Paid</Th><Th align="right">Free</Th><Th align="right">Product Cost</Th><Th align="right">Freight</Th><Th align="right">Landed Cost</Th><Th align="right">Per Piece</Th><Th align="right">Left In Stock</Th></tr></thead>
+          <thead><tr><Th>Order</Th><Th>Purchased</Th><Th>Arrived</Th><Th align="right">Paid</Th><Th align="right">Free</Th><Th align="right">Product Cost</Th><Th align="right">Freight</Th><Th align="right">Landed Cost</Th><Th align="right">Per Piece</Th><Th align="right">Left In Stock</Th><Th /></tr></thead>
           <tbody>
             {ov.orders.map((o) => (
               <tr key={o.orderNo} className="hover:bg-surface-2/60">
@@ -135,6 +136,7 @@ function OrdersTable({ ov }: { ov: Overview }) {
                 <Td align="right">{fmtRM(o.landed)}</Td>
                 <Td align="right">{money(o.perPiece)}</Td>
                 <Td align="right">{fmtInt(o.left)}</Td>
+                <Td align="right">{o.source === "app" && <RemoveOrder orderNo={o.orderNo} />}</Td>
               </tr>
             ))}
           </tbody>
@@ -177,9 +179,9 @@ function importCards(ov: Overview): ImportCardInfo[] {
   const c = ov.counts;
   const xlsx = ".xlsx";
   return [
-    { kind: "skus", step: 1, title: "SKU List", help: "The list of single items (A. List of SKU Single Items). Gives every SKU its name.", accept: xlsx, status: c.skus ? `${c.skus} SKUs` : null },
-    { kind: "bundles", step: 2, title: "Bundle Lists", help: "The three Set SKU / BOM files together (Other Products, NWP Bedsheets, WP Bedsheets). Choose all of them at once.", accept: xlsx, multiple: true, status: c.bundles ? `${c.bundles} bundles` : null },
-    { kind: "costing", step: 3, title: "Order Costing", help: "ALOOMA All Order Costing. Gives every order's pieces and landed cost per piece.", accept: xlsx, status: c.orders ? `${c.orders} orders` : null },
+    { kind: "skus", step: 1, title: "SKU List", help: "The list of single items (A. List of SKU Single Items). Gives every SKU its name.", accept: xlsx, status: c.skus ? `${c.skus} ${c.skus === 1 ? "SKU" : "SKUs"}` : null },
+    { kind: "bundles", step: 2, title: "Bundle Lists", help: "The three Set SKU / BOM files together (Other Products, NWP Bedsheets, WP Bedsheets). Choose all of them at once.", accept: xlsx, multiple: true, status: c.bundles ? `${c.bundles} ${c.bundles === 1 ? "bundle" : "bundles"}` : null },
+    { kind: "costing", step: 3, title: "Order Costing", help: "ALOOMA All Order Costing. Gives every order's pieces and landed cost per piece.", accept: xlsx, status: c.orders ? `${c.orders} ${c.orders === 1 ? "order" : "orders"}` : null },
     { kind: "dates", step: 4, title: "Order Dates", help: "Order Inbound and Purchase Dates. Gives the purchase date and the arrival date of every order.", accept: xlsx, status: ov.orders.some((o) => o.arrival) ? "Dates added" : null },
     { kind: "opening", step: 5, title: "Opening Stock", help: "The warehouse inventory report for the last month before the first costed order arrived (May 2025). Costed like order 1B.", accept: xlsx, status: c.opening ? `${fmtInt(c.opening)} pieces` : null },
   ];

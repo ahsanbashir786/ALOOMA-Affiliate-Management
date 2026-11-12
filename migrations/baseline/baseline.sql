@@ -2031,6 +2031,7 @@ create table if not exists stock_orders (
   product_rm numeric(16,2),
   freight_rm numeric(16,2),
   note text,
+  source text not null default 'file',
   created_at timestamptz not null default now()
 );
 
@@ -2051,9 +2052,31 @@ create table if not exists stock_layers (
 create index if not exists stock_layers_sku on stock_layers (sku);
 
 
+create table if not exists profit_fulfilment_months (
+  month date primary key, -- first day of the month
+  amount numeric(14,2) not null,
+  note text,
+  updated_by text,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists claim_back_items (
+  key text primary key, -- order_id | kind | transaction id
+  order_id text not null,
+  kind text not null,
+  amount numeric(14,2) not null,
+  status text not null default 'open' check (status in ('open', 'claimed', 'recovered', 'dismissed')),
+  note text,
+  updated_by text,
+  updated_at timestamptz not null default now()
+);
+create index if not exists claim_back_items_status on claim_back_items (status);
+
+
+
 -- The only built-in role: Admin, with every screen. All other roles are created in the app.
 insert into roles (key, name, description, is_admin) values
   ('admin', 'Admin', 'The owner. Can open every screen, always.', true);
 
 insert into role_permissions (role_id, permission)
-select r.id, p from roles r, unnest(array['execution','creators','products','ads','stock','sync','users','settings']) p where r.is_admin;
+select r.id, p from roles r, unnest(array['execution','creators','products','ads','stock','profit','sync','users','settings']) p where r.is_admin;

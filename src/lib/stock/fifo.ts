@@ -81,3 +81,39 @@ export function runFifo(layers: Layer[], sales: Sale[]): { costed: Costed[]; rem
   }
   return { costed, remaining };
 }
+
+export type Return = { ref: string; day: string; sku: string; qty: number };
+
+/**
+ * FIFO with returns. Pieces that come back go back into stock on the day of the return, at the cost they left with
+ * (the average cost of that order's own pieces of that SKU), so a later sale can use them.
+ */
+export function runFifoWithReturns(layers: Layer[], sales: Sale[], returns: Return[]): { costed: Costed[]; remaining: Remaining[]; returnedCost: Map<string, number> } {
+  const first = runFifo(layers, sales);
+  const returnedCost = new Map<string, number>(); // by order: the cost that came back
+  if (!returns.length) return { ...first, returnedCost };
+  const sold = new Map<string, { qty: number; cost: number }>();
+  for (const c of first.costed) {
+    if (!c) continue;
+    const k = c.ref + "|" + c.sku;
+    const a = sold.get(k) ?? { qty: 0, cost: 0 };
+    a.qty += c.qty; a.cost += c.cost;
+    sold.set(k, a);
+  }
+  const extra: Layer[] = [];
+  const taken = new Map<string, number>();
+  returns.forEach((r, i) => {
+    const k = r.ref + "|" + r.sku;
+    const s = sold.get(k);
+    if (!s || s.qty <= 0) return;
+    const already = taken.get(k) ?? 0;
+    const qty = Math.min(r.qty, s.qty - already);
+    if (qty <= 0) return;
+    taken.set(k, already + qty);
+    const total = (s.cost / s.qty) * qty;
+    extra.push({ id: `return:${i}`, orderNo: "RETURN", sku: r.sku, sortNo: 9000 + i, arrival: r.day, qty, totalCost: total });
+    returnedCost.set(r.ref, (returnedCost.get(r.ref) ?? 0) + total);
+  });
+  if (!extra.length) return { ...first, returnedCost };
+  return { ...runFifo([...layers, ...extra], sales), returnedCost };
+}

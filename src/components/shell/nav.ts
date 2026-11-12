@@ -1,4 +1,4 @@
-import { Boxes, ListChecks, Package, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
+import { Banknote, Boxes, ListChecks, Package, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon; /** The permission that opens this screen. */ perm: PermissionKey; /** A screen with parts under different permissions opens with any of these (Settings: Connection and User Management). */ perms?: PermissionKey[] };
@@ -20,7 +20,10 @@ export const NAV: NavGroup[] = [
   },
   {
     label: "Profit",
-    items: [{ href: "/stock", label: "Stock And Costing", icon: Boxes, perm: "stock" }],
+    items: [
+      { href: "/profit", label: "Profit And Loss", icon: Banknote, perm: "profit" },
+      { href: "/stock", label: "Stock And Costing", icon: Boxes, perm: "stock" },
+    ],
   },
   {
     label: "System",

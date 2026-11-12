@@ -864,6 +864,7 @@ export const stockOrders = pgTable("stock_orders", {
   productRm: numeric("product_rm", { precision: 16, scale: 2 }),
   freightRm: numeric("freight_rm", { precision: 16, scale: 2 }),
   note: text("note"),
+  source: text("source").notNull().default("file"),
   createdAt: tz("created_at").notNull().defaultNow(),
 });
 export const stockLayers = pgTable(
@@ -882,3 +883,22 @@ export const stockLayers = pgTable(
   },
   (t) => [index("stock_layers_sku").on(t.sku)],
 );
+
+// Order profit (migrations/0035_profit.sql)
+export const profitFulfilmentMonths = pgTable("profit_fulfilment_months", {
+  month: date("month").primaryKey(),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  note: text("note"),
+  updatedBy: text("updated_by"),
+  updatedAt: tz("updated_at").notNull().defaultNow(),
+});
+export const claimBackItems = pgTable("claim_back_items", {
+  key: text("key").primaryKey(),
+  orderId: text("order_id").notNull(),
+  kind: text("kind").notNull(),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  status: text("status").notNull().default("open"),
+  note: text("note"),
+  updatedBy: text("updated_by"),
+  updatedAt: tz("updated_at").notNull().defaultNow(),
+});

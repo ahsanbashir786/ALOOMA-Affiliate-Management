@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { parseBundles, parseCosting, parseDates, parseInventoryReport, parseSkuList } from "@/lib/stock/parse";
-import { saveBundles, saveCosting, saveDates, saveOpening, saveSkuList } from "@/lib/stock/save";
+import { removeAppOrder, saveBundles, saveCosting, saveDates, saveNewOrder, saveOpening, saveSkuList } from "@/lib/stock/save";
+import { parseOrderLines, priceOrder } from "@/lib/stock/neworder";
+import { clearCosting } from "@/lib/stock/costing";
+import { clearProfit } from "@/lib/profit/data";
 
 export type ImportState = { kind: string; ok: boolean; title: string; lines: string[]; notes: string[] } | null;
 
@@ -49,9 +52,53 @@ export async function importStockFile(_prev: ImportState, form: FormData): Promi
     } else {
       out = { kind, ok: false, title: "Unknown file type", lines: [], notes: [] };
     }
+    clearCosting(); clearProfit();
     revalidatePath("/stock");
     return out;
   } catch (e) {
     return { kind, ok: false, title: "The file could not be read", lines: [], notes: [e instanceof Error ? e.message : "Unknown error"] };
   }
+}
+
+/** Adds one new stock-in order from the supplier's order lines, the rate and the freight amount. */
+export async function addStockOrder(_prev: ImportState, form: FormData): Promise<ImportState> {
+  await requirePermission("stock");
+  const kind = "new-order";
+  const fail = (title: string, notes: string[] = []): ImportState => ({ kind, ok: false, title, lines: [], notes });
+  const orderNo = String(form.get("orderNo") ?? "").trim().toUpperCase();
+  const rate = Number(String(form.get("rate") ?? "").replace(",", "."));
+  const freight = Number(String(form.get("freight") ?? "").replace(/,/g, ""));
+  const arrival = String(form.get("arrival") ?? "");
+  const purchase = String(form.get("purchase") ?? "") || null;
+  const file = form.get("file");
+  if (!/^[A-Z0-9-]{1,12}$/.test(orderNo)) return fail("Type an order number, for example 31");
+  if (!Number.isFinite(rate) || rate <= 0) return fail("Type the exchange rate (RMB for RM 1, for example 1.65)");
+  if (!Number.isFinite(freight) || freight < 0) return fail("Type the freight amount in RM (0 if there is none)");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(arrival)) return fail("Choose the day the order arrived in the warehouse");
+  if (purchase && !/^\d{4}-\d{2}-\d{2}$/.test(purchase)) return fail("The purchase date is not a date");
+  if (!(file instanceof File) || file.size === 0) return fail("Choose the order file");
+  if (file.size > MAX_BYTES) return fail("The file is too big (limit 10 MB)");
+  if (!/\.xlsx$/i.test(file.name)) return fail("Please use an Excel file that ends with .xlsx");
+  try {
+    const parsed = await parseOrderLines(Buffer.from(await file.arrayBuffer()));
+    if (!parsed.lines.length) return fail("No order lines found", parsed.warnings);
+    const priced = priceOrder(parsed.lines, rate, freight);
+    if (priced.paid === 0) return fail("Every line has 0 paid pieces", parsed.warnings);
+    const r = await saveNewOrder({ orderNo, purchaseDate: purchase, arrivalDate: arrival, file: file.name, freightRm: freight, priced });
+    clearCosting(); clearProfit();
+    revalidatePath("/stock");
+    if (!r.saved) return fail("Order not added", r.notes);
+    const money = (n: number) => n.toLocaleString("en-MY", { maximumFractionDigits: 2 });
+    return { kind, ok: true, title: `Order ${orderNo} added`, lines: [`${priced.lines.length} SKUs, ${priced.paid.toLocaleString("en-MY")} paid and ${priced.free.toLocaleString("en-MY")} free pieces`, `Product RM ${money(priced.productRm)} + freight RM ${money(freight)} = landed cost RM ${money(priced.landed)}`, `Freight per paid piece RM ${priced.freightPerPaid.toFixed(4)}; average cost per piece RM ${money(priced.landed / (priced.paid + priced.free))}`], notes: [...parsed.warnings, ...r.notes] };
+  } catch (e) {
+    return fail("The file could not be read", [e instanceof Error ? e.message : "Unknown error"]);
+  }
+}
+
+export async function removeStockOrder(orderNo: string): Promise<{ ok: boolean; error?: string }> {
+  await requirePermission("stock");
+  const ok = await removeAppOrder(orderNo);
+  clearCosting(); clearProfit();
+  revalidatePath("/stock");
+  return ok ? { ok: true } : { ok: false, error: "Only orders added in the app can be removed." };
 }
