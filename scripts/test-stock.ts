@@ -4,7 +4,7 @@ if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { runFifo, explode, type BundleMap, type Layer, type Sale } from "../src/lib/stock/fifo";
-import { estimateArrival, parseBundles, parseCosting, parseDates, parseInventoryReport, parseSkuList } from "../src/lib/stock/parse";
+import { estimateArrival, mergeOpening, parseBundles, parseCosting, parseDates, parseInventoryReport, parseSkuList } from "../src/lib/stock/parse";
 import { normSku } from "../src/lib/stock/sku";
 
 let pass = 0, fail = 0;
@@ -51,7 +51,12 @@ const near = (a: number, b: number, e = 0.005) => Math.abs(a - b) <= e;
   check("arrival: 'Late Jan – Feb 2026' uses February", estimateArrival("Late Jan – Feb 2026") === "2026-02-15");
   check("arrival: nothing readable gives no date", estimateArrival("soon") === null && estimateArrival(null) === null);
 
-  // ── The owner's real files
+  // ── Several inventory reports
+  const mo = mergeOpening([{ asOf: "2025-05-31", items: [{ sku: "A", closing: 5 }, { sku: "B", closing: 2 }], samples: 1, warnings: [] }, { asOf: "2025-05-31", items: [{ sku: "A", closing: 3 }], samples: 2, warnings: [] }]);
+  check("opening: several reports for the same day are added together", mo.items.find((i) => i.sku === "A")?.closing === 8 && mo.items.find((i) => i.sku === "B")?.closing === 2 && mo.samples === 3 && mo.asOf === "2025-05-31" && mo.warnings.length === 0);
+  check("opening: reports with different days give a warning and use the earliest", mergeOpening([{ asOf: "2025-05-31", items: [], samples: 0, warnings: [] }, { asOf: "2025-06-30", items: [], samples: 0, warnings: [] }]).warnings.length === 1);
+
+  // ── The owner\'s real files
   const dir = process.env.STOCK_FILES;
   if (!dir) { console.log("\n(STOCK_FILES not set: real-file checks skipped)"); }
   else {

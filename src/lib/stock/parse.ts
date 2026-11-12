@@ -209,6 +209,16 @@ export async function parseInventoryReport(buf: Buffer | ArrayBuffer | Uint8Arra
   return { asOf, items, samples, warnings };
 }
 
+/** Several inventory reports for the same day (for example one per warehouse) added together. If the days differ, the earliest is used and a warning is added. */
+export function mergeOpening(files: OpeningFile[]): OpeningFile {
+  const warnings = files.flatMap((f) => f.warnings);
+  const days = [...new Set(files.map((f) => f.asOf).filter(Boolean))].sort();
+  if (days.length > 1) warnings.push(`The reports have different closing days (${days.join(", ")}). They were added together and ${days[0]} is used.`);
+  const by = new Map<string, number>();
+  for (const f of files) for (const i of f.items) by.set(i.sku, (by.get(i.sku) ?? 0) + i.closing);
+  return { asOf: days[0] ?? "", items: [...by.entries()].map(([sku, closing]) => ({ sku, closing })), samples: files.reduce((s, f) => s + f.samples, 0), warnings };
+}
+
 // ───────── Bundle (set) lists ─────────
 /** Set rows carry the Set SKU; the parts are in the "Parent SKU" column on that row and the rows under it. A part listed twice counts twice. */
 export async function parseBundles(buf: Buffer | ArrayBuffer | Uint8Array): Promise<{ bundles: BundleRow[]; warnings: string[] }> {

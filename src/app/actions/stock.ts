@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
-import { parseBundles, parseCosting, parseDates, parseInventoryReport, parseSkuList } from "@/lib/stock/parse";
+import { parseBundles, parseCosting, parseDates, mergeOpening, parseInventoryReport, parseSkuList } from "@/lib/stock/parse";
 import { removeAppOrder, saveBundles, saveCosting, saveDates, saveNewOrder, saveOpening, saveSkuList } from "@/lib/stock/save";
 import { parseOrderLines, priceOrder } from "@/lib/stock/neworder";
 import { clearCosting } from "@/lib/stock/costing";
@@ -46,7 +46,7 @@ export async function importStockFile(_prev: ImportState, form: FormData): Promi
       const r = await saveDates(file.rows);
       out = { kind, ok: r.saved > 0, title: r.saved ? "Dates saved" : "No orders matched", lines: [`${r.saved} orders updated`, `${file.rows.filter((x) => !x.arrivalExact).length} arrival dates are estimates (only the month is known)`], notes: [...file.warnings, ...r.notes] };
     } else if (kind === "opening") {
-      const file = await parseInventoryReport(bufs[0]);
+      const file = mergeOpening(await Promise.all(bufs.map(parseInventoryReport)));
       const r = await saveOpening(file);
       out = { kind, ok: r.saved > 0, title: r.saved ? "Opening stock saved" : "Nothing saved", lines: [`${r.saved} pieces in stock on ${file.asOf || "an unknown day"}`, `${file.samples} sample pieces are not counted`], notes: r.notes };
     } else {
