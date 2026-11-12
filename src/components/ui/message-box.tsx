@@ -76,7 +76,7 @@ export function MessageBox({
   return (
     <div className={className}>
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[12px] font-medium tracking-wide text-ink-3 uppercase">Message to send</p>
+        <p className="text-[13px] font-medium text-ink-3">Message to send</p>
         {ms && <LangToggle lang={lang} onChange={setLang} />}
       </div>
       <pre className="max-w-3xl font-sans text-[14px] leading-relaxed whitespace-pre-wrap text-ink">{shown}</pre>

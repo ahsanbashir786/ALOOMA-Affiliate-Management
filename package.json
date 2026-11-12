@@ -20,7 +20,8 @@
     "test:status": "tsx --conditions=react-server scripts/test-status.ts",
     "test:execution": "tsx --conditions=react-server scripts/test-execution.ts",
     "seed:demo": "tsx --conditions=react-server scripts/seed-creators-demo.ts",
-    "test:permissions": "tsx --conditions=react-server scripts/test-permissions.ts"
+    "test:permissions": "tsx --conditions=react-server scripts/test-permissions.ts",
+    "test:stock": "tsx --conditions=react-server scripts/test-stock.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
@@ -29,6 +30,7 @@
     "drizzle-orm": "^0.45.4",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.43.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.64.0",
     "next": "16.4.3",
     "postgres": "^3.4.9",

@@ -351,7 +351,7 @@ export function ExecutionBoard({ data, me, meName, canManage, canWork }: { data:
         </div>
       ) : (
         <div className="space-y-4" data-testid="task-list">
-          <div className={cn("hidden items-center gap-3 px-4 text-[12px] font-semibold tracking-wide text-ink-3 uppercase lg:grid", COLS_CLASS)}>
+          <div className={cn("hidden items-center gap-3 px-4 text-[13px] font-medium text-ink-3 lg:grid", COLS_CLASS)}>
             {canManage && <span />}<span /><span>Action</span>{group !== "product" && <span>Product</span>}<span>Category</span><span>Priority</span><span>Assigned</span><span>Complete By</span><span className="text-right">At Stake</span>
           </div>
           {groups.map((g) => {

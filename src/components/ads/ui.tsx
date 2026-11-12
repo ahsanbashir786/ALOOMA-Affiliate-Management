@@ -93,7 +93,7 @@ export function Empty({ title, children, action }: { title: string; children: Re
   );
 }
 
-export const th = "py-2.5 pr-3 text-left text-[12px] font-semibold tracking-wide text-ink-3 uppercase";
+export const th = "py-2.5 pr-3 text-left text-[13px] font-medium text-ink-3";
 export const thr = cn(th, "text-right");
 export const td = "py-3 pr-3 align-top";
 export const tdr = cn(td, "tnum text-right");

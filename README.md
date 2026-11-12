@@ -15,7 +15,7 @@ A web app for running a TikTok Shop affiliate programme. Everything comes from t
 
 Roles are made in the app (Settings → User Management). The only built-in role is **Admin**, which always opens every screen. For any other role you choose which of the six screens it can open; that is the only permission.
 
-More: [System map](docs/SYSTEM-MAP.md) · [Execution Plan](docs/EXECUTION-PLAN.md) · [Affiliate Data](docs/CREATORS.md) · [Product Analysis](docs/PRODUCTS.md) · [TikTok connection](docs/TIKTOK-API.md) · [Deploy](docs/DEPLOY.md)
+More: [System map](docs/SYSTEM-MAP.md) · [Execution Plan](docs/EXECUTION-PLAN.md) · [Affiliate Data](docs/CREATORS.md) · [Product Analysis](docs/PRODUCTS.md) · [Stock And Costing](docs/STOCK.md) · [TikTok connection](docs/TIKTOK-API.md) · [Deploy](docs/DEPLOY.md)
 
 ## Run it
 

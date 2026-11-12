@@ -60,7 +60,7 @@ function UserRow({ u, roles, isMe }: { u: U; roles: R[]; isMe: boolean }) {
         <p className="truncate text-[13px] text-ink-3">{u.email}</p>
       </div>
       <div className="w-36 shrink-0 text-[13px]" data-testid="last-login">
-        <p className="text-[11.5px] font-semibold tracking-wide text-ink-3 uppercase">Last Login</p>
+        <p className="text-[13px] font-medium text-ink-3">Last Login</p>
         <p className={cn("font-medium", login.sub ? "text-ink" : "text-ink-3")}>{login.text}</p>
         {login.sub && <p className="text-[12px] text-ink-3">{login.sub}</p>}
       </div>
@@ -163,7 +163,7 @@ function RolesTab({ roles }: { roles: R[] }) {
         <table className="w-full min-w-[720px] border-collapse text-[14px]">
           <thead>
             <tr className="border-b border-line bg-surface-2/50">
-              <th scope="col" className="sticky left-0 z-10 min-w-72 bg-surface-2/90 px-5 py-3 text-left text-[12px] font-semibold tracking-wide text-ink-3 uppercase">Screen{pending && <Loader2 className="ml-2 inline size-3.5 animate-spin" />}</th>
+              <th scope="col" className="sticky left-0 z-10 min-w-72 bg-surface-2/90 px-5 py-3 text-left text-[13px] font-medium text-ink-3">Screen{pending && <Loader2 className="ml-2 inline size-3.5 animate-spin" />}</th>
               {roles.map((r) => <RoleHeader key={r.id} r={r} roles={roles} />)}
             </tr>
           </thead>
@@ -181,7 +181,7 @@ function RolesTab({ roles }: { roles: R[] }) {
 function FragmentGroup({ group, roles, state, toggle }: { group: string; roles: R[]; state: Record<string, PermissionKey[]>; toggle: (r: R, k: PermissionKey) => void }) {
   return (
     <>
-      <tr className="bg-surface-2/40"><td colSpan={roles.length + 1} className="sticky left-0 px-5 py-2 text-[12px] font-semibold tracking-wide text-ink-3 uppercase">{group}</td></tr>
+      <tr className="bg-surface-2/40"><td colSpan={roles.length + 1} className="sticky left-0 px-5 py-2 text-[13px] font-medium text-ink-3">{group}</td></tr>
       {PERMISSIONS.filter((p) => p.group === group).map((p) => (
         <tr key={p.key} className="border-t border-line" data-testid="perm-row" data-perm={p.key}>
           <th scope="row" className="sticky left-0 z-10 bg-surface px-5 py-3 text-left font-normal"><p className="font-medium text-ink">{p.label}</p><p className="mt-0.5 max-w-md text-[12.5px] text-ink-3">{p.help}</p></th>

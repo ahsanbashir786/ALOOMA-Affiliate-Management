@@ -831,3 +831,54 @@ export const ttFinUnsettled = pgTable("tt_fin_unsettled", {
 }, (t) => [index("tt_fin_unsettled_created").on(t.orderCreateTime)]);
 
 // The view ads_creative_summary (migrations/0023) is read with plain SQL; drizzle does not manage it.
+
+// Stock and FIFO costing (migrations/0034_stock.sql)
+export const stockSkus = pgTable("stock_skus", {
+  sku: text("sku").primaryKey(),
+  name: text("name"),
+  family: text("family"),
+  createdAt: tz("created_at").notNull().defaultNow(),
+});
+export const stockBundles = pgTable("stock_bundles", {
+  setSku: text("set_sku").primaryKey(),
+  name: text("name"),
+  fbsSku: text("fbs_sku"),
+  createdAt: tz("created_at").notNull().defaultNow(),
+});
+export const stockBundleParts = pgTable(
+  "stock_bundle_parts",
+  { setSku: text("set_sku").notNull(), partSku: text("part_sku").notNull(), qty: integer("qty").notNull() },
+  (t) => [primaryKey({ columns: [t.setSku, t.partSku] })],
+);
+export const stockOrders = pgTable("stock_orders", {
+  orderNo: text("order_no").primaryKey(),
+  sortNo: integer("sort_no").notNull(),
+  kind: text("kind").notNull().default("order"),
+  supplierFile: text("supplier_file"),
+  purchaseDate: date("purchase_date"),
+  invoiceRefs: text("invoice_refs"),
+  arrivalDate: date("arrival_date"),
+  arrivalExact: boolean("arrival_exact").notNull().default(false),
+  arrivalNote: text("arrival_note"),
+  productRmb: numeric("product_rmb", { precision: 16, scale: 2 }),
+  productRm: numeric("product_rm", { precision: 16, scale: 2 }),
+  freightRm: numeric("freight_rm", { precision: 16, scale: 2 }),
+  note: text("note"),
+  createdAt: tz("created_at").notNull().defaultNow(),
+});
+export const stockLayers = pgTable(
+  "stock_layers",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    orderNo: text("order_no").notNull(),
+    sku: text("sku").notNull(),
+    paidQty: integer("paid_qty").notNull().default(0),
+    freeQty: integer("free_qty").notNull().default(0),
+    unitRmb: numeric("unit_rmb", { precision: 14, scale: 4 }),
+    rmbPerRm: numeric("rmb_per_rm", { precision: 10, scale: 5 }),
+    unitRm: numeric("unit_rm", { precision: 14, scale: 4 }),
+    freightPerPaid: numeric("freight_per_paid", { precision: 14, scale: 6 }),
+    totalCostRm: numeric("total_cost_rm", { precision: 16, scale: 4 }).notNull(),
+  },
+  (t) => [index("stock_layers_sku").on(t.sku)],
+);

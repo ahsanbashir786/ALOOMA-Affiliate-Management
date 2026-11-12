@@ -27,11 +27,11 @@ export function TodaySection({ d }: { d: TodayData }) {
   return (
     <div className="space-y-5" data-testid="ads-today">
       <div>
-        <h2 className="mb-2 text-[13px] font-semibold tracking-wide text-ink-3 uppercase">Latest Day{d.latestDay ? ` · ${day(d.latestDay)}` : ""} <span className="font-normal normal-case">compared with the day before</span></h2>
+        <h2 className="mb-2 text-[13px] font-semibold text-ink-3">Latest Day{d.latestDay ? ` · ${day(d.latestDay)}` : ""} <span className="font-normal normal-case">compared with the day before</span></h2>
         <KpiTiles now={d.latest} before={d.dayBefore} label="Latest day" />
       </div>
       <div>
-        <h2 className="mb-2 text-[13px] font-semibold tracking-wide text-ink-3 uppercase">{d.range.label} <span className="font-normal normal-case">{d.hasPrev ? `compared with the ${d.range.days} day${d.range.days === 1 ? "" : "s"} before` : "nothing to compare with"}</span></h2>
+        <h2 className="mb-2 text-[13px] font-semibold text-ink-3">{d.range.label} <span className="font-normal normal-case">{d.hasPrev ? `compared with the ${d.range.days} day${d.range.days === 1 ? "" : "s"} before` : "nothing to compare with"}</span></h2>
         <KpiTiles now={d.rangeKpi} before={d.rangePrev} label="Selected dates" compare={d.hasPrev} />
       </div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">

@@ -51,7 +51,7 @@ export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapse
             const items = group.items;
             return (
               <div key={group.label} className={cn(gi > 0 && "mt-3")}>
-                <p className={cn("px-3 pb-1.5 text-[11.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase", rail && "lg:hidden")}>{group.label}</p>
+                <p className={cn("px-3 pb-1.5 text-[12px] font-medium text-ink-3", rail && "lg:hidden")}>{group.label}</p>
                 {rail && gi > 0 && <div className="mx-3 mb-2 hidden border-t border-line lg:block" />}
                 <ul className="space-y-0.5">
                   {items.map((item) => {

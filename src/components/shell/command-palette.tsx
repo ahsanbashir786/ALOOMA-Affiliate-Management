@@ -134,7 +134,7 @@ export function CommandPalette() {
                 if (!items.length) return null;
                 return (
                   <Fragment key={g.kind}>
-                    <li aria-hidden className="px-3 pt-3 pb-1.5 text-[11.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">{g.kind === "creator" && !q ? "Recent Creators" : g.title}</li>
+                    <li aria-hidden className="px-3 pt-3 pb-1.5 text-[13px] font-medium text-ink-3">{g.kind === "creator" && !q ? "Recent Creators" : g.title}</li>
                     {items.map(({ h, i }, n) => {
                       const sel = i === cur;
                       const Icon = h.kind === "page" ? ICON.get(h.href) ?? ArrowRight : Package;

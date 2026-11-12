@@ -83,7 +83,7 @@ function ActionCard({ username, focus, phone, canAct, paused, onSaved }: { usern
       {msgs && <MessageBox className="mt-3" en={msgs.en} ms={msgs.ms} phone={phone} />}
       {canAct ? (
         <div className="mt-4 border-t border-line pt-3">
-          <p className="mb-2 text-[12px] font-medium tracking-wide text-ink-3 uppercase">What happened? (saved to Daily Actions)</p>
+          <p className="mb-2 text-[13px] font-medium text-ink-3">What happened? (saved to Daily Actions)</p>
           <div className="flex flex-wrap gap-2">
             {focus.action === "Resume" || paused ? (
               <Button size="sm" disabled={busy} onClick={() => save(() => resumeCreator(username), "Resumed.")}>Resume</Button>

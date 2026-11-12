@@ -10,7 +10,7 @@ export function Card({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("min-w-0 rounded-xl border border-line bg-surface shadow-card", className)}
+      className={cn("min-w-0 rounded-lg border border-line bg-surface shadow-card", className)}
       {...props}
     >
       {children}
@@ -50,9 +50,9 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-[26px] font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink">{title}</h1>
         {description && <p className="mt-1 max-w-3xl text-[14px] text-ink-2">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
@@ -70,9 +70,9 @@ export const buttonClasses = ({
   className,
 }: Pick<ButtonProps, "variant" | "size" | "className">) =>
   cn(
-    "inline-flex items-center justify-center gap-2 rounded-lg font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-50",
+    "inline-flex items-center justify-center gap-2 rounded-md font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-50",
     size === "sm" ? "h-8 px-3 text-[13px]" : "h-9 px-3.5 text-[14px]",
-    variant === "primary" && "bg-brand text-white hover:bg-brand-strong shadow-card",
+    variant === "primary" && "bg-brand text-white hover:bg-brand-strong",
     variant === "secondary" &&
       "border border-line-strong bg-surface text-ink hover:bg-surface-2 shadow-card",
     variant === "ghost" && "text-ink-2 hover:bg-surface-2 hover:text-ink",
@@ -88,7 +88,7 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   return (
     <input
       className={cn(
-        "h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink placeholder:text-ink-3 focus:border-brand",
+        "h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-[14px] text-ink placeholder:text-ink-3 focus:border-brand",
         className,
       )}
       {...props}
@@ -100,7 +100,7 @@ export function Select({ className, children, ...props }: React.SelectHTMLAttrib
   return (
     <select
       className={cn(
-        "h-9 rounded-lg border border-line-strong bg-surface px-2.5 text-[14px] text-ink focus:border-brand",
+        "h-9 rounded-md border border-line-strong bg-surface px-2.5 text-[14px] text-ink focus:border-brand",
         className,
       )}
       {...props}
@@ -179,7 +179,7 @@ export function Th({
   return (
     <th
       className={cn(
-        "sticky top-0 z-[1] border-b border-line bg-surface-2 px-3 py-2.5 text-[12px] font-medium tracking-wide whitespace-nowrap text-ink-3 uppercase",
+        "sticky top-0 z-[1] border-b border-line bg-surface-2 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap text-ink-2",
         align === "right" ? "text-right" : "text-left",
         className,
       )}
@@ -196,7 +196,7 @@ export function Td({
     <td
       className={cn(
         "border-b border-line px-3 py-2.5 text-[13.5px] text-ink",
-        align === "right" && "tnum text-right",
+        align === "right" && "tnum text-right whitespace-nowrap",
         className,
       )}
       {...props}

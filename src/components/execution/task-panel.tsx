@@ -26,7 +26,7 @@ function Block({ icon: Icon, title, right, children }: { icon: typeof Users; tit
   return (
     <section className="border-t border-line px-5 py-4">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 text-[13px] font-semibold tracking-wide text-ink-2 uppercase"><Icon className="size-4 text-ink-3" />{title}</h3>
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-ink-2"><Icon className="size-4 text-ink-3" />{title}</h3>
         {right}
       </div>
       {children}
@@ -133,7 +133,7 @@ export function TaskPanel({ task, data, me, canManage, canWork, mutate, onClose,
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <section className="px-5 py-4">
-            <h3 className="mb-1.5 text-[13px] font-semibold tracking-wide text-ink-2 uppercase">Why This Task</h3>
+            <h3 className="mb-1.5 text-[13px] font-semibold text-ink-2">Why This Task</h3>
             <p className="text-[14.5px] leading-relaxed text-ink">{task.summary}</p>
             {brief && (
               <p className="mt-2.5 text-[13px] text-ink-3">

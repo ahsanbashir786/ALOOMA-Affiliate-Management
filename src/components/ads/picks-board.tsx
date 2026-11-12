@@ -105,7 +105,7 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
         </motion.div>
       </section>
       <section aria-label="Not for boosting" className="flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-[12px] font-semibold tracking-wide text-ink-3 uppercase">Do not boost</span>
+        <span className="mr-1 text-[13px] font-medium text-ink-3">Do not boost</span>
         {GROUPS.filter((g) => !g.boost && g.key !== "rescue").map((g) => (
           <button key={g.key} type="button" onClick={() => setView(g.key)} data-testid={`ads-group-${g.key}`} aria-pressed={view === g.key} title={g.about}
             className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px] font-medium", view === g.key ? "border-brand/50 bg-brand-soft text-brand-strong" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>{g.label}<span className="tnum text-ink-3">{nfmt(counts[g.key])}</span></button>
@@ -146,9 +146,9 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
                       {hg.headers.map((h) => {
                         const num = (h.column.columnDef.meta as { num?: boolean } | undefined)?.num, can = h.column.getCanSort(), s = h.column.getIsSorted();
                         return (
-                          <th key={h.id} className={cn("py-2.5 pr-3 text-[12px] font-semibold tracking-wide text-ink-3 uppercase", h.id === "pick" ? "w-10 px-4" : "", num ? "text-right" : "text-left")}>
+                          <th key={h.id} className={cn("py-2.5 pr-3 text-[13px] font-medium text-ink-3", h.id === "pick" ? "w-10 px-4" : "", num ? "text-right" : "text-left")}>
                             {h.isPlaceholder ? null : can ? (
-                              <button type="button" onClick={h.column.getToggleSortingHandler()} className={cn("inline-flex items-center gap-1 uppercase hover:text-ink", num && "flex-row-reverse")}>{flexRender(h.column.columnDef.header, h.getContext())}{s === "asc" ? <ArrowUp className="size-3" /> : s === "desc" ? <ArrowDown className="size-3" /> : <ArrowUpDown className="size-3 opacity-40" />}</button>
+                              <button type="button" onClick={h.column.getToggleSortingHandler()} className={cn("inline-flex items-center gap-1 hover:text-ink", num && "flex-row-reverse")}>{flexRender(h.column.columnDef.header, h.getContext())}{s === "asc" ? <ArrowUp className="size-3" /> : s === "desc" ? <ArrowDown className="size-3" /> : <ArrowUpDown className="size-3 opacity-40" />}</button>
                             ) : flexRender(h.column.columnDef.header, h.getContext())}
                           </th>
                         );

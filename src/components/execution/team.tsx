@@ -40,7 +40,7 @@ export function TeamView({ tasks, data, today, onPick }: {
         </header>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-[14px]">
-            <thead><tr className="border-b border-line text-left text-[12px] font-semibold tracking-wide text-ink-3 uppercase">
+            <thead><tr className="border-b border-line text-left text-[13px] font-medium text-ink-3">
               <th className="px-5 py-2.5">Person</th><th className="px-3 py-2.5 text-right">Not Started</th><th className="px-3 py-2.5 text-right">Pending</th><th className="px-3 py-2.5 text-right">Done</th><th className="px-3 py-2.5 text-right">Overdue</th><th className="w-48 px-3 py-2.5">Completed</th><th className="px-3 py-2.5 text-right" title="Average days from creation to done">Days To Finish</th><th className="px-3 py-2.5 text-right">Sales Done</th><th className="px-3 py-2.5 text-right">Sales Waiting</th><th className="w-8" />
             </tr></thead>
             <tbody>
