@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, CircleAlert, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/viz/sparkline";
 import { HEALTH_LABEL, type CampaignRow, type CreatorRow, type Health, type ProductRow, type TodayData, type Kpi } from "@/lib/ads/insights";
-import type { Range } from "@/lib/ads/range";
+import type { Range } from "@/lib/range";
 import { Delta, Empty, GroupPill, Pill, SpendSalesBars, Tile, VideoCell, day, nfmt, rm, rm2, roiFmt, th, thr, td, tdr } from "./ui";
 
 const card = "overflow-hidden rounded-2xl border border-line bg-surface";

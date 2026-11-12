@@ -5,7 +5,7 @@ import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { productName, productRank } from "@/lib/products/catalog";
 import { vault, type VaultVideo } from "./vault";
 import { BOOST_GROUPS } from "./groups";
-import { LOG_WINDOW, lastNDays, sqlFrom, sqlPrev, type Range } from "./range";
+import { LOG_WINDOW, lastNDays, sqlFrom, sqlPrev, type Range } from "@/lib/range";
 export { LOG_WINDOW };
 
 // Read-only numbers for the GMV Max screens. Everything comes from the Ads sync tables (ads_*).

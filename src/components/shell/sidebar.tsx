@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsLeft, ChevronsRight, Lock, X } from "lucide-react";
-import { can } from "@/lib/can";
 import type { PermissionKey } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 import { NAV, navAllowed, type NavItem } from "./nav";

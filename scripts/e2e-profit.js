@@ -27,8 +27,10 @@ async function login(p, email) {
   ok((await p.locator("[data-testid=order-row]").count()) === 1, "orders: the money filter narrows to the estimate");
   await p.goto(BASE + "/profit?range=all&sort=low"); await p.waitForSelector("[data-testid=order-row]");
   ok(/S1/.test(await p.locator("[data-testid=order-row]").first().innerText()), "orders: lowest profit first puts the sample first");
-  await p.goto(BASE + "/profit?range=last"); await p.waitForSelector("[data-testid=profit-table]");
-  ok(/Last Month/.test(await p.getByTestId("period-bar").innerText()), "orders: the period buttons are there");
+  await p.goto(BASE + "/profit?range=lifetime"); await p.waitForSelector("[data-testid=profit-table]");
+  ok(/Lifetime/.test(await p.getByTestId("ads-range-label").innerText()), "orders: the shared calendar button is at the top right and says Lifetime");
+  await p.getByTestId("ads-range").click(); await p.getByTestId("ads-range-last_month").click(); await p.getByTestId("ads-range-confirm").click(); await p.waitForURL(/range=last_month/);
+  ok(/Last month/.test(await p.getByTestId("ads-range-label").innerText()), "orders: choosing Last month in the calendar changes the period");
 
   // ── Order detail
   await p.goto(BASE + "/profit?range=all"); await p.getByRole("link", { name: "P2", exact: true }).click(); await p.waitForSelector("[data-testid=order-waterfall]");

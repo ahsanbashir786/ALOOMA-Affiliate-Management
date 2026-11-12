@@ -211,7 +211,7 @@ async function main() {
   const VA = await import("../src/lib/ads/vault");
   const GR = await import("../src/lib/ads/groups");
   const IN = await import("../src/lib/ads/insights");
-  const RG = await import("../src/lib/ads/range");
+  const RG = await import("../src/lib/range");
   const ST = await import("../src/lib/ads/status");
   const { todayKL } = await import("../src/lib/time");
   const wipeBT = async () => { await q(sql`delete from ads_creative_daily where advertiser_id = 'BT'`); await q(sql`delete from ads_campaign_daily where advertiser_id = 'BT'`); await q(sql`delete from tt_videos where video_id in ('bt-ORG', 'bt-B')`); await q(sql`delete from ads_auth_asks where creator = 'bt_locked'`); await q(sql`delete from ads_boost_batches where note = 'bt-test'`); };

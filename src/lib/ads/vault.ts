@@ -7,7 +7,7 @@ import { productName } from "@/lib/products/catalog";
 import { STATUS_LABEL, isBlocked } from "./status";
 import { classify, evidenceOf, explorePotential, fairTestAmount, potentialOf, GROUPS, type Evidence, type GroupKey, type Rules } from "./groups";
 import { estimateExploration, type EstKey } from "./explore";
-import { sqlFrom, type Range } from "./range";
+import { sqlFrom, type Range } from "@/lib/range";
 
 // Every video GMV Max knows, judged on ALL of its history. Read only.
 // Sources: Video Daily Results (ads_creative_daily), the Shop sync for who made a video and its sales without ads (tt_videos),

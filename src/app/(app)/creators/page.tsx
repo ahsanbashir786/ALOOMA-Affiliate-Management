@@ -13,6 +13,7 @@ import { STATUS_HELP, ACTION_HELP, type CreatorStatus } from "@/lib/creators/sta
 import { fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
+import { DatesPicker } from "@/components/ui/range-picker";
 import { statsOf } from "@/lib/creators/action-messages";
 import { Pagination } from "@/components/ui/pagination";
 import { OpenPanelButton } from "@/components/creators/open-panel-button";
@@ -176,7 +177,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
       <PageHeader
         title="Affiliate Data"
         description={<span className="inline-flex items-center gap-2"><span className={cn("size-2 rounded-full", fresh.ok ? "bg-good" : "bg-warn")} />{fresh.label} from TikTok Shop</span>}
-        actions={<Link href="/sync" className={buttonClasses({ variant: "secondary" })}>Data Sync</Link>}
+        actions={<DatesPicker from={pageFilters.from ?? ""} to={pageFilters.to ?? ""} today={todayKL()} emptyLabel="All Time" />}
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Creators at a glance" data-testid="creator-kpis">
@@ -196,7 +197,6 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
           todo={dir.actionCounts.todo}
           statuses={STATUS_ORDER.map((k) => ({ key: k, count: dir.statusCounts[k] }))}
           staff={staff}
-          today={todayKL()}
           canExport={canExport}
           shown={`${dir.total.toLocaleString("en-MY")} creator${dir.total === 1 ? "" : "s"} · ${dir.totalLines.toLocaleString("en-MY")} product line${dir.totalLines === 1 ? "" : "s"} · orders, GMV and videos: ${opts.range ? periodLabel : "all time"}`}
         />

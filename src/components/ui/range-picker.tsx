@@ -4,8 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { addDaysISO } from "@/lib/time";
-import { PRESETS, fmtDay, makeRange, presetDates, type RangeKey } from "@/lib/ads/range";
+import { PRESETS, fmtDay, makeRange, presetDates, type RangeKey } from "@/lib/range";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -38,9 +37,21 @@ function Month({ ym, start, end, today, onPick, className }: { ym: string; start
   );
 }
 
-/** Date range for all of GMV Max: quick choices and a two-month calendar, like TikTok Ads Manager. Puts the choice in the address (?range=…&from=…&to=…). */
-export function RangePicker({ today, rangeKey, from, to, label }: { today: string; rangeKey: RangeKey; from: string | null; to: string; label: string }) {
+type Core = {
+  today: string; rangeKey: RangeKey; from: string | null; to: string; label: string;
+  /** "range": the address carries a choice name (?range=7d) or custom dates. "dates": it always carries plain dates (?from=…&to=…), no dates at all meaning lifetime. */
+  mode: "range" | "dates";
+  /** Which quick choices to offer (all of them when empty). */
+  presets?: Exclude<RangeKey, "custom">[];
+  /** Say what the period is compared with. */
+  compare?: boolean;
+  testPrefix: string;
+};
+
+/** The calendar every screen uses for its date range: quick choices and a two-month calendar, like TikTok Ads Manager. */
+function Picker({ today, rangeKey, from, to, label, mode, presets, compare, testPrefix }: Core) {
   const router = useRouter(), path = usePathname(), params = useSearchParams();
+  const list = presets?.length ? PRESETS.filter((p) => presets.includes(p.key)) : PRESETS;
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState<RangeKey>(rangeKey);
   const [a, setA] = useState<string | null>(from), [b, setB] = useState<string | null>(from ? to : null);
@@ -80,29 +91,32 @@ export function RangePicker({ today, rangeKey, from, to, label }: { today: strin
     if (!draft) return;
     const q = new URLSearchParams(params.toString());
     q.delete("from"); q.delete("to"); q.delete("range");
-    if (key === "custom") { q.set("range", "custom"); q.set("from", draft.from!); q.set("to", draft.to); } else q.set("range", key);
+    q.delete("page");
+    if (mode === "dates") { if (draft.from) { q.set("from", draft.from); q.set("to", draft.to); } }
+    else if (key === "custom") { q.set("range", "custom"); q.set("from", draft.from!); q.set("to", draft.to); } else q.set("range", key);
     setOpen(false);
-    router.push(`${path}?${q.toString()}`, { scroll: false });
+    const qs = q.toString();
+    router.push(qs ? `${path}?${qs}` : path, { scroll: false });
   };
   const preview = draft ? makeRange(key, draft.from, draft.to) : null;
   const left = addMonths(view, 0), right = addMonths(view, 1);
   const nav = "grid size-8 place-items-center rounded-lg text-ink-2 hover:bg-surface-2 disabled:opacity-30";
   return (
     <div ref={box} className="relative">
-      <button type="button" aria-expanded={open} aria-label="Date range" data-testid="ads-range" onClick={() => { if (!open) reset(); setOpen((o) => !o); }}
+      <button type="button" aria-expanded={open} aria-label="Date range" data-testid={testPrefix} onClick={() => { if (!open) reset(); setOpen((o) => !o); }}
         className="inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink hover:bg-surface-2">
-        <CalendarRange className="size-4 text-ink-3" /><span data-testid="ads-range-label">{label}</span><ChevronDown className="size-4 text-ink-3" />
+        <CalendarRange className="size-4 text-ink-3" /><span data-testid={`${testPrefix}-label`}>{label}</span><ChevronDown className="size-4 text-ink-3" />
       </button>
       {open && (
-        <div role="dialog" aria-label="Define data time range" data-testid="ads-range-dialog" style={place ? { left: place.left, width: place.width } : { visibility: "hidden" }} className="absolute top-11 z-30 rounded-xl border border-line-strong bg-surface text-ink shadow-pop">
+        <div role="dialog" aria-label="Define data time range" data-testid={`${testPrefix}-dialog`} style={place ? { left: place.left, width: place.width } : { visibility: "hidden" }} className="absolute top-11 z-30 rounded-xl border border-line-strong bg-surface text-ink shadow-pop">
           <div className="flex items-center justify-between border-b border-line px-5 py-3">
             <h2 className="text-[15px] font-semibold">Define data time range</h2>
-            <p className="text-[12.5px] text-ink-3">{preview && preview.days ? `Compared with the ${preview.days} day${preview.days === 1 ? "" : "s"} before` : "Lifetime has nothing to compare with"}</p>
+            {compare && <p className="text-[12.5px] text-ink-3">{preview && preview.days ? `Compared with the ${preview.days} day${preview.days === 1 ? "" : "s"} before` : "Lifetime has nothing to compare with"}</p>}
           </div>
           <div className="flex flex-col sm:flex-row">
             <ul className="flex max-h-[420px] flex-wrap gap-1 overflow-y-auto border-b border-line p-3 sm:w-[170px] sm:shrink-0 sm:flex-col sm:flex-nowrap sm:border-r sm:border-b-0">
-              {PRESETS.map((p) => (
-                <li key={p.key}><button type="button" onClick={() => choose(p.key)} data-testid={`ads-range-${p.key}`} className={cn("w-full rounded-lg px-3 py-1.5 text-left text-[13.5px]", key === p.key ? "bg-brand-soft font-medium text-brand-strong" : "text-ink-2 hover:bg-surface-2")}>{p.label}</button></li>
+              {list.map((p) => (
+                <li key={p.key}><button type="button" onClick={() => choose(p.key)} data-testid={`${testPrefix}-${p.key}`} className={cn("w-full rounded-lg px-3 py-1.5 text-left text-[13.5px]", key === p.key ? "bg-brand-soft font-medium text-brand-strong" : "text-ink-2 hover:bg-surface-2")}>{p.label}</button></li>
               ))}
             </ul>
             <div className="min-w-0 flex-1 p-4">
@@ -114,18 +128,30 @@ export function RangePicker({ today, rangeKey, from, to, label }: { today: strin
                 <Month ym={left} start={draft?.from ?? null} end={draft?.to ?? null} today={today} onPick={pickDay} />
                 <Month ym={right} start={draft?.from ?? null} end={draft?.to ?? null} today={today} onPick={pickDay} className="hidden md:block" />
               </div>
-              <p className="mt-2 text-center text-[13px] text-ink-2" data-testid="ads-range-draft">{preview ? preview.label : "Click a first day, then a last day"}</p>
+              <p className="mt-2 text-center text-[13px] text-ink-2" data-testid={`${testPrefix}-draft`}>{preview ? preview.label : "Click a first day, then a last day"}</p>
             </div>
           </div>
           <div className="flex items-center justify-between border-t border-line px-5 py-3">
             <span className="text-[12.5px] text-ink-3">UTC+08:00</span>
             <span className="flex gap-2">
               <button type="button" onClick={() => setOpen(false)} className="h-9 rounded-lg border border-line-strong px-4 text-[14px] text-ink-2 hover:bg-surface-2">Cancel</button>
-              <button type="button" disabled={!draft} onClick={confirm} data-testid="ads-range-confirm" className="h-9 rounded-lg bg-brand px-5 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-50">Confirm</button>
+              <button type="button" disabled={!draft} onClick={confirm} data-testid={`${testPrefix}-confirm`} className="h-9 rounded-lg bg-brand px-5 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-50">Confirm</button>
             </span>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+/** For screens whose range is a choice name in the address (?range=7d, or ?range=custom&from=…&to=…): GMV Max and Profit And Loss. */
+export function RangePicker({ today, rangeKey, from, to, label, presets, compare = true }: { today: string; rangeKey: RangeKey; from: string | null; to: string; label: string; presets?: Core["presets"]; compare?: boolean }) {
+  return <Picker today={today} rangeKey={rangeKey} from={from} to={to} label={label} mode="range" presets={presets} compare={compare} testPrefix="ads-range" />;
+}
+
+/** For screens whose range is plain dates in the address (?from=…&to=…): Affiliate Data and Product Analysis. Empty dates mean all time (or `emptyLabel`). */
+export function DatesPicker({ today, from, to, presets, compare, emptyLabel = "Lifetime" }: { today: string; from: string; to: string; presets?: Core["presets"]; compare?: boolean; emptyLabel?: string }) {
+  const key = !from ? "lifetime" : (PRESETS.find((p) => { const d = presetDates(p.key, today); return d.from === from && d.to === (to || today); })?.key ?? "custom");
+  const r = makeRange(key, from || null, to || today);
+  return <Picker today={today} rangeKey={key} from={from || null} to={to || today} label={from ? r.label : emptyLabel} mode="dates" presets={presets} compare={compare} testPrefix="date-range" />;
 }

@@ -8,8 +8,8 @@ import { adsConnectionInfo } from "@/lib/tiktok-ads/client";
 import { DEFAULT_RULES, vault, type VaultVideo } from "@/lib/ads/vault";
 import { GROUPS, isGroupKey, type GroupKey } from "@/lib/ads/groups";
 import { adsToday, boostLog, videoTrends, campaignHealth, creatorScoreboard, productPerformance } from "@/lib/ads/insights";
-import { rangeSuffix, resolveRange, type RangeKey } from "@/lib/ads/range";
-import { RangePicker } from "@/components/ads/range-picker";
+import { rangeSuffix, resolveRange, type RangeKey } from "@/lib/range";
+import { RangePicker } from "@/components/ui/range-picker";
 import { todayKL } from "@/lib/time";
 import { productName } from "@/lib/products/catalog";
 import { boostOptions, getBoostWriteSettings } from "@/lib/tiktok-ads/boost-write";
@@ -57,7 +57,8 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
   const spR = { range: one(sp.range), from: one(sp.from), to: one(sp.to) };
   const range = resolveRange(spR, today, DEFAULT_RANGE[tab]);
   const carry = rangeSuffix(spR);
-  const header = <PageHeader title="GMV Max" description="How your GMV Max ads are doing, which videos deserve a boost, and what happened after you boosted. Nothing here changes your ads in TikTok, except a single-video boost that the owner creates or stops on purpose (off until switched on in Settings)." />;
+  const headerText = "How your GMV Max ads are doing, which videos deserve a boost, and what happened after you boosted. Nothing here changes your ads in TikTok, except a single-video boost that the owner creates or stops on purpose (off until switched on in Settings).";
+  const header = <PageHeader title="GMV Max" description={headerText} />;
   if (!conn.connected)
     return (
       <div className="space-y-6">{header}
@@ -119,11 +120,8 @@ export default async function AdsPage({ searchParams }: { searchParams: Promise<
 
   return (
     <div className="space-y-6">
-      {header}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <TabLinks label="GMV Max sections" size="sm" items={TABS.map((t) => ({ href: `/ads?tab=${t.key}${carry}`, label: t.label, icon: t.icon, active: tab === t.key, testId: `ads-tab-${t.key}` }))} />
-        {tab !== "planner" && tab !== "rescue" && <RangePicker today={today} rangeKey={range.key} from={range.from} to={range.to} label={range.label} />}
-      </div>
+      <PageHeader title="GMV Max" description={headerText} actions={tab !== "planner" && tab !== "rescue" ? <RangePicker today={today} rangeKey={range.key} from={range.from} to={range.to} label={range.label} /> : undefined} />
+      <TabLinks label="GMV Max sections" size="sm" items={TABS.map((t) => ({ href: `/ads?tab=${t.key}${carry}`, label: t.label, icon: t.icon, active: tab === t.key, testId: `ads-tab-${t.key}` }))} />
       {body}
     </div>
   );

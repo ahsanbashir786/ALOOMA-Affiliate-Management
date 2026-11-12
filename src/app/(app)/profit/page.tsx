@@ -6,7 +6,7 @@ import { Badge, Card, CardHeader, EmptyState, PageHeader, Td, Th, buttonClasses 
 import { StatTile } from "@/components/ui/stat-tile";
 import { TabLinks } from "@/components/ui/tab-links";
 import { Pagination } from "@/components/ui/pagination";
-import { PeriodBar } from "@/components/profit/period-bar";
+import { RangePicker } from "@/components/ui/range-picker";
 import { ClaimsTable } from "@/components/profit/claims-board";
 import { FulfilmentCard } from "@/components/profit/fulfilment-card";
 import { MonthlyChart } from "@/components/profit/monthly-chart";
@@ -38,12 +38,12 @@ export default async function ProfitPage({ searchParams }: PageProps<"/profit">)
   const tab: Tab = TABS.some((t) => t.key === one(sp.tab)) ? (one(sp.tab) as Tab) : "orders";
   const data = await loadProfit();
   // The monthly view starts with every month; the order list starts with the current month.
-  const period = resolvePeriod(one(sp.range) ?? (tab === "monthly" && !one(sp.from) && !one(sp.to) ? "all" : undefined), one(sp.from), one(sp.to));
+  const period = resolvePeriod(one(sp.range), one(sp.from), one(sp.to), tab === "monthly" ? "lifetime" : "this_month");
   const keep = { range: one(sp.range), from: one(sp.from), to: one(sp.to) };
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Profit And Loss" description="What TikTok paid on every order, what the pieces cost, and what is left. Orders are counted in the month they were sold." />
+      <PageHeader title="Profit And Loss" description="What TikTok paid on every order, what the pieces cost, and what is left. Orders are counted in the month they were sold." actions={tab === "orders" || tab === "monthly" ? <RangePicker today={todayKL()} rangeKey={period.key} from={period.from} to={period.to} label={period.label} compare={false} /> : undefined} />
       {data.costStart && <p className="text-[13px] text-ink-3" data-testid="cost-start">Orders from {data.costStart} onward are counted. Before that there are no stock records to work out a cost.</p>}
       <TabLinks label="Profit sections" items={TABS.map((t) => ({ href: href("/profit", { tab: t.key === "orders" ? undefined : t.key, ...(t.key === "orders" || t.key === "monthly" ? keep : {}) }), label: t.label, icon: t.icon, active: tab === t.key, testId: `profit-tab-${t.key}` }))} />
       {data.rows.length === 0 && tab !== "costs" ? (
@@ -54,10 +54,6 @@ export default async function ProfitPage({ searchParams }: PageProps<"/profit">)
       : <Costs data={data} />}
     </div>
   );
-}
-
-function Bar({ period }: { period: Period }) {
-  return <PeriodBar active={period.key} from={period.from ?? ""} to={period.to ?? ""} today={todayKL()} />;
 }
 
 function adSpendIn(data: ProfitData, period: Period): number {
@@ -88,7 +84,7 @@ function Orders({ data, period, sp }: { data: ProfitData; period: Period; sp: SP
   const base = { tab: undefined, range: one(sp.range), from: one(sp.from), to: one(sp.to), q: one(sp.q), money: one(sp.money), problem: one(sp.problem), sort: one(sp.sort) };
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-2"><Bar period={period} /><a href={exportHref} className={buttonClasses({ variant: "secondary" })} data-testid="export-orders"><Download className="size-4" />Download Excel</a></div>
+      <div className="flex justify-end"><a href={exportHref} className={buttonClasses({ variant: "secondary" })} data-testid="export-orders"><Download className="size-4" />Download Excel</a></div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" data-testid="profit-tiles">
         <StatTile icon={Receipt} label="Orders" value={fmtInt(t.orders)} note={`${fmtInt(t.pieces)} pieces${t.samples ? ` · ${t.samples} samples` : ""}`} tone="neutral" />
         <StatTile icon={Wallet} label="Money From TikTok" value={rm(t.settlement, 0)} note={t.estimated ? `${t.estimated} ${t.estimated === 1 ? "order is" : "orders are"} still an estimate` : "All settled"} />
@@ -161,7 +157,7 @@ function Monthly({ data, period }: { data: ProfitData; period: Period }) {
   const chart = shownRows.slice().reverse().map((m) => ({ month: m.month, net: m.net }));
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[13.5px] text-ink-2">Every month, newest first. Choose a period to look at fewer months.</p><Bar period={period} /></div>
+      <p className="text-[13.5px] text-ink-2">Every month, newest first. Choose a period at the top right to look at fewer months.</p>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="monthly-tiles">
         <StatTile icon={Receipt} label="Sales" value={rm(total.sales, 0)} note={`${fmtInt(total.orders)} orders`} tone="neutral" />
         <StatTile icon={PackageCheck} label="Product Cost And Fulfilment" value={rm(total.cost + total.fulfilment, 0)} tone="neutral" />

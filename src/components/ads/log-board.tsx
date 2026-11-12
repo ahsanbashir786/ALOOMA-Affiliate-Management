@@ -7,7 +7,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { CheckCircle2, ClipboardList, Clock, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LogBatch } from "@/lib/ads/insights";
-import { LOG_WINDOW } from "@/lib/ads/range";
+import { LOG_WINDOW } from "@/lib/range";
 import { LogDelete } from "./log-delete";
 import { VideoCell, day, nfmt, rm, rm2, roiFmt } from "./ui";
 

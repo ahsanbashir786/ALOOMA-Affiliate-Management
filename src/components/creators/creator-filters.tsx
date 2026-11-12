@@ -9,7 +9,6 @@ import { href } from "@/lib/url";
 import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/creators/status";
 import { CREATOR_SORTS } from "@/lib/creators/params";
 import { TIERS } from "@/lib/creators/score";
-import { DateRange } from "./date-range";
 
 export type CreatorFilterValues = { q: string; samples: string; product: string; status: string; action: string; type: string; wa: string; contact: string; owner: string; tier: string; sort: string; from: string; to: string };
 type Props = {
@@ -20,13 +19,12 @@ type Props = {
   statuses: { key: CreatorStatus; count: number }[];
   staff: { id: string; name: string }[];
   shown: string;
-  today: string;
   canExport: boolean;
 };
 const DEFAULTS: Partial<CreatorFilterValues> = { samples: "all", sort: "gmv" };
 
 /** Every choice takes effect straight away (no Apply). Search waits a moment after typing. */
-export function CreatorFilters({ values, products, actions, todo, statuses, staff, shown, today, canExport }: Props) {
+export function CreatorFilters({ values, products, actions, todo, statuses, staff, shown, canExport }: Props) {
   const router = useRouter();
   const path = usePathname();
   const [pending, start] = useTransition();
@@ -122,7 +120,6 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
               {CREATOR_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </Select>
           </label>
-          <DateRange key={`${values.from}|${values.to}`} from={values.from} to={values.to} today={today} onApply={(from, to) => go({ from, to })} />
         </div>
       </div>
 

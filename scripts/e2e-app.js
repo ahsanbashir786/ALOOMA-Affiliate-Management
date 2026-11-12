@@ -16,7 +16,7 @@ async function login(p, email) {
   await login(p, "owner@test.local");
   ok(/\/execution$/.test(p.url()), "landing: everyone opens on the Execution Plan");
   const links = (await p.locator("aside nav a").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(links) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Data Sync", "Settings"]), `menu: the six items (${links.join(", ")})`);
+  ok(JSON.stringify(links) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Profit And Loss", "Stock And Costing", "Data Sync", "Settings"]), `menu: the eight items (${links.join(", ")})`);
   for (const gone of ["/today", "/command", "/data", "/samples", "/affiliates", "/progress", "/orders", "/content", "/demand", "/order-health", "/opportunities"]) {
     const r = await p.goto(BASE + gone); ok(r.status() === 404, `old screen ${gone} is gone`);
   }
@@ -48,7 +48,7 @@ async function login(p, email) {
   p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   await login(p, "viewer@test.local");
   const vl = (await p.locator("aside nav a").allInnerTexts()).map((t) => t.trim());
-  ok(vl.length === 6, `viewer: sees the whole menu (${vl.length} items)`);
+  ok(vl.length === 8, `viewer: sees the whole menu (${vl.length} items)`);
   // mobile
   p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await login(p, "manager@test.local");
