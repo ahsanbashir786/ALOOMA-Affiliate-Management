@@ -2000,4 +2000,4 @@ insert into roles (key, name, description, is_admin) values
   ('admin', 'Admin', 'The owner. Can open every screen, always.', true);
 
 insert into role_permissions (role_id, permission)
-select r.id, p from roles r, unnest(array['execution','creators','products','ads','finance','sync','users','settings']) p where r.is_admin;
+select r.id, p from roles r, unnest(array['execution','creators','products','ads','sync','users','settings']) p where r.is_admin;

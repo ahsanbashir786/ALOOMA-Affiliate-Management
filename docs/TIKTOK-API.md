@@ -61,3 +61,7 @@ Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).
 ## Data Sync screen: history and health
 - **Sync history** groups the runs: one line per sync (Full sync, or the one dataset a card's button synced), who started it (Automatic or a name), when, how long it took, and the result (records updated, skipped, failed). Open a line to see every dataset in it.
 - **Data health** says whether any dataset failed or is over a day old, how far the order data reaches, whether TikTok skipped records, and whether auto-sync is on.
+
+## Finance data (synced, no screen)
+
+The Finance screen was removed. The settlement data behind it is still synced from TikTok Shop (scope `seller.finance.info`; connect TikTok Shop again after switching the scope on). Three Data Sync cards: **Finance Statements** (`GET /finance/202309/statements`: one per day with settlement, fees, payment status and payment time), **Finance Transactions** (`GET /finance/202501/statements/{id}/statement_transactions`: every order or adjustment with its fee breakdown) and **Unpaid Orders** (`GET /finance/202507/orders/unsettled`). Tables `tt_fin_statements`, `tt_fin_transactions`, `tt_fin_unsettled`. Get Payments is not available in Malaysia. Amounts keep TikTok's signs (a fee is negative). A new profit screen will be designed from these.
