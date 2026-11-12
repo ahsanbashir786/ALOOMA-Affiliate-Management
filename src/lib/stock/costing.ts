@@ -1,6 +1,6 @@
 import "server-only";
 import { sql as pg } from "@/db";
-import { dayKL } from "@/lib/time";
+import { addDaysISO, dayKL } from "@/lib/time";
 import { explode, runFifoWithReturns, type BundleMap, type Costed, type Remaining, type Return, type Sale } from "./fifo";
 import { loadBundles, loadLayers } from "./load";
 import { normSku } from "./sku";
@@ -14,6 +14,8 @@ export type Costing = {
   costed: Costed[];
   remaining: Remaining[];
   unknownSkus: Map<string, number>;
+  /** The first day that can be costed: the day after the opening stock was counted (or the first arrival). Earlier orders are left out. */
+  costStart: string | null;
 };
 
 let memo: { at: number; value: Costing } | null = null;
@@ -28,6 +30,8 @@ export async function loadCosting(): Promise<Costing> {
   if (memo && Date.now() - memo.at < 30_000) return memo.value;
   const [{ layers }, bundles] = await Promise.all([loadLayers(), loadBundles()]);
   const orderRows = await pg`select order_id, status, is_sample, created_at, coalesce(paid_at, created_at) as at, lines from tt_orders where coalesce(upper(status), '') <> 'CANCELLED' and created_at is not null and lines is not null`;
+  const [st] = await pg`select to_char(min(arrival_date) filter (where kind = 'opening'), 'YYYY-MM-DD') as opening, to_char(min(arrival_date), 'YYYY-MM-DD') as first from stock_orders`;
+  const costStart: string | null = st?.opening ? addDaysISO(String(st.opening), 1) : ((st?.first as string) ?? null);
   const orders: SaleOrder[] = [];
   const sales: Sale[] = [];
   const unknownSkus = new Map<string, number>();
@@ -40,6 +44,7 @@ export async function loadCosting(): Promise<Costing> {
       if (!s) { unknownPieces++; continue; }
       count.set(s, (count.get(s) ?? 0) + 1);
     }
+    if (costStart && dayKL(r.created_at as Date) < costStart) continue; // before the stock records start: no cost can be worked out
     const day = dayKL(r.at as Date);
     const items: { sku: string; qty: number }[] = [];
     for (const [sku, qty] of count) for (const p of explode(sku, qty, bundles)) { items.push(p); sales.push({ ref: String(r.order_id), day, sku: p.sku, qty: p.qty }); }
@@ -63,7 +68,7 @@ export async function loadCosting(): Promise<Costing> {
   for (const r of returns) { const o = byOrder.get(r.ref); if (o) o.returnedPieces += r.qty; }
   for (const [ref, cost] of returnedCost) { const o = byOrder.get(ref); if (o) { o.returnedCost = cost; o.cost -= cost; } }
 
-  const value: Costing = { orders, byOrder, costed, remaining, unknownSkus };
+  const value: Costing = { orders, byOrder, costed, remaining, unknownSkus, costStart };
   memo = { at: Date.now(), value };
   return value;
 }

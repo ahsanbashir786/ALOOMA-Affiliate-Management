@@ -310,9 +310,9 @@ const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
   fin_transactions: loadFinanceTransactions,
   fin_unsettled: loadUnsettled,
   products: (ctx, c) => simple("/product/202309/products/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("products") }, "tt_skus", M.skus, ctx, c),
-  sample_requests: (ctx, c) => simple("/affiliate_seller/202409/sample_applications/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("sample_applications", "applications") }, "tt_sample_requests", M.sampleRequest, ctx, c),
+  sample_requests: (ctx, c) => simple("/affiliate_seller/202508/sample_applications/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("sample_applications", "applications") }, "tt_sample_requests", M.sampleRequest, ctx, c),
   orders: (ctx, c) => windowed({ path: "/order/202309/orders/search", sizes: [100, 50, 20, 10], list: pick("orders"), timeKey: "create_time", table: "tt_orders", mapRow: M.order }, ctx, c),
-  open_collabs: (ctx, c) => simple("/affiliate_seller/202409/open_collaborations/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("open_collaborations", "collaborations") }, "tt_open_collabs", M.openCollab, ctx, c),
+  open_collabs: (ctx, c) => simple("/affiliate_seller/202412/open_collaborations/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("open_collaborations", "collaborations") }, "tt_open_collabs", M.openCollab, ctx, c),
   returns: (ctx, c) => windowed({ path: "/return_refund/202309/returns/search", sizes: [100, 50, 20, 10], list: pick("return_orders", "returns"), timeKey: "create_time", table: "tt_returns", mapRow: M.returnRow }, ctx, c),
   cancellations: (ctx, c) => windowed({ path: "/return_refund/202309/cancellations/search", sizes: [100, 50, 20, 10], list: pick("cancellations"), timeKey: "create_time", table: "tt_cancellations", mapRow: M.cancellation }, ctx, c),
   affiliate_orders: (ctx, c) => windowed({ path: "/affiliate_seller/202410/orders/search", sizes: [100, 50, 20, 10], list: pick("orders"), timeKey: "create_time", table: "tt_affiliate_order_lines", mapRow: M.affiliateOrderLines }, ctx, c),
@@ -455,7 +455,7 @@ export const DEFAULT_HISTORY_FROM = "2025-03-01";
 export const SYNC_CHOICES = [30, 60, 180, 720, 1440] as const;
 const SKEY = "tiktok_sync";
 /** Which column holds each table's date. */
-const DATE_COL: Record<string, string> = { tt_affiliate_order_lines: "created_at", tt_orders: "created_at", tt_videos: "posted_at", tt_lives: "started_at", tt_returns: "created_at", tt_cancellations: "created_at", tt_shop_daily: "day", tt_sample_requests: "first_seen_at", tt_open_collabs: "commission_start" };
+const DATE_COL: Record<string, string> = { tt_affiliate_order_lines: "created_at", tt_orders: "created_at", tt_videos: "posted_at", tt_lives: "started_at", tt_returns: "created_at", tt_cancellations: "created_at", tt_shop_daily: "day", tt_sample_requests: "first_seen_at", tt_open_collabs: "commission_start", tt_fin_statements: "statement_time", tt_fin_transactions: "order_create_time", tt_fin_unsettled: "order_create_time" };
 
 export async function getSyncSettings(): Promise<SyncSettings> {
   const [r] = await rows<{ value: Partial<SyncSettings> }>(sql`select value from settings where key = ${SKEY}`);
@@ -493,6 +493,7 @@ export async function syncOverview(): Promise<SyncOverview> {
     select count(*)::int as orders, (count(*) filter (where exists (select 1 from tt_sample_requests r where r.order_id = o.order_id and r.order_id !~ '^0*$')))::int as matched
     from tt_orders o where o.is_sample = true`);
   const [pc] = await rows<{ n: number; skus: number }>(sql`select count(distinct product_id)::int as n, count(*)::int as skus from tt_skus`);
+  const [fin] = await rows<{ days: number; read: number }>(sql`select count(*)::int as days, (count(*) filter (where tx_loaded))::int as read from tt_fin_statements`);
   const spans = new Map<string, { a: string | null; b: string | null }>();
   const live = new Map<string, number>([["products", await liveCount("products")], ["sample_orders", await liveCount("sample_orders")]]);
   for (const d of DATASETS) {
@@ -511,7 +512,7 @@ export async function syncOverview(): Promise<SyncOverview> {
   return {
     samples: { orders: sm?.orders ?? 0, matched: sm?.matched ?? 0 },
     now: Date.now(),
-    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: live.get(d.key) ?? st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, detail: d.key === "products" && pc?.n ? `${pc.skus.toLocaleString("en-MY")} SKU${pc.skus === 1 ? "" : "s"}` : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
+    datasets: DATASETS.map((d) => ({ key: d.key, label: d.label, icon: d.icon, what: d.what, records: live.get(d.key) ?? st.get(d.key)?.records ?? 0, lastSuccessAt: st.get(d.key)?.last_success_at ? new Date(st.get(d.key)!.last_success_at!).toISOString() : null, lastError: lastRun.get(d.key)?.status === "ok" ? null : (st.get(d.key)?.last_error ?? null), note: lastRun.get(d.key)?.status === "ok" ? (lastRun.get(d.key)?.error ?? null) : null, detail: d.key === "products" && pc?.n ? `${pc.skus.toLocaleString("en-MY")} SKU${pc.skus === 1 ? "" : "s"}` : d.key === "fin_transactions" && fin?.days ? `${fin.read.toLocaleString("en-MY")} of ${fin.days.toLocaleString("en-MY")} settlement days read` : null, oldest: spans.get(d.key)?.a ?? null, newest: spans.get(d.key)?.b ?? null, running: run.has(d.key), progress: run.has(d.key) ? (run.get(d.key) ?? 0) : null })),
     runs: runs.map((r) => ({ id: r.id, dataset: r.dataset as DatasetKey, label: label.get(r.dataset as DatasetKey) ?? r.dataset, startedAt: new Date(r.started_at).toISOString(), durationSec: r.finished_at ? Math.max(0, Math.round((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000)) : null, status: r.status, trigger: r.trigger, changed: r.rows_changed, seen: r.rows_seen, error: r.error, by: r.by })),
     running: running.length > 0,
     lastFullAt: times.length ? new Date(Math.min(...times)).toISOString() : null,

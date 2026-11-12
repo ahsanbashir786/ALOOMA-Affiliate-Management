@@ -65,3 +65,7 @@ Test: `npm run test:sync` (uses a pretend TikTok and a `*_test` database).
 ## Finance data (synced, no screen)
 
 The Finance screen was removed. The settlement data behind it is still synced from TikTok Shop (scope `seller.finance.info`; connect TikTok Shop again after switching the scope on). Three Data Sync cards: **Finance Statements** (`GET /finance/202309/statements`: one per day with settlement, fees, payment status and payment time), **Finance Transactions** (`GET /finance/202501/statements/{id}/statement_transactions`: every order or adjustment with its fee breakdown) and **Unpaid Orders** (`GET /finance/202507/orders/unsettled`). Tables `tt_fin_statements`, `tt_fin_transactions`, `tt_fin_unsettled`. Get Payments is not available in Malaysia. Amounts keep TikTok's signs (a fee is negative). A new profit screen will be designed from these.
+
+## API versions that changed
+
+TikTok moves some calls to a newer version and stops serving the old one ("Invalid API version", code 36009004). Current versions used: Search Sample Applications `/affiliate_seller/202508/sample_applications/search` and Search Open Collaborations `/affiliate_seller/202412/open_collaborations/search` (both found in TikTok's own API reference). Sample applications now allow at most 50 per page; the sync already steps down from 100 to 50 by itself.

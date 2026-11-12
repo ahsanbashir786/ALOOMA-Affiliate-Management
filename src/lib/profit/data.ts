@@ -45,6 +45,7 @@ export type ProfitData = {
   adSpend: Map<string, number>; // month → real ad spend (GMV Max)
   adSpendDays: Map<string, number>; // day → real ad spend
   unknownSkus: Map<string, number>;
+  costStart: string | null;
 };
 
 const n = (v: unknown) => (v == null ? 0 : Number(v));
@@ -133,7 +134,7 @@ export async function loadProfit(): Promise<ProfitData> {
     });
   }
   rows.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.orderId < b.orderId ? 1 : -1));
-  const value: ProfitData = { rows, perUnit, invoices: invoiceBy, adSpend: new Map(ads.map((r) => [String(r.m), Number(r.spend)])), adSpendDays: new Map(adDays.map((r) => [String(r.d), Number(r.spend)])), unknownSkus: costing.unknownSkus };
+  const value: ProfitData = { rows, perUnit, invoices: invoiceBy, adSpend: new Map(ads.map((r) => [String(r.m), Number(r.spend)])), adSpendDays: new Map(adDays.map((r) => [String(r.d), Number(r.spend)])), unknownSkus: costing.unknownSkus, costStart: costing.costStart };
   memo = { at: Date.now(), value };
   return value;
 }
