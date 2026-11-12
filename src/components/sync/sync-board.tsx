@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Gift, Handshake, Loader2, Package, Radio, Receipt, RefreshCw, ShoppingCart, Truck, Undo2, Video, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Clock, Gift, Handshake, ListOrdered, Loader2, Package, Radio, Receipt, RefreshCw, ShoppingCart, Truck, Undo2, Video, Wallet, XCircle } from "lucide-react";
 import { resetStuckSync, setSyncSchedule } from "@/app/actions/sync";
 import { cn } from "@/lib/utils";
 import type { RunView, SyncOverview } from "@/lib/tiktok/sync";
 
-const ICON: Record<string, React.ComponentType<{ className?: string }>> = { package: Package, receipt: Receipt, gift: Gift, video: Video, radio: Radio, undo: Undo2, x: XCircle, chart: BarChart3, truck: Truck, cart: ShoppingCart, handshake: Handshake };
+const ICON: Record<string, React.ComponentType<{ className?: string }>> = { package: Package, receipt: Receipt, gift: Gift, video: Video, radio: Radio, undo: Undo2, x: XCircle, chart: BarChart3, truck: Truck, cart: ShoppingCart, handshake: Handshake, wallet: Wallet, list: ListOrdered, clock: Clock };
 const EVERY = [{ v: 0, l: "Off" }, { v: 30, l: "Every 30 min" }, { v: 60, l: "Every hour" }, { v: 180, l: "Every 3 hours" }, { v: 720, l: "Every 12 hours" }, { v: 1440, l: "Daily" }];
 
 function ago(iso: string | null, now: number): string {

@@ -15,7 +15,7 @@ async function main() {
   await q(sql`delete from settings where key = 'tiktok_sync'`);
   await q(sql`delete from settings where key = 'tiktok_history'`);
   const cfg = { appKey: "K", appSecret: secret, serviceId: null, authUrl: null };
-  for (const t of ["tt_sync_runs", "tt_sync_state", "tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_skus", "tt_returns", "tt_cancellations", "tt_shop_daily", "tt_orders", "tt_open_collabs"]) await q(sql.raw(`delete from ${t}`));
+  for (const t of ["tt_sync_runs", "tt_sync_state", "tt_affiliate_order_lines", "tt_videos", "tt_lives", "tt_sample_requests", "tt_skus", "tt_returns", "tt_cancellations", "tt_shop_daily", "tt_orders", "tt_open_collabs", "tt_fin_statements", "tt_fin_transactions", "tt_fin_unsettled"]) await q(sql.raw(`delete from ${t}`));
   const now = Math.floor(Date.now() / 1000);
   await db.insert(settings).values({ key: "tiktok_connection", value: { accessToken: encryptToken("AT", secret), refreshToken: encryptToken("RT", secret), accessExpiresAt: now + 86400, refreshExpiresAt: now + 86400 * 20, openId: "o", sellerName: "ALOOMA", region: "MY", scopes: [], shop: { id: "S", name: "ALOOMA", region: "MY", cipher: "CIPH" }, connectedAt: new Date().toISOString() } }).onConflictDoUpdate({ target: settings.key, set: { value: { accessToken: encryptToken("AT", secret), refreshToken: encryptToken("RT", secret), accessExpiresAt: now + 86400, refreshExpiresAt: now + 86400 * 20, openId: "o", sellerName: "ALOOMA", region: "MY", scopes: [], shop: { id: "S", name: "ALOOMA", region: "MY", cipher: "CIPH" }, connectedAt: new Date().toISOString() } } });
 
@@ -27,6 +27,7 @@ async function main() {
   let sizeRule = false;
   const hits: string[] = [];
   let orderPrice = "100.00";
+  let unsettledList: Record<string, unknown>[] = [{ id: "U1", type: "ORDER", order_id: "UO1", status: "UNSETTLED", order_create_time: now - 6 * 86400, order_delivery_time: now - 3 * 86400, unsettled_reason: "Waiting for the return period to end", currency: "MYR", est_settlement_amount: "90.00", est_revenue_amount: "120.00", est_shipping_cost_amount: "-6.00", est_fee_tax_amount: "-24.00" }, { id: "U2", type: "ORDER", order_id: "UO2", status: "UNSETTLED", order_create_time: now - 2 * 86400, currency: "MYR", est_settlement_amount: "45.50", est_revenue_amount: "60.00" }];
   const todaySec = now;
   const aff = (id: string, ageDays: number, sku = "SKU1") => ({ id, create_time: todaySec - ageDays * 86400, delivery_time: todaySec - ageDays * 86400 + 86400, skus: [{ sku_id: sku, price: { amount: orderPrice, currency: "MYR" }, quantity: 2, creator_username: "amy", content_id: "C" + id, content_type: "VIDEO", product_id: "P1", seller_sku: "S-1", sku_name: "Bed", commission_rate: "1000", estimated_paid_commission: { amount: "5", currency: "MYR" }, actual_paid_commission: { amount: "4", currency: "MYR" }, settlement_status: "SETTLED", fully_return: false, open_collaboration_id: "OC1", recipient_name: "SECRET PERSON" }], buyer_email: "secret@example.com", recipient_address: { full_address: "SECRET ROAD 1" } });
   const fake = async (url: string, init?: RequestInit) => {
@@ -62,6 +63,18 @@ async function main() {
     if (p.includes("/returns/search")) return body({ return_orders: [{ return_id: "R1", order_id: "O1", return_status: "RETURN_OR_REFUND_REQUEST_PENDING", return_type: "RETURN_AND_REFUND", return_reason_text: "Wrong size", refund_amount: { refund_total: "49.90", currency: "MYR" }, create_time: now - 86400, update_time: now, return_line_items: [{ sku_id: "SKU1", seller_sku: "S-1" }], recipient_address: { full_address: "SECRET" } }] });
     if (p.includes("/cancellations/search")) return body({ cancellations: [{ cancel_id: "X1", order_id: "O2", cancel_status: "CANCELLATION_REQUEST_SUCCESS", cancel_type: "BUYER_CANCEL", cancel_reason_text: "Changed mind", cancel_line_items: [{ sku_id: "SKU1", seller_sku: "S-1" }], create_time: now - 3600, update_time: now }] });
     if (p.includes("/shop/performance")) return body({ performance: { intervals: [{ start_date: "2026-11-01", end_date: "2026-11-02", gmv: { amount: "1200.5", currency: "MYR" }, orders: 30, buyers: 28, units_sold: 41, refunds: { amount: "20" }, cancellations_and_returns: 2, product_page_views: 5000, product_impressions: 90000, avg_order_value: { amount: "40" } }] } });
+    if (p === "/finance/202309/statements") {
+      const st = (id: string, ageDays: number, status: string, amt: string) => ({ id, statement_time: now - ageDays * 86400, settlement_amount: amt, currency: "MYR", revenue_amount: "300.00", fee_amount: "-40.00", adjustment_amount: "0.00", payment_status: status, payment_id: status === "PAID" ? "PAY" + id : "", payment_time: status === "PAID" ? now - (ageDays - 1) * 86400 : 0, shipping_cost_amount: "0" });
+      return body({ statements: [st("ST1", 1, "PROCESSING", "260.00"), st("ST2", 3, "PAID", "240.00"), st("ST3", 10, "PAID", "180.00")], total_count: 3 });
+    }
+    if (p.includes("/finance/202501/statements/") && p.endsWith("/statement_transactions")) {
+      const sid = p.split("/")[4];
+      const txn = (id: string, order: string, rev: number, ship: number, fee: number, adj = 0) => ({ id, type: "ORDER", order_id: order, order_create_time: now - 5 * 86400, settlement_amount: String(rev + ship + fee + adj), revenue_amount: String(rev), shipping_cost_amount: String(ship), fee_tax_amount: String(fee), adjustment_amount: String(adj), revenue_breakdown: { subtotal_before_discount_amount: String(rev + 10), seller_discount_amount: "-10" }, shipping_cost_breakdown: { actual_shipping_fee_amount: String(ship), customer_paid_shipping_fee_amount: "0" }, fee_tax_breakdown: { fee: { platform_commission_amount: "-5.00", transaction_fee_amount: "-2.00", affiliate_commission_amount: "-8.00", gmv_max_ad_fee_amount: "-3.00", sfp_service_fee_amount: "-1.00", mall_service_fee_amount: "-1.5" }, tax: { sst_amount: "-0.50" } } });
+      const all = [txn(sid + "-T1", "ORD-" + sid + "-1", 100, -6, -21), txn(sid + "-T2", "ORD-" + sid + "-2", 200, -9, -21), { id: sid + "-A1", type: "ADJUSTMENT", adjustment_id: "ADJ-" + sid, adjustment_order_id: "ORD-" + sid + "-1", adjustment_amount: "-4.00", settlement_amount: "-4.00" }];
+      const at = tok ? Number(tok) : 0;
+      return body({ id: sid, payable_amount: "250.00", total_reserve_amount: "10.00", total_settlement_amount: "260.00", transactions: all.slice(at, at + 2), next_page_token: at + 2 < all.length ? String(at + 2) : undefined, total_count: all.length });
+    }
+    if (p === "/finance/202507/orders/unsettled") return body({ transactions: unsettledList, total_count: unsettledList.length });
     return j({ code: 36009009, message: "Invalid path" });
   };
   const deps = { cfg, f: fake as never, sleep: async () => {}, pauseMs: 0 };
@@ -74,7 +87,7 @@ async function main() {
 
   // ── run every dataset ──
   const res = await runAll("manual", null, deps);
-  check("03 all eleven datasets run and succeed (a rate-limit refusal and a page-size refusal are handled on the way)", res.length === 11 && res.every((r) => r.status === "ok"), JSON.stringify(res.map((r) => [r.dataset, r.status, r.error])));
+  check("03 all fourteen datasets run and succeed (a rate-limit refusal and a page-size refusal are handled on the way)", res.length === 14 && res.every((r) => r.status === "ok"), JSON.stringify(res.map((r) => [r.dataset, r.status, r.error])));
   check("04 products and stock: the stock of every warehouse is added up", Number((await q(sql`select stock from tt_skus where sku_id = 'SKU1'`))[0].stock) === 12 && Number((await q(sql`select price from tt_skus where sku_id = 'SKU1'`))[0].price) === 25.5);
   check("05 affiliate orders: the first sync reads the whole history in date windows (7 orders found, across pages and windows), with creator, content and commission", (await count("tt_affiliate_order_lines")) === 7 && (await q(sql`select creator, content_id, est_commission, paid_commission from tt_affiliate_order_lines where order_id = 'A1'`))[0].creator === "amy");
   check("06 sample requests keep creator stats, the order link and the expiry", (await q(sql`select followers, fulfilment_pct, order_id, expires_at is not null as e from tt_sample_requests where id = 'SR1'`))[0].order_id === "O9");
@@ -105,7 +118,7 @@ async function main() {
 
   // ── overview, schedule ──
   const ov = await syncOverview();
-  check("17 the overview lists all datasets with record counts, recent runs with who and how, and the next scheduled time", ov.datasets.length === 11 && ov.datasets.find((d) => d.key === "affiliate_orders")!.records === 7 && ov.runs.length > 8 && ov.runs[0].trigger === "manual" && ov.nextAt !== null, JSON.stringify({ n: ov.runs.length, rec: ov.datasets.find((d) => d.key === "affiliate_orders")!.records, t: ov.runs[0]?.trigger, next: ov.nextAt, set: ov.settings }));
+  check("17 the overview lists all datasets with record counts, recent runs with who and how, and the next scheduled time", ov.datasets.length === 14 && ov.datasets.find((d) => d.key === "affiliate_orders")!.records === 7 && ov.runs.length > 8 && ov.runs[0].trigger === "manual" && ov.nextAt !== null, JSON.stringify({ n: ov.runs.length, rec: ov.datasets.find((d) => d.key === "affiliate_orders")!.records, t: ov.runs[0]?.trigger, next: ov.nextAt, set: ov.settings }));
   const s = { enabled: true, everyMinutes: 60 };
   check("18 the schedule is due when never run or the interval has passed, and never when switched off", isDue(1e12, null, s) && isDue(1e12, 1e12 - 61 * 60000, s) && !isDue(1e12, 1e12 - 59 * 60000, s) && !isDue(1e12, null, { ...s, enabled: false }));
   check("20 the upsert never writes a half-keyed row", (await upsertRows({ name: "tt_shop_daily", pk: ["day"], cols: { day: "date", gmv: "numeric" } }, [{ day: null, gmv: 1 }])) === 0);
@@ -217,7 +230,30 @@ async function main() {
   check("23 datasets run side by side (2 or 3 at once, never more), and results still come back in display order", maxInFlight >= 2 && maxInFlight <= 3 && par.map((r) => r.dataset).join() === DATASETS.map((d) => d.key).join() && par.every((r) => r.status === "ok"), `max ${maxInFlight}`);
   const last = await q(sql`select rows_seen from tt_sync_runs where dataset = 'affiliate_orders' order by id desc limit 1`);
   check("24 each run records how many rows it has read, so the screen can show progress while it runs", Number(last[0].rows_seen) > 0);
-  check("22 every dataset listed on the screen has a table", DATASETS.length === 11);
+  check("22 every dataset listed on the screen has a table", DATASETS.length === 14);
+
+  // ── Finance: statements, the orders inside them with the fee breakdown, and unpaid orders ──
+  const fs = await q(sql`select id, payment_status, settlement_amount::float8 as s, payment_time is not null as paid_time, tx_loaded, payable_amount::float8 as pay, reserve_amount::float8 as res from tt_fin_statements order by id`);
+  check("fin 01 the daily statements are saved with their payment status, amount and payment time", fs.length === 3 && fs[0].payment_status === "PROCESSING" && fs[1].payment_status === "PAID" && fs[1].s === 240 && fs[1].paid_time === true && fs[0].paid_time === false, JSON.stringify(fs));
+  check("fin 02 every statement's orders are read (all pages) and the statement is marked as loaded, with the amounts after reserve", await count("tt_fin_transactions") === 9 && fs.every((x) => x.tx_loaded === true && x.pay === 250 && x.res === 10), `${await count("tt_fin_transactions")} ${JSON.stringify(fs.map((x) => x.tx_loaded))}`);
+  const ft = (await q(sql`select platform_commission::float8 as pc, affiliate_commission::float8 as ac, transaction_fee::float8 as tf, sfp_service_fee::float8 as sfp, gmv_max_ad_fee::float8 as gmv, other_fees::float8 as oth, tax_amount::float8 as tax, fee_tax_amount::float8 as ft, revenue_amount::float8 as rev, shipping_cost_amount::float8 as ship, settlement_amount::float8 as st, subtotal_before_discount::float8 as sub, seller_discount::float8 as sd from tt_fin_transactions where id = 'ST3-T1'`))[0] as Record<string, number>;
+  check("fin 03 the fee breakdown is split into the columns that matter, and the leftover is 'other fees' so the lines add up to TikTok's own fee total", ft.pc === -5 && ft.ac === -8 && ft.tf === -2 && ft.sfp === -1 && ft.gmv === -3 && ft.tax === -0.5 && ft.oth === -1.5 && Math.abs(ft.pc + ft.ac + ft.tf + ft.sfp + ft.gmv + ft.oth + ft.tax - ft.ft) < 0.001, JSON.stringify(ft));
+  check("fin 04 revenue, shipping, fees and settlement add up per order, and the sales before discount and the seller discount are kept", ft.rev + ft.ship + ft.ft === ft.st && ft.sub === 110 && ft.sd === -10, JSON.stringify(ft));
+  const adj = (await q(sql`select type, adjustment_id, adjustment_amount::float8 as a from tt_fin_transactions where id = 'ST3-A1'`))[0];
+  check("fin 05 an adjustment (no order of its own) is kept with its adjustment id and amount", adj.type === "ADJUSTMENT" && adj.adjustment_id === "ADJ-ST3" && adj.a === -4, JSON.stringify(adj));
+  const ub = await q(sql`select id, est_settlement_amount::float8 as e, unsettled_reason from tt_fin_unsettled order by id`);
+  check("fin 06 unpaid orders are saved with TikTok's estimate and why they are not paid yet", ub.length === 2 && ub[0].e === 90 && /return period/.test(String(ub[0].unsettled_reason)), JSON.stringify(ub));
+  hits.length = 0;
+  const f2 = await runAll("manual", null, deps);
+  const txHits = hits.filter((h) => h.includes("/statement_transactions"));
+  check("fin 07 the second sync reads an old settled statement only once, but reads the newest days again (TikTok can still add adjustments)", txHits.some((h) => h.includes("/ST1/")) && !txHits.some((h) => h.includes("/ST3/")) && f2.filter((r) => r.dataset.startsWith("fin_")).every((r) => r.status === "ok"), JSON.stringify(txHits));
+  check("fin 08 reading the statements again changes nothing and adds no copies", f2.find((r) => r.dataset === "fin_statements")!.changed === 0 && await count("tt_fin_statements") === 3 && await count("tt_fin_transactions") === 9);
+  unsettledList = [unsettledList[1]];
+  await runDataset("fin_unsettled", "manual", null, deps);
+  check("fin 09 an order that TikTok no longer lists as unpaid (it was paid) is removed from the unpaid list", await count("tt_fin_unsettled") === 1 && (await q(sql`select id from tt_fin_unsettled`))[0].id === "U2");
+  unsettledList = [];
+  await runDataset("fin_unsettled", "manual", null, deps);
+  check("fin 10 when nothing is unpaid, the list is empty", await count("tt_fin_unsettled") === 0);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

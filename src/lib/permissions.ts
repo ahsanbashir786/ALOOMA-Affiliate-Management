@@ -1,7 +1,7 @@
 // A role can be allowed to open each of the screens. That is the only permission. Pure (safe in client components).
 // The Admin role always has every screen, including ones added later.
 
-export type PermissionKey = "execution" | "creators" | "products" | "ads" | "sync" | "users" | "settings";
+export type PermissionKey = "execution" | "creators" | "products" | "ads" | "finance" | "sync" | "users" | "settings";
 
 export type Permission = { key: PermissionKey; group: string; label: string; help: string };
 
@@ -10,6 +10,7 @@ export const PERMISSIONS: Permission[] = [
   { key: "creators", group: "Affiliate Data", label: "Affiliate Data", help: "See every creator and their profile, record contacts, export to Excel" },
   { key: "products", group: "Product Analysis", label: "Product Analysis", help: "See how every product is doing and why" },
   { key: "ads", group: "GMV Max", label: "GMV Max", help: "See GMV Max ad results and which videos are worth boosting" },
+  { key: "finance", group: "Finance", label: "Finance", help: "See the money TikTok has paid and will pay, the fees, and the profit and loss" },
   { key: "sync", group: "Data Sync", label: "Data Sync", help: "See what is synced and run a sync" },
   { key: "users", group: "Settings", label: "Settings: User Management", help: "Add people, create roles, choose what each role can open" },
   { key: "settings", group: "Settings", label: "Settings: Connection", help: "Connect, check and disconnect TikTok Shop and TikTok Ads" },
@@ -34,6 +35,7 @@ export const SCREEN_PERMISSION: Record<string, PermissionKey> = {
   "/creators": "creators",
   "/products": "products",
   "/ads": "ads",
+  "/finance": "finance",
   "/sync": "sync",
   "/users": "users", // now a tab inside Settings; kept so the first-screen rule still works
   "/settings": "settings",

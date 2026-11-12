@@ -7,7 +7,7 @@ import { callApi, tiktokConfig, type Fetch, type TikTokConfig } from "./client";
 import * as M from "./map";
 import { str } from "./map";
 
-export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "orders" | "sample_orders" | "open_collabs" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily";
+export type DatasetKey = "products" | "affiliate_orders" | "sample_requests" | "orders" | "sample_orders" | "open_collabs" | "videos" | "lives" | "returns" | "cancellations" | "shop_daily" | "fin_statements" | "fin_transactions" | "fin_unsettled";
 
 export type SyncDeps = { cfg?: TikTokConfig | null; f?: Fetch; sleep?: (ms: number) => Promise<void>; pauseMs?: number; now?: () => Date; /** Read the whole history (back to the "history from" date), not just the recent days. */ backfill?: boolean; /** With a backfill: read everything again, even ranges already loaded. */ reread?: boolean };
 export type RunResult = { dataset: DatasetKey; status: "ok" | "failed" | "skipped"; pages: number; seen: number; changed: number; error?: string };
@@ -25,6 +25,9 @@ export const DATASETS: { key: DatasetKey; label: string; table: string; icon: st
   { key: "returns", label: "Return Orders", table: "tt_returns", icon: "undo", what: "returns" },
   { key: "cancellations", label: "Cancelled Orders", table: "tt_cancellations", icon: "x", what: "cancellations" },
   { key: "shop_daily", label: "Shop Performance", table: "tt_shop_daily", icon: "chart", what: "days" },
+  { key: "fin_statements", label: "Finance Statements", table: "tt_fin_statements", icon: "wallet", what: "daily statements" },
+  { key: "fin_transactions", label: "Finance Transactions", table: "tt_fin_transactions", icon: "list", what: "orders and adjustments" },
+  { key: "fin_unsettled", label: "Unpaid Orders", table: "tt_fin_unsettled", icon: "clock", what: "orders not paid yet" },
 ];
 
 /**
@@ -57,6 +60,9 @@ const TABLES: Record<string, Table> = {
   tt_orders: { name: "tt_orders", pk: ["order_id"], cols: { order_id: "text", status: "text", is_sample: "boolean", created_at: "timestamptz", paid_at: "timestamptz", updated_at: "timestamptz", delivered_at: "timestamptz", total_amount: "numeric", currency: "text", tracking_number: "text", shipping_provider: "text", lines: "jsonb", is_final: "boolean" } },
   tt_open_collabs: { name: "tt_open_collabs", pk: ["id"], cols: { id: "text", product_id: "text", title: "text", status: "text", commission_rate: "numeric", commission_start: "timestamptz", commission_end: "timestamptz", creators: "int", showcasing: "int", needs_approval: "boolean", stock: "int", price_min: "numeric", price_max: "numeric" } },
   tt_shop_daily: { name: "tt_shop_daily", pk: ["day"], cols: { day: "date", gmv: "numeric", orders: "int", buyers: "int", units_sold: "int", refunds: "numeric", returns_cancellations: "int", page_views: "bigint", impressions: "bigint", avg_order_value: "numeric" } },
+  tt_fin_statements: { name: "tt_fin_statements", pk: ["id"], cols: { id: "text", statement_time: "timestamptz", settlement_amount: "numeric", currency: "text", revenue_amount: "numeric", fee_amount: "numeric", adjustment_amount: "numeric", shipping_cost_amount: "numeric", net_sales_amount: "numeric", payment_status: "text", payment_id: "text", payment_time: "timestamptz", raw: "jsonb" } },
+  tt_fin_transactions: { name: "tt_fin_transactions", pk: ["statement_id", "id"], cols: { statement_id: "text", id: "text", type: "text", order_id: "text", order_create_time: "timestamptz", adjustment_id: "text", adjustment_order_id: "text", settlement_amount: "numeric", revenue_amount: "numeric", shipping_cost_amount: "numeric", fee_tax_amount: "numeric", adjustment_amount: "numeric", subtotal_before_discount: "numeric", refund_subtotal: "numeric", seller_discount: "numeric", seller_discount_refund: "numeric", platform_commission: "numeric", affiliate_commission: "numeric", transaction_fee: "numeric", sfp_service_fee: "numeric", gmv_max_ad_fee: "numeric", gmv_max_coupon_fee: "numeric", other_fees: "numeric", tax_amount: "numeric", actual_shipping_fee: "numeric", customer_paid_shipping: "numeric", shipping_discount: "numeric", raw: "jsonb" } },
+  tt_fin_unsettled: { name: "tt_fin_unsettled", pk: ["id"], cols: { id: "text", type: "text", order_id: "text", order_create_time: "timestamptz", order_delivery_time: "timestamptz", status: "text", unsettled_reason: "text", currency: "text", est_settlement_amount: "numeric", est_revenue_amount: "numeric", est_shipping_cost_amount: "numeric", est_fee_tax_amount: "numeric", est_adjustment_amount: "numeric", raw: "jsonb" } },
 };
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -253,7 +259,56 @@ async function inGroups<T>(items: T[], size: number, parallel: number, job: (gro
   await Promise.all(Array.from({ length: Math.min(parallel, groups.length) }, async () => { while (next < groups.length) await job(groups[next++]); }));
 }
 
+/** Every daily statement (one per day, so the whole history is only a few pages). */
+const loadStatements = (ctx: Ctx, c: Counter) => simple("/finance/202309/statements", { method: "GET", query: { sort_field: "statement_time", sort_order: "DESC" }, sizes: [100, 50, 20], list: pick("statements") }, "tt_fin_statements", M.finStatement, ctx, c);
+
+/**
+ * The orders inside each statement, with the fee breakdown. A settled statement never changes, so it is read once; the newest few days are read again
+ * because TikTok can still add adjustments to them. Statements older than the "history from" day are left out.
+ */
+async function loadFinanceTransactions(ctx: Ctx, c: Counter) {
+  await loadStatements(ctx, { pages: 0, seen: 0, changed: 0 }); // the statements first, so this never runs on an empty list
+  const from = ctx.backfill ? ctx.historyFrom : addDaysISO(todayKL(), -400);
+  const need = await rows<{ id: string }>(sql`
+    select id from tt_fin_statements where statement_time >= ${from}::date and (tx_loaded = false or statement_time >= now() - interval '4 days') order by statement_time desc`);
+  const sleep = ctx.deps.sleep ?? defaultSleep;
+  await inGroups(need.map((n) => n.id), 1, 2, async ([id]) => {
+    const state = { size: 0 };
+    let token: string | null = null, payable: number | null = null, reserve: number | null = null;
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const data = await callRetry(`/finance/202501/statements/${encodeURIComponent(id)}/statement_transactions`, { method: "GET", sizes: [100, 50, 20], query: { sort_field: "order_create_time", sort_order: "ASC", ...(token ? { page_token: token } : {}) } }, ctx.deps, state);
+      if (page === 1) { payable = M.num(data.payable_amount); reserve = M.num(data.total_reserve_amount); }
+      const out = (pick("transactions")(data) as Record<string, unknown>[]).map((t) => M.finTransaction(t, id));
+      c.pages++; c.seen += out.length;
+      c.changed += await upsertRows(TABLES.tt_fin_transactions, out);
+      await progress(ctx, c);
+      token = str(data.next_page_token);
+      if (!token) break;
+      await sleep(ctx.deps.pauseMs ?? 120);
+    }
+    await rows(sql`update tt_fin_statements set tx_loaded = true, tx_loaded_at = now(), payable_amount = ${payable}, reserve_amount = ${reserve} where id = ${id}`);
+  });
+}
+
+/** Orders TikTok has not paid yet. A row leaves the list when it is settled, so after a complete read the rows TikTok no longer lists are removed. */
+async function loadUnsettled(ctx: Ctx, c: Counter) {
+  const floor = Math.max(1735689600, Math.floor(Date.now() / 1000) - 730 * DAY); // TikTok only lists transactions created after 2025-01-01
+  const seen: string[] = [];
+  for await (const { items, page } of walk("/finance/202507/orders/unsettled", { method: "GET", query: { sort_field: "order_create_time", sort_order: "DESC", search_time_ge: String(floor) }, sizes: [100, 50, 20], list: pick("transactions") }, ctx.deps)) {
+    const out = items.map(M.finUnsettled).filter((r) => r.id);
+    for (const r of out) seen.push(String(r.id));
+    c.pages = page; c.seen += out.length;
+    c.changed += await upsertRows(TABLES.tt_fin_unsettled, out);
+    await progress(ctx, c);
+  }
+  const gone = await rows<{ x: number }>(seen.length ? sql`delete from tt_fin_unsettled where id <> all(${sql.raw(`ARRAY[${seen.map((i) => `'${i.replace(/'/g, "''")}'`).join(",")}]::text[]`)}) returning 1 as x` : sql`delete from tt_fin_unsettled returning 1 as x`);
+  c.changed += gone.length;
+}
+
 const RUNNERS: Record<DatasetKey, (ctx: Ctx, c: Counter) => Promise<void>> = {
+  fin_statements: loadStatements,
+  fin_transactions: loadFinanceTransactions,
+  fin_unsettled: loadUnsettled,
   products: (ctx, c) => simple("/product/202309/products/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("products") }, "tt_skus", M.skus, ctx, c),
   sample_requests: (ctx, c) => simple("/affiliate_seller/202409/sample_applications/search", { method: "POST", body: {}, sizes: [100, 50, 20, 10], list: pick("sample_applications", "applications") }, "tt_sample_requests", M.sampleRequest, ctx, c),
   orders: (ctx, c) => windowed({ path: "/order/202309/orders/search", sizes: [100, 50, 20, 10], list: pick("orders"), timeKey: "create_time", table: "tt_orders", mapRow: M.order }, ctx, c),
@@ -351,7 +406,7 @@ export async function runAll(trigger: "manual" | "schedule", userId: string | nu
   const out: RunResult[] = [];
   try {
     // The biggest datasets start first; up to POOL run side by side. Results are returned in the display order.
-    const order: DatasetKey[] = ["affiliate_orders", "orders", "videos", "sample_requests", "returns", "cancellations", "products", "lives", "open_collabs", "shop_daily"];
+    const order: DatasetKey[] = ["affiliate_orders", "orders", "videos", "sample_requests", "returns", "cancellations", "products", "lives", "open_collabs", "shop_daily", "fin_statements", "fin_unsettled", "fin_transactions"];
     const done = new Map<DatasetKey, RunResult>();
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(POOL, order.length) }, async () => {

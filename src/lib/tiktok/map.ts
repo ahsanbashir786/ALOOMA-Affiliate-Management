@@ -232,3 +232,58 @@ export function openCollab(v: R): Row {
     price_max: num(price.maximum_amount),
   };
 }
+
+// ───────── Finance (scope seller.finance.info) ─────────
+// Amounts are kept exactly as TikTok sends them: money TikTok takes away (fees, shipping) is a negative number.
+
+const at = (o: unknown, ...path: string[]): unknown => path.reduce<unknown>((a, k) => obj(a)[k], o);
+const sumNums = (o: unknown): number => Object.values(obj(o)).reduce<number>((a, v) => a + (typeof v === "object" ? 0 : (num(v) ?? 0)), 0);
+const round2 = (n: number) => Math.round(n * 100) / 100;
+/** A time, but 0 (TikTok's way of saying "not yet") is no time. */
+const tsPos = (v: unknown): string | null => (num(v) === 0 ? null : ts(v));
+
+/** One daily statement: what TikTok settled for the day and whether it has paid it out. */
+export function finStatement(s: R): Row {
+  return {
+    id: str(s.id), statement_time: ts(s.statement_time), settlement_amount: num(s.settlement_amount), currency: str(s.currency),
+    revenue_amount: num(s.revenue_amount), fee_amount: num(s.fee_amount), adjustment_amount: num(s.adjustment_amount),
+    shipping_cost_amount: num(s.shipping_cost_amount), net_sales_amount: num(s.net_sales_amount),
+    payment_status: str(s.payment_status), payment_id: str(s.payment_id), payment_time: tsPos(s.payment_time), raw: JSON.stringify(s),
+  };
+}
+
+/**
+ * One order (or adjustment) inside a statement, with the fee breakdown. The fee columns are the ones that matter for profit; "other_fees" is whatever
+ * is left of TikTok's own fee and tax total, so the lines always add up to what TikTok says.
+ */
+export function finTransaction(t: R, statementId: string): Row {
+  const fee = at(t, "fee_tax_breakdown", "fee"), tax = at(t, "fee_tax_breakdown", "tax");
+  const named = {
+    platform_commission: num(at(fee, "platform_commission_amount")), affiliate_commission: num(at(fee, "affiliate_commission_amount")), transaction_fee: num(at(fee, "transaction_fee_amount")),
+    sfp_service_fee: num(at(fee, "sfp_service_fee_amount")), gmv_max_ad_fee: num(at(fee, "gmv_max_ad_fee_amount")), gmv_max_coupon_fee: num(at(fee, "gmv_max_coupon_fee")),
+  };
+  const taxAmount = sumNums(tax);
+  const feeTax = num(t.fee_tax_amount);
+  const namedSum = Object.values(named).reduce<number>((a, v) => a + (v ?? 0), 0);
+  return {
+    statement_id: statementId, id: str(t.id) ?? str(t.adjustment_id) ?? str(t.order_id), type: str(t.type), order_id: str(t.order_id) ?? str(t.adjustment_order_id), order_create_time: ts(t.order_create_time),
+    adjustment_id: str(t.adjustment_id), adjustment_order_id: str(t.adjustment_order_id),
+    settlement_amount: num(t.settlement_amount), revenue_amount: num(t.revenue_amount), shipping_cost_amount: num(t.shipping_cost_amount), fee_tax_amount: feeTax, adjustment_amount: num(t.adjustment_amount),
+    subtotal_before_discount: num(at(t, "revenue_breakdown", "subtotal_before_discount_amount")), refund_subtotal: num(at(t, "revenue_breakdown", "refund_subtotal_before_discount_amount")),
+    seller_discount: num(at(t, "revenue_breakdown", "seller_discount_amount")), seller_discount_refund: num(at(t, "revenue_breakdown", "seller_discount_refund_amount")),
+    ...named, tax_amount: tax && Object.keys(obj(tax)).length ? round2(taxAmount) : null,
+    other_fees: feeTax == null ? null : round2(feeTax - namedSum - taxAmount),
+    actual_shipping_fee: num(at(t, "shipping_cost_breakdown", "actual_shipping_fee_amount")), customer_paid_shipping: num(at(t, "shipping_cost_breakdown", "customer_paid_shipping_fee_amount")),
+    shipping_discount: num(at(t, "shipping_cost_breakdown", "shipping_fee_discount_amount")), raw: JSON.stringify(t),
+  };
+}
+
+/** One order or adjustment that TikTok has not paid yet, with its estimate. */
+export function finUnsettled(t: R): Row {
+  return {
+    id: str(t.id) ?? str(t.order_id) ?? str(t.adjustment_id), type: str(t.type), order_id: str(t.order_id) ?? str(t.adjustment_order_id), order_create_time: ts(t.order_create_time), order_delivery_time: tsPos(t.order_delivery_time),
+    status: str(t.status), unsettled_reason: str(t.unsettled_reason), currency: str(t.currency),
+    est_settlement_amount: num(t.est_settlement_amount) ?? num(t.estimated_settlement), est_revenue_amount: num(t.est_revenue_amount), est_shipping_cost_amount: num(t.est_shipping_cost_amount),
+    est_fee_tax_amount: num(t.est_fee_tax_amount), est_adjustment_amount: num(t.est_adjustment_amount), raw: JSON.stringify(t),
+  };
+}

@@ -27,6 +27,8 @@ export async function POST() {
     await run("Orders", "/order/202309/orders/search", one, (d) => d.orders),
     await run("Products", "/product/202309/products/search", one, (d) => d.products),
     await run("Affiliate orders", "/affiliate_seller/202410/orders/search", one, (d) => Object.values(d).find((v) => Array.isArray(v))),
+    // Needs the Finance permission, and the shop connected again after it was switched on in the TikTok app.
+    await run("Finance statements", "/finance/202309/statements", { method: "GET", query: { page_size: "1", sort_field: "statement_time", sort_order: "DESC" } }, (d) => d.statements),
   ];
   return NextResponse.json({ checks, at: new Date().toISOString() });
 }
