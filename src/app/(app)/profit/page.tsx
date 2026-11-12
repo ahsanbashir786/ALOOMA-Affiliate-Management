@@ -44,7 +44,8 @@ export default async function ProfitPage({ searchParams }: PageProps<"/profit">)
   return (
     <div className="space-y-5">
       <PageHeader title="Profit And Loss" description="What TikTok paid on every order, what the pieces cost, and what is left. Orders are counted in the month they were sold." actions={tab === "orders" || tab === "monthly" ? <RangePicker today={todayKL()} rangeKey={period.key} from={period.from} to={period.to} label={period.label} compare={false} /> : undefined} />
-      {data.costStart && <p className="text-[13px] text-ink-3" data-testid="cost-start">Orders from {data.costStart} onward are counted. Before that there are no stock records to work out a cost.</p>}
+      {data.startWarning && <Card className="flex items-start gap-2 bg-warn-soft px-4 py-3 text-[13.5px]" data-testid="start-warning"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" /><span>{data.startWarning} <Link href="/stock?tab=import" className="font-medium text-brand hover:underline">Open Import Files</Link></span></Card>}
+      {data.costStart && <p className="text-[13px] text-ink-3" data-testid="cost-start">Orders and ad spend from {data.costStart} onward are counted. Before that there are no stock records to work out a cost.</p>}
       <TabLinks label="Profit sections" items={TABS.map((t) => ({ href: href("/profit", { tab: t.key === "orders" ? undefined : t.key, ...(t.key === "orders" || t.key === "monthly" ? keep : {}) }), label: t.label, icon: t.icon, active: tab === t.key, testId: `profit-tab-${t.key}` }))} />
       {data.rows.length === 0 && tab !== "costs" ? (
         <Card><EmptyState icon={<Banknote className="size-5" />} title="No TikTok orders yet" description="Run a sync in Data Sync so the orders and TikTok's finance records are here." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>

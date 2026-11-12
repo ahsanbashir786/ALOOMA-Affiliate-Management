@@ -16,6 +16,8 @@ export type Costing = {
   unknownSkus: Map<string, number>;
   /** The first day that can be costed: the day after the opening stock was counted (or the first arrival). Earlier orders are left out. */
   costStart: string | null;
+  /** Set when the opening stock is dated after an order that arrived earlier: almost always a report from the wrong year. */
+  startWarning: string | null;
 };
 
 let memo: { at: number; value: Costing } | null = null;
@@ -30,7 +32,8 @@ export async function loadCosting(): Promise<Costing> {
   if (memo && Date.now() - memo.at < 30_000) return memo.value;
   const [{ layers }, bundles] = await Promise.all([loadLayers(), loadBundles()]);
   const orderRows = await pg`select order_id, status, is_sample, created_at, coalesce(paid_at, created_at) as at, lines from tt_orders where coalesce(upper(status), '') <> 'CANCELLED' and created_at is not null and lines is not null`;
-  const [st] = await pg`select to_char(min(arrival_date) filter (where kind = 'opening'), 'YYYY-MM-DD') as opening, to_char(min(arrival_date), 'YYYY-MM-DD') as first from stock_orders`;
+  const [st] = await pg`select to_char(min(arrival_date) filter (where kind = 'opening'), 'YYYY-MM-DD') as opening, to_char(min(arrival_date), 'YYYY-MM-DD') as first, to_char(min(arrival_date) filter (where kind = 'order'), 'YYYY-MM-DD') as first_order from stock_orders`;
+  const startWarning: string | null = st?.opening && st?.first_order && String(st.opening) > String(st.first_order) ? `The opening stock is dated ${st.opening}, but an order arrived earlier (${st.first_order}). The opening stock report is probably from the wrong year. Import the report for the last month before the first order arrived.` : null;
   const costStart: string | null = st?.opening ? addDaysISO(String(st.opening), 1) : ((st?.first as string) ?? null);
   const orders: SaleOrder[] = [];
   const sales: Sale[] = [];
@@ -68,7 +71,7 @@ export async function loadCosting(): Promise<Costing> {
   for (const r of returns) { const o = byOrder.get(r.ref); if (o) o.returnedPieces += r.qty; }
   for (const [ref, cost] of returnedCost) { const o = byOrder.get(ref); if (o) { o.returnedCost = cost; o.cost -= cost; } }
 
-  const value: Costing = { orders, byOrder, costed, remaining, unknownSkus, costStart };
+  const value: Costing = { orders, byOrder, costed, remaining, unknownSkus, costStart, startWarning };
   memo = { at: Date.now(), value };
   return value;
 }

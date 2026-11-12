@@ -40,6 +40,7 @@ export default async function StockPage({ searchParams }: PageProps<"/stock">) {
       <PageHeader title="Stock And Costing" description="Every stock-in order, the real cost of each piece, and the stock left after sales. Cost is worked out First In, First Out." />
       <TabLinks label="Stock sections" items={TABS.map((t) => ({ href: href("/stock", { tab: t.key === "stock" ? undefined : t.key }), label: t.label, icon: t.icon, active: tab === t.key, testId: `stock-tab-${t.key}` }))} />
 
+      {ov.startWarning && <Card className="flex items-start gap-2 bg-warn-soft px-4 py-3 text-[13.5px]" data-testid="start-warning"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" /><span>{ov.startWarning}</span></Card>}
       {tab !== "import" && !empty && <Tiles ov={ov} />}
       {tab === "stock" && (empty ? <Empty /> : <StockTable ov={ov} q={q} family={family} />)}
       {tab === "orders" && (empty ? <Empty /> : <OrdersTable ov={ov} />)}

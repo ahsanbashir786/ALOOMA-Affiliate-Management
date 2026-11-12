@@ -48,7 +48,7 @@ export async function importStockFile(_prev: ImportState, form: FormData): Promi
     } else if (kind === "opening") {
       const file = mergeOpening(await Promise.all(bufs.map(parseInventoryReport)));
       const r = await saveOpening(file);
-      out = { kind, ok: r.saved > 0, title: r.saved ? "Opening stock saved" : "Nothing saved", lines: [`${r.saved} pieces in stock on ${file.asOf || "an unknown day"}`, `${file.samples} sample pieces are not counted`], notes: r.notes };
+      out = { kind, ok: r.saved > 0, title: r.saved ? (r.notes[0]?.startsWith("Check the year") ? "Opening stock saved, but check the year" : "Opening stock saved") : "Nothing saved", lines: [`${r.saved} pieces in stock on ${file.asOf || "an unknown day"}`, `${file.samples} sample pieces are not counted`], notes: r.notes };
     } else {
       out = { kind, ok: false, title: "Unknown file type", lines: [], notes: [] };
     }

@@ -71,7 +71,7 @@ async function xlsx(rows: (string | number | null)[][]): Promise<Buffer> {
   await tx("S-PAID", "t5", "R1", { rev: 80, comm: -4, ship: -4, settle: 60 });
   await pg`insert into tt_fin_unsettled (id, type, order_id, est_settlement_amount, est_revenue_amount, est_shipping_cost_amount, est_fee_tax_amount, raw) values ('u1', 'ORDER', 'E1', 40, 50, -5, -5, ${JSON.stringify({ est_fee_tax_breakdown: { fee: { gmv_max_ad_fee_amount: -3 } } })}::jsonb)`;
   await pg`insert into tt_returns (return_id, order_id, status, return_type, skus, created_at) values ('ret1', 'R1', 'RETURN_OR_REFUND_REQUEST_COMPLETE', 'RETURN_AND_REFUND', ${JSON.stringify([{ seller_sku: "X" }, { seller_sku: "X" }])}::jsonb, '2026-01-25T04:00:00Z'), ('ret2', 'P1', 'REFUND_ONLY', 'REFUND', ${JSON.stringify([{ seller_sku: "X" }])}::jsonb, '2026-01-26T04:00:00Z')`;
-  await pg`insert into ads_campaign_daily (advertiser_id, campaign_id, day, cost) values ('a', 'c', '2026-01-20', 30), ('a', 'c', '2026-02-10', 20)`;
+  await pg`insert into ads_campaign_daily (advertiser_id, campaign_id, day, cost) values ('a', 'c', '2025-12-20', 99), ('a', 'c', '2026-01-20', 30), ('a', 'c', '2026-02-10', 20)`;
   clearCosting(); clearProfit();
 
   const d = await loadProfit();
@@ -103,6 +103,14 @@ async function xlsx(rows: (string | number | null)[][]): Promise<Buffer> {
   check("monthly: January net = 98.50 − real ad spend RM 30 = RM 68.50", near(mj.net, 68.5) && near(mj.adSpend, 30), JSON.stringify(mj));
   check("monthly: February net = 31.80 − RM 20 = RM 11.80, with its estimate share shown", near(mf.net, 11.8) && mf.estimatedShare > 0.99, JSON.stringify(mf));
   check("monthly: newest month first, total adds the months", m[0].month === "2026-02" && near(sumMonths(m).net, 80.3), String(sumMonths(m).net));
+
+  check("ads: spend before the first costed day is left out (RM 99 on 20 Dec 2025)", !d.adSpend.has("2025-12") && near([...d.adSpendDays.values()].reduce((a, b) => a + b, 0), 50), JSON.stringify([...d.adSpend]));
+  check("costing: the first costed day is the first arrival when there is no opening stock", d.costStart === "2026-01-01" && d.startWarning === null);
+  await pg`insert into stock_orders (order_no, sort_no, kind, arrival_date, arrival_exact) values ('OPENING', 0, 'opening', '2026-05-31', true)`;
+  clearCosting(); clearProfit();
+  const w = await loadProfit();
+  check("costing: an opening stock dated after the first order is flagged as the wrong year", !!w.startWarning && /2026-05-31/.test(w.startWarning) && w.costStart === "2026-06-01", String(w.startWarning));
+  await pg`delete from stock_orders where order_no = 'OPENING'`; clearCosting(); clearProfit();
 
   // fulfilment: a real invoice replaces the per-piece rate for its month
   await pg`insert into profit_fulfilment_months (month, amount) values ('2026-01-01', 100)`;

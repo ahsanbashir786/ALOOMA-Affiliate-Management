@@ -16,13 +16,14 @@ export type Overview = {
   skus: SkuRow[]; orders: OrderRow[];
   tiles: { onHand: number; value: number; landed: number; orders: number; estimated: number; shortPieces: number; sales: number };
   unknown: { sku: string; pieces: number }[];
+  startWarning: string | null;
   counts: { skus: number; bundles: number; orders: number; layers: number; opening: number };
 };
 
 const f = (v: unknown) => (v == null ? 0 : Number(v));
 
 export async function stockOverview(): Promise<Overview> {
-  const { costed, remaining, orders: saleOrders } = await loadCosting();
+  const { costed, remaining, orders: saleOrders, startWarning } = await loadCosting();
   const sales = saleOrders;
 
   const [skuMeta, orderRows, layerRows, counts] = await Promise.all([
@@ -77,7 +78,7 @@ export async function stockOverview(): Promise<Overview> {
 
   const skus = [...bySku.values()].sort((a, b) => b.value - a.value || a.sku.localeCompare(b.sku));
   return {
-    skus, orders,
+    skus, orders, startWarning,
     tiles: {
       onHand: skus.reduce((s, r) => s + r.onHand, 0),
       value: skus.reduce((s, r) => s + r.value, 0),

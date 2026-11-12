@@ -46,6 +46,7 @@ export type ProfitData = {
   adSpendDays: Map<string, number>; // day → real ad spend
   unknownSkus: Map<string, number>;
   costStart: string | null;
+  startWarning: string | null;
 };
 
 const n = (v: unknown) => (v == null ? 0 : Number(v));
@@ -61,7 +62,7 @@ export const clearProfit = () => { memo = null; };
 
 export async function loadProfit(): Promise<ProfitData> {
   if (memo && Date.now() - memo.at < 30_000) return memo.value;
-  const [costing, perUnit, fin, uns, invoices, ads, adDays] = await Promise.all([
+  const [costing, perUnit, fin, uns, invoices, adDays] = await Promise.all([
     loadCosting(),
     getFulfilmentRate(),
     pg`
@@ -90,7 +91,6 @@ export async function loadProfit(): Promise<ProfitData> {
         sum(coalesce(nullif(coalesce(raw #>> '{est_fee_tax_breakdown,fee,affiliate_commission_amount}', raw #>> '{fee_tax_breakdown,fee,affiliate_commission_amount}'), '')::numeric, 0))::float8 as aff
       from tt_fin_unsettled where order_id is not null group by order_id`,
     pg`select to_char(month, 'YYYY-MM') as m, amount::float8 as amount from profit_fulfilment_months`,
-    pg`select to_char(day, 'YYYY-MM') as m, sum(coalesce(cost, 0))::float8 as spend from ads_campaign_daily group by 1`,
     pg`select to_char(day, 'YYYY-MM-DD') as d, sum(coalesce(cost, 0))::float8 as spend from ads_campaign_daily group by 1`,
   ]);
   const finBy = new Map(fin.map((r) => [String(r.order_id), r]));
@@ -134,7 +134,16 @@ export async function loadProfit(): Promise<ProfitData> {
     });
   }
   rows.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.orderId < b.orderId ? 1 : -1));
-  const value: ProfitData = { rows, perUnit, invoices: invoiceBy, adSpend: new Map(ads.map((r) => [String(r.m), Number(r.spend)])), adSpendDays: new Map(adDays.map((r) => [String(r.d), Number(r.spend)])), unknownSkus: costing.unknownSkus, costStart: costing.costStart };
+  // Ad spend counts only from the first day orders are counted. Ads that ran before have no sales or stock cost to set against them.
+  const adSpendDays = new Map<string, number>();
+  const adSpend = new Map<string, number>();
+  for (const r of adDays) {
+    const d = String(r.d);
+    if (costing.costStart && d < costing.costStart) continue;
+    adSpendDays.set(d, Number(r.spend));
+    adSpend.set(d.slice(0, 7), (adSpend.get(d.slice(0, 7)) ?? 0) + Number(r.spend));
+  }
+  const value: ProfitData = { rows, perUnit, invoices: invoiceBy, adSpend, adSpendDays, unknownSkus: costing.unknownSkus, costStart: costing.costStart, startWarning: costing.startWarning };
   memo = { at: Date.now(), value };
   return value;
 }
