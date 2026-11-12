@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
+    "fresh": "node scripts/fresh.mjs",
     "db:migrate": "node --env-file=.env scripts/migrate.mjs",
     "test:tiktok": "tsx --conditions=react-server scripts/test-tiktok.ts",
     "test:sync": "tsx --conditions=react-server scripts/test-sync.ts",
