@@ -13,7 +13,9 @@ export async function swr<T>(cache: Map<string, Entry<T>>, key: string, stamp: {
   const hit = cache.get(key);
   const build = async () => { const value = await compute(); if (cache.size > 12) cache.clear(); cache.set(key, { local: stamp.local, sync: stamp.sync, at: Date.now(), value }); return value; };
   if (!hit || hit.local !== stamp.local) return build();
-  if (hit.sync !== stamp.sync || Date.now() - hit.at > maxAgeMs) {
+  // New TikTok data: rebuild in the background, but not more than once every 3 minutes (a rebuild keeps the database busy for several seconds).
+  const age = Date.now() - hit.at;
+  if ((hit.sync !== stamp.sync && age > 3 * 60_000) || age > maxAgeMs) {
     if (!hit.refreshing) hit.refreshing = build().then(() => undefined, () => { hit.refreshing = undefined; });
   }
   return hit.value;
