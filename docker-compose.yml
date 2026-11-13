@@ -37,6 +37,10 @@ services:
       TIKTOK_ADS_APP_ID: ${TIKTOK_ADS_APP_ID:-}
       TIKTOK_ADS_APP_SECRET: ${TIKTOK_ADS_APP_SECRET:-}
       TIKTOK_ADS_REDIRECT_URI: ${TIKTOK_ADS_REDIRECT_URI:-}
+      # Shopee Open Platform (optional). SHOPEE_ENV is "sandbox" while the app is Developing, "live" after Shopee approves it.
+      SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
+      SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
+      SHOPEE_ENV: ${SHOPEE_ENV:-sandbox}
 
   caddy:
     image: caddy:2-alpine
