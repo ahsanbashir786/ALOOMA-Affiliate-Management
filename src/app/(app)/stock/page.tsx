@@ -4,7 +4,6 @@ import { AlertTriangle, Boxes, CalendarClock, Layers, PackageOpen, Search, Uploa
 import { gate } from "@/lib/gate";
 import { Badge, Card, CardHeader, EmptyState, PageHeader, Td, Th, buttonClasses } from "@/components/ui/primitives";
 import { StatTile } from "@/components/ui/stat-tile";
-import { InfoTip } from "@/components/ui/info-tip";
 import { TabLinks } from "@/components/ui/tab-links";
 import { ImportBoard, type ImportCardInfo } from "@/components/stock/import-board";
 import { RemoveOrder } from "@/components/stock/remove-order";
@@ -109,7 +108,8 @@ function StockTable({ ov, q, family }: { ov: Overview; q: string; family: string
       </div>
       {ov.unknown.length > 0 && (
         <div className="border-t border-line p-4" data-testid="stock-unknown">
-          <p className="flex items-center gap-1.5 text-[13.5px] font-medium text-ink">TikTok SKUs That Are Not In Your Stock List<InfoTip>These sold pieces have no cost until the SKU is added to the SKU list or a bundle.</InfoTip></p>
+          <p className="text-[13.5px] font-medium text-ink">TikTok SKUs That Are Not In Your Stock List</p>
+          <p className="mt-0.5 text-[12.5px] text-ink-3">These sold pieces have no cost until the SKU is added to the SKU list or a bundle.</p>
           <div className="mt-2 flex flex-wrap gap-1.5">{ov.unknown.map((u) => <Badge key={u.sku} tone="warn">{u.sku} · {fmtInt(u.pieces)}</Badge>)}</div>
         </div>
       )}

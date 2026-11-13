@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Plug, RefreshCw, ShieldCheck, Unplug, XCircle } from "lucide-react";
 import { disconnectTikTok } from "@/app/actions/tiktok";
 import { cn } from "@/lib/utils";
-import { InfoTip } from "@/components/ui/info-tip";
 
 type Check = { name: string; ok: boolean; message: string; count: number | null };
 export type TikTokView = { configured: boolean; hasAuthLink: boolean; connected: boolean; sellerName: string | null; shopName: string | null; region: string | null; scopes: string[]; connectedLabel: string | null; expiresLabel: string | null };
@@ -113,12 +112,13 @@ export function TikTokActions({ v }: { v: TikTokView }) {
       {/* setup help, only when something is missing */}
       {(!v.configured || !v.hasAuthLink) && (
         <div className="rounded-xl border border-line bg-surface-2/60 p-4">
-          <p className="mb-2.5 flex items-center gap-1.5 text-[14px] font-semibold text-ink">Finish the setup on the server<InfoTip>Never paste the app secret anywhere except the server&apos;s .env file. Details: docs/TIKTOK-API.md.</InfoTip></p>
+          <p className="mb-2.5 text-[14px] font-semibold text-ink">Finish the setup on the server</p>
           <ol className="space-y-2.5">
             {!v.configured && <Step n={1}>Add <code className="rounded bg-surface px-1.5 py-0.5 text-[12.5px]">TIKTOK_APP_KEY</code> and <code className="rounded bg-surface px-1.5 py-0.5 text-[12.5px]">TIKTOK_APP_SECRET</code> to the private <code className="rounded bg-surface px-1.5 py-0.5 text-[12.5px]">.env</code> file.</Step>}
             {v.configured && !v.hasAuthLink && <Step n={1}>Add <code className="rounded bg-surface px-1.5 py-0.5 text-[12.5px]">TIKTOK_SERVICE_ID</code> (the app ID in TikTok Partner Center) to <code className="rounded bg-surface px-1.5 py-0.5 text-[12.5px]">.env</code>.</Step>}
             <Step n={2}>Restart the app, then come back here and press <b>Connect TikTok Shop</b>.</Step>
           </ol>
+          <p className="mt-3 text-[12.5px] text-ink-3">Never paste the app secret anywhere except the server&apos;s <code>.env</code> file. Details: docs/TIKTOK-API.md.</p>
         </div>
       )}
     </div>

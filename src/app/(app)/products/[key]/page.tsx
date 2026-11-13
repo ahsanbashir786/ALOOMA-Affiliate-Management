@@ -15,7 +15,6 @@ import { PeriodPicker } from "@/components/products/period-picker";
 import { AgeChart, WeeklyMixChart } from "@/components/products/charts";
 import { BUCKET_COLOR, Delta, HealthChip, Legend, MixBar, TagBadge, bucketHint, bucketLabel } from "@/components/products/ui";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
-import { InfoTip } from "@/components/ui/info-tip";
 
 export async function generateMetadata({ params }: PageProps<"/products/[key]">): Promise<Metadata> {
   const { key } = await params;
@@ -144,7 +143,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
       <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6" data-testid="product-head">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-ink">{p.name}</h1>
+            <h1 className="text-[26px] leading-tight font-semibold tracking-tight text-ink">{p.name}</h1>
             <p className="mt-1 text-[13.5px] text-ink-3"><span className="tnum">{fmtDayLabel(per.start)} – {fmtFullDay(per.end)}</span> compared with <span className="tnum">{fmtDayLabel(per.prevStart)} – {fmtFullDay(per.prevEnd)}</span></p>
             <p className="mt-3 flex flex-wrap items-center gap-2"><TagBadge tag={d.tag} size="lg" /><HealthChip fragile={d.fragile} oldPct={d.oldShare != null ? d.oldShare * 100 : null} /></p>
           </div>
@@ -190,7 +189,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
           <Section title="Content Freshness" hint="Is new content replacing old content?">
             <div className="grid gap-5 lg:grid-cols-2">
               <div><p className="mb-2 text-[13.5px] font-medium text-ink-2">Weekly Sales, Last 12 Weeks</p><WeeklyMixChart data={weekly} /><Legend className="mt-2" /></div>
-              <div><p className="mb-2 flex items-center gap-1.5 text-[13.5px] font-medium text-ink-2">Sales By The Age Of The Video<InfoTip>A steep drop after the first weeks means videos fade fast, so this product needs a steady flow of new videos.</InfoTip></p><AgeChart data={p.ageCurve} /></div>
+              <div><p className="mb-2 text-[13.5px] font-medium text-ink-2">Sales By The Age Of The Video</p><AgeChart data={p.ageCurve} /><p className="mt-2 text-[12.5px] text-ink-3">A steep drop after the first weeks means videos fade fast, so this product needs a steady flow of new videos.</p></div>
             </div>
           </Section>
 

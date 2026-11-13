@@ -2,7 +2,6 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { InfoTip } from "./info-tip";
 
 export function Card({
   className,
@@ -31,9 +30,10 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-3 px-4 pt-4 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5", className)}>
+    <div className={cn("flex items-start justify-between gap-4 px-5 pt-4 pb-3", className)}>
       <div className="min-w-0">
-        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-ink">{title}{description && <InfoTip label={`About ${typeof title === "string" ? title : "this section"}`}>{description}</InfoTip>}</h3>
+        <h3 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h3>
+        {description && <p className="mt-0.5 text-[13px] text-ink-3">{description}</p>}
       </div>
       {action}
     </div>
@@ -52,7 +52,8 @@ export function PageHeader({
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink">{title}{description && <InfoTip label={`About ${title}`}>{description}</InfoTip>}</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink">{title}</h1>
+        {description && <p className="mt-1 max-w-3xl text-[14px] text-ink-2">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

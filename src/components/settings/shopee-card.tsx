@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Copy, Loader2, Plug, RefreshCw, ShieldCheck, Unplug, XCircle } from "lucide-react";
 import { disconnectShopee } from "@/app/actions/shopee";
 import { cn } from "@/lib/utils";
-import { InfoTip } from "@/components/ui/info-tip";
 
 type Check = { name: string; ok: boolean; message: string; count: number | null; fields: string[] | null; sample: string | null };
 export type ShopeeView = {
@@ -103,15 +102,17 @@ export function ShopeeActions({ v }: { v: ShopeeView }) {
 
       {!v.configured && (
         <div className="rounded-xl border border-line bg-surface-2/60 p-4">
-          <p className="mb-2.5 flex items-center gap-1.5 text-[14px] font-semibold text-ink">Finish the setup on the server<InfoTip>Never paste the partner key anywhere except the server&apos;s .env file. Details: docs/SHOPEE.md.</InfoTip></p>
+          <p className="mb-2.5 text-[14px] font-semibold text-ink">Finish the setup on the server</p>
           <ol className="space-y-2.5 text-[14px] text-ink-2">
             <li>1. Add <Code>SHOPEE_PARTNER_ID</Code> and <Code>SHOPEE_PARTNER_KEY</Code> (from the app page in the Shopee Open Platform Console) to the private <Code>.env</Code> file. Use <Code>SHOPEE_ENV=sandbox</Code> while the app is Developing and <Code>live</Code> after Shopee approves it.</li>
             <li>2. Restart the app, then come back here and press <b>Connect Shopee</b>.</li>
           </ol>
+          <p className="mt-3 text-[12.5px] text-ink-3">Never paste the partner key anywhere except the server&apos;s <code>.env</code> file. Details: docs/SHOPEE.md.</p>
         </div>
       )}
       <details className="rounded-xl border border-line px-4 py-3 text-[13.5px] text-ink-2">
-        <summary className="cursor-pointer font-medium text-ink">Addresses for the Shopee app <InfoTip>Shopee&apos;s app page asks for the redirect <b>domain</b> (no path). Shopee sends you back to the full redirect address after you approve.</InfoTip></summary>
+        <summary className="cursor-pointer font-medium text-ink">Addresses for the Shopee app</summary>
+        <p className="mt-2 text-[13px] text-ink-3">Shopee&apos;s app page asks for the redirect <b>domain</b> (no path). Shopee sends you back to the full redirect address after you approve.</p>
         {([["Redirect domain", "domain", v.redirectDomain], ["Redirect address used", "full", v.redirectUri]] as const).map(([label, id, value]) => (
           <div key={id} className="mt-2">
             <p className="text-[12.5px] text-ink-3">{label}</p>
