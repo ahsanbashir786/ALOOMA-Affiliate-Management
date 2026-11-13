@@ -26,13 +26,11 @@ export function ResponsiveTables() {
       });
     };
     const all = () => document.querySelectorAll("main table").forEach((t) => label(t as HTMLTableElement));
-    // Wait until React has finished hydrating (labels added earlier would show as a server/browser mismatch).
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const later = (ms: number) => { clearTimeout(timer); timer = setTimeout(all, ms); };
-    const mo = new MutationObserver(() => later(250));
-    const start = () => { later(1200); mo.observe(document.body, { childList: true, subtree: true }); };
-    if (document.readyState === "complete") start(); else window.addEventListener("load", start, { once: true });
-    return () => { clearTimeout(timer); mo.disconnect(); window.removeEventListener("load", start); };
+    all();
+    let queued = false;
+    const mo = new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; all(); }); });
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => mo.disconnect();
   }, []);
   return null;
 }
