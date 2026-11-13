@@ -2074,6 +2074,35 @@ create index if not exists claim_back_items_status on claim_back_items (status);
 
 
 
+create table if not exists system_alerts (
+  key text primary key,
+  area text not null check (area in ('connections', 'sync', 'server', 'errors')),
+  severity text not null check (severity in ('critical', 'warning', 'info')),
+  title text not null,
+  detail text,
+  advice text,
+  href text,
+  status text not null default 'open' check (status in ('open', 'seen', 'resolved')),
+  first_seen timestamptz not null default now(),
+  last_seen timestamptz not null default now(),
+  count int not null default 1,
+  resolved_at timestamptz,
+  handled_by text
+);
+create index if not exists system_alerts_status on system_alerts (status, area);
+
+create table if not exists app_error_log (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  signature text not null,
+  source text not null default 'server',
+  route text,
+  message text not null,
+  stack text
+);
+create index if not exists app_error_log_at on app_error_log (at desc);
+create index if not exists app_error_log_signature on app_error_log (signature, at desc);
+
 -- The only built-in role: Admin, with every screen. All other roles are created in the app.
 insert into roles (key, name, description, is_admin) values
   ('admin', 'Admin', 'The owner. Can open every screen, always.', true);

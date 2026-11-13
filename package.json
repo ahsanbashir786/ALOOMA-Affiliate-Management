@@ -25,7 +25,8 @@
     "test:stock": "tsx --conditions=react-server scripts/test-stock.ts",
     "test:profit": "tsx --conditions=react-server scripts/test-profit.ts",
     "test:shopee": "tsx --conditions=react-server scripts/test-shopee.ts",
-    "test:storage": "tsx --conditions=react-server scripts/test-storage.ts"
+    "test:storage": "tsx --conditions=react-server scripts/test-storage.ts",
+    "test:alerts": "tsx --conditions=react-server scripts/test-alerts.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

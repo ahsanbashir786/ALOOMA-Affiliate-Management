@@ -902,3 +902,29 @@ export const claimBackItems = pgTable("claim_back_items", {
   updatedBy: text("updated_by"),
   updatedAt: tz("updated_at").notNull().defaultNow(),
 });
+
+// System Alerts (migrations/0036_system_alerts.sql)
+export const systemAlerts = pgTable("system_alerts", {
+  key: text("key").primaryKey(),
+  area: text("area").notNull(),
+  severity: text("severity").notNull(),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  advice: text("advice"),
+  href: text("href"),
+  status: text("status").notNull().default("open"),
+  firstSeen: tz("first_seen").notNull().defaultNow(),
+  lastSeen: tz("last_seen").notNull().defaultNow(),
+  count: integer("count").notNull().default(1),
+  resolvedAt: tz("resolved_at"),
+  handledBy: text("handled_by"),
+});
+export const appErrorLog = pgTable("app_error_log", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  at: tz("at").notNull().defaultNow(),
+  signature: text("signature").notNull(),
+  source: text("source").notNull().default("server"),
+  route: text("route"),
+  message: text("message").notNull(),
+  stack: text("stack"),
+});

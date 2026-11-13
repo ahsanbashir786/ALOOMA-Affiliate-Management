@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Menu } from "lucide-react";
+import Link from "next/link";
+import { Bell, Menu } from "lucide-react";
+import { ErrorReporter } from "./error-reporter";
 import type { PermissionKey } from "@/lib/permissions";
 import { Sidebar } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
@@ -16,10 +18,12 @@ const readMenu = () => { try { return localStorage.getItem(MENU_KEY) === "1"; } 
 export function AppShell({
   user,
   sync,
+  alerts,
   children,
 }: {
   user: { name: string; email: string; roleName: string; isAdmin: boolean; permissions: PermissionKey[] };
   sync: { label: string; ok: boolean };
+  alerts?: { unseen: number; worst: "critical" | "warning" | "info" | null } | null;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -31,6 +35,7 @@ export function AppShell({
   };
   return (
     <CreatorPanelProvider>
+    <ErrorReporter />
     <div className="min-h-screen">
       <Sidebar user={user} sync={sync} open={open} onClose={() => setOpen(false)} collapsed={collapsed} onToggleCollapsed={toggle} />
       <div className={collapsed ? "transition-[padding] duration-200 lg:pl-[76px]" : "transition-[padding] duration-200 lg:pl-[256px]"}>
@@ -44,6 +49,12 @@ export function AppShell({
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-2.5">
+            {alerts && (
+              <Link href="/settings?tab=alerts" aria-label={alerts.unseen ? `${alerts.unseen} system alert${alerts.unseen === 1 ? "" : "s"}` : "System alerts"} data-testid="alert-bell" className="relative flex size-9 items-center justify-center rounded-lg border border-line-strong bg-surface text-ink-2 hover:bg-surface-2">
+                <Bell className="size-[18px]" />
+                {alerts.unseen > 0 && <span data-testid="alert-bell-count" className={`absolute -top-1.5 -right-1.5 flex min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] leading-[18px] font-semibold text-white ${alerts.worst === "critical" ? "bg-critical" : "bg-warn"}`}>{alerts.unseen > 9 ? "9+" : alerts.unseen}</span>}
+              </Link>
+            )}
             <CommandPalette />
             <ThemeToggle />
             <UserMenu name={user.name} email={user.email} role={user.roleName} />

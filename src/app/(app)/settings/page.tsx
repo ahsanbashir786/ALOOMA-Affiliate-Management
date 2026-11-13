@@ -12,6 +12,7 @@ import { connectionInfo, tiktokConfig } from "@/lib/tiktok/client";
 import { adsConfig, adsConnectionInfo, redirectUriFor } from "@/lib/tiktok-ads/client";
 import { TikTokActions } from "@/components/settings/tiktok-card";
 import { TikTokAdsActions } from "@/components/settings/tiktok-ads-card";
+import { AlertsPanel } from "@/components/settings/alerts-panel";
 import { StoragePanel } from "@/components/settings/storage-panel";
 import { ShopeeActions } from "@/components/settings/shopee-card";
 import { shopeeConfig, shopeeConnectionInfo } from "@/lib/shopee/client";
@@ -70,7 +71,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   } else if (tab === "storage") {
     body = <StoragePanel />;
   } else if (tab === "alerts") {
-    body = <Soon icon={Bell} title="System Alerts" items={["Tell the owner when a sync fails", "Warn when a TikTok login stops working", "Choose who gets each alert"]} />;
+    body = <AlertsPanel />;
   } else {
     const hdr = await headers();
     const [tt, ads, adsCfg, accounts, shops] = [await connectionInfo(), await adsConnectionInfo(), adsConfig(), await rows<{ advertiser_id: string; name: string | null; currency: string | null }>(sql`select advertiser_id, name, currency from ads_advertisers order by name nulls last, advertiser_id`), await rows<{ n: number }>(sql`select count(*)::int as n from ads_stores`)];
