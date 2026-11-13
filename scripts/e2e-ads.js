@@ -22,7 +22,7 @@ async function login(p, email) {
   const tabs = (await o.locator("nav[aria-label='Settings sections'] a").allInnerTexts()).map((t) => t.trim());
   ok(JSON.stringify(tabs) === JSON.stringify(["Connection", "User Management", "Storage", "System Alerts"]), `settings: the four sections (${tabs.join(", ")})`);
   const sub = (await o.locator("nav[aria-label='Connection type'] a").allInnerTexts()).map((t) => t.trim());
-  ok(sub.length === 2 && /Affiliate/.test(sub[0]) && /Ad Management/.test(sub[1]), `settings: Connection has two tabs (${sub.join(" | ")})`);
+  ok(sub.length === 3 && /Affiliate/.test(sub[0]) && /Ad Management/.test(sub[1]) && /Shopee/.test(sub[2]), `settings: Connection has three tabs (${sub.join(" | ")})`);
   await o.getByTestId("settings-tab-storage").click(); await o.waitForSelector("[data-testid=settings-soon]"); ok(true, "settings: Storage is a coming-later page");
   await o.getByTestId("settings-tab-alerts").click(); await o.waitForSelector("[data-testid=settings-soon]"); ok(true, "settings: System Alerts is a coming-later page");
   await o.getByTestId("settings-tab-users").click(); await o.waitForSelector("[data-testid=user-row]"); ok(/tab=users/.test(o.url()), "settings: User Management shows the people");

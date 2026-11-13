@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Bell, Building2, HardDrive, Plug, ShoppingBag, Users } from "lucide-react";
+import { Bell, Building2, HardDrive, Plug, ShoppingBag, Store, Users } from "lucide-react";
 import { can, requireUser } from "@/lib/auth";
 import { gate } from "@/lib/gate";
 import { rows } from "@/lib/sql";
@@ -12,6 +12,9 @@ import { connectionInfo, tiktokConfig } from "@/lib/tiktok/client";
 import { adsConfig, adsConnectionInfo, redirectUriFor } from "@/lib/tiktok-ads/client";
 import { TikTokActions } from "@/components/settings/tiktok-card";
 import { TikTokAdsActions } from "@/components/settings/tiktok-ads-card";
+import { ShopeeActions } from "@/components/settings/shopee-card";
+import { shopeeConfig, shopeeConnectionInfo } from "@/lib/shopee/client";
+import { publicUrl } from "@/lib/public-url";
 import { BoostWriteCard } from "@/components/settings/boost-write-card";
 import { getBoostWriteSettings, recentBoostActions } from "@/lib/tiktok-ads/boost-write";
 import { UsersPanel } from "@/components/users/users-panel";
@@ -43,7 +46,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const sp = (await searchParams) as SP;
   const asked = one(sp.tab);
   const tab: Tab = TABS.includes(asked as Tab) ? (asked as Tab) : canConn ? "connection" : "users";
-  const src = one(sp.src) === "ads" ? "ads" : "shop";
+  const src = one(sp.src) === "ads" ? "ads" : one(sp.src) === "shopee" ? "shopee" : "shop";
   const first = canConn ? "/settings?tab=connection" : "/settings?tab=users";
 
   const tabs = (
@@ -73,6 +76,10 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
     const cfg = tiktokConfig();
     const shopMsg = ({ connected: "Connected to TikTok Shop.", denied: "TikTok did not approve the connection.", state: "The connection check failed (security code did not match). Please try Connect again.", missing: "The TikTok app key, secret or app ID is missing on the server.", error: `TikTok connection failed: ${one(sp.why) ?? "unknown error"}` } as Record<string, string>)[one(sp.tiktok) ?? ""];
     const adsMsg = ({ connected: "Connected to TikTok Ads.", denied: "TikTok did not approve the connection.", state: "The connection check failed (security code did not match). Please try Connect again.", missing: "The TikTok Ads app ID or secret is missing on the server.", error: `TikTok Ads connection failed: ${one(sp.why) ?? "unknown error"}` } as Record<string, string>)[one(sp.ads) ?? ""];
+    const shopee = await shopeeConnectionInfo();
+    const shopeeCfg = shopeeConfig();
+    const shopeeMsg = ({ connected: "Connected to Shopee.", denied: "Shopee did not send the approval. Please try Connect again.", state: "The connection check failed (it did not start from this browser). Please try Connect again.", missing: "The Shopee partner ID or key is missing on the server.", error: `Shopee connection failed: ${one(sp.why) ?? "unknown error"}` } as Record<string, string>)[one(sp.shopee) ?? ""];
+    const shopeeRedirect = publicUrl("/api/shopee/callback", new Request(`${hdr.get("x-forwarded-proto") ?? "http"}://${hdr.get("x-forwarded-host") ?? hdr.get("host") ?? "localhost:3000"}/`, { headers: hdr })).toString();
     const origin = `${hdr.get("x-forwarded-proto") ?? "http"}://${hdr.get("host") ?? "localhost:3000"}/`;
     const redirect = redirectUriFor(adsCfg ?? { appId: "", appSecret: "", redirectUri: process.env.TIKTOK_ADS_REDIRECT_URI?.trim() || null }, origin, hdr.get("x-forwarded-host"), hdr.get("x-forwarded-proto"));
     const accountList = accounts.length ? accounts.map((a) => ({ id: a.advertiser_id, name: a.name, currency: a.currency })) : ads.advertiserIds.map((id) => ({ id, name: null, currency: null }));
@@ -81,6 +88,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         <TabLinks size="sm" label="Connection type" items={[
           { href: "/settings?tab=connection&src=shop", label: "Affiliate (TikTok Shop)", icon: ShoppingBag, active: src === "shop", testId: "conn-tab-shop" },
           { href: "/settings?tab=connection&src=ads", label: "Ad Management (GMV Max)", icon: Building2, active: src === "ads", testId: "conn-tab-ads" },
+          { href: "/settings?tab=connection&src=shopee", label: "Shopee", icon: Store, active: src === "shopee", testId: "conn-tab-shopee" },
         ]} />
         {src === "shop" ? (
           <>
@@ -89,6 +97,16 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               <CardHeader title="TikTok Shop connection" description="Read-only access to orders, products, returns, videos, LIVE and samples." />
               <div className="border-t border-line p-5">
                 <TikTokActions v={{ configured: !!cfg, hasAuthLink: !!(cfg?.authUrl || cfg?.serviceId), connected: tt.connected, sellerName: tt.sellerName, shopName: tt.shopName, region: tt.region, scopes: tt.scopes, connectedLabel: tt.connectedAt ? fmtDayLabel(dayKL(tt.connectedAt)) : null, expiresLabel: tt.accessExpiresAt ? fmtDayLabel(dayKL(new Date(tt.accessExpiresAt * 1000))) : null }} />
+              </div>
+            </Card>
+          </>
+        ) : src === "shopee" ? (
+          <>
+            {shopeeMsg && <p role="status" className="rounded-lg border border-line-strong bg-surface-2 px-4 py-3 text-[14px] text-ink" data-testid="shopee-msg">{shopeeMsg}</p>}
+            <Card>
+              <CardHeader title="Shopee connection" description="Read-only access to your Shopee shop through the Shopee Open Platform. Orders and payouts sync in the next step." />
+              <div className="border-t border-line p-5">
+                <ShopeeActions v={{ configured: !!shopeeCfg, connected: shopee.connected, env: shopeeCfg?.env ?? "sandbox", shopName: shopee.shopName, shopId: shopee.shopIds[0] ?? null, region: shopee.region, connectedLabel: shopee.connectedAt ? fmtDayLabel(dayKL(shopee.connectedAt)) : null, accessLabel: shopee.accessExpiresAt ? fmtDayLabel(dayKL(new Date(shopee.accessExpiresAt * 1000))) : null, refreshLabel: shopee.refreshExpiresAt ? fmtDayLabel(dayKL(new Date(shopee.refreshExpiresAt * 1000))) : null, redirectUri: shopeeRedirect, redirectDomain: shopeeRedirect.replace(/\/api\/shopee\/callback$/, "") }} />
               </div>
             </Card>
           </>
