@@ -1,3 +1,4 @@
+import { publicUrl } from "@/lib/public-url";
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { can, getCurrentUser } from "@/lib/auth";
@@ -8,9 +9,9 @@ export const runtime = "nodejs";
 /** Starts the Ads connection: sends the owner to TikTok to approve, with a one-time `state` kept in a cookie. */
 export async function GET(request: Request) {
   const user = await getCurrentUser();
-  if (!user || !can(user, "settings")) return NextResponse.redirect(new URL("/login", request.url));
+  if (!user || !can(user, "settings")) return NextResponse.redirect(publicUrl("/login", request));
   const cfg = adsConfig();
-  if (!cfg) return NextResponse.redirect(new URL("/settings?tab=connection&src=ads&ads=missing", request.url));
+  if (!cfg) return NextResponse.redirect(publicUrl("/settings?tab=connection&src=ads&ads=missing", request));
   const state = randomBytes(16).toString("hex");
   const redirectUri = redirectUriFor(cfg, request.url, request.headers.get("x-forwarded-host"), request.headers.get("x-forwarded-proto"));
   const res = NextResponse.redirect(adsAuthorizeUrl(cfg, state, redirectUri));

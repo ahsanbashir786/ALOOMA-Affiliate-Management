@@ -1,3 +1,4 @@
+import { publicUrl } from "@/lib/public-url";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -11,7 +12,7 @@ export function proxy(request: NextRequest) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Not signed in." }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(publicUrl("/login", request));
   }
   return NextResponse.next();
 }

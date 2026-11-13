@@ -1,3 +1,4 @@
+import { publicUrl } from "@/lib/public-url";
 import { NextResponse } from "next/server";
 import { can, getCurrentUser } from "@/lib/auth";
 import { adsConfig, adsConnectWithCode } from "@/lib/tiktok-ads/client";
@@ -7,12 +8,12 @@ export const runtime = "nodejs";
 /** TikTok sends the owner back here with a one-time code. We check the `state`, swap the code for a login, and store it encrypted. */
 export async function GET(request: Request) {
   const to = (q: string) => {
-    const res = NextResponse.redirect(new URL(`/settings?tab=connection&src=ads&${q}`, request.url));
+    const res = NextResponse.redirect(publicUrl(`/settings?tab=connection&src=ads&${q}`, request));
     res.cookies.delete("tiktok_ads_state");
     return res;
   };
   const user = await getCurrentUser();
-  if (!user || !can(user, "settings")) return NextResponse.redirect(new URL("/login", request.url));
+  if (!user || !can(user, "settings")) return NextResponse.redirect(publicUrl("/login", request));
   const sp = new URL(request.url).searchParams;
   const code = sp.get("auth_code") ?? sp.get("code");
   const state = sp.get("state");
