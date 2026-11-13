@@ -33,6 +33,10 @@ services:
       TIKTOK_APP_SECRET: ${TIKTOK_APP_SECRET:-}
       TIKTOK_SERVICE_ID: ${TIKTOK_SERVICE_ID:-}
       TIKTOK_AUTH_URL: ${TIKTOK_AUTH_URL:-}
+      # TikTok Ads / GMV Max connection (optional; a separate app from TikTok Shop).
+      TIKTOK_ADS_APP_ID: ${TIKTOK_ADS_APP_ID:-}
+      TIKTOK_ADS_APP_SECRET: ${TIKTOK_ADS_APP_SECRET:-}
+      TIKTOK_ADS_REDIRECT_URI: ${TIKTOK_ADS_REDIRECT_URI:-}
 
   caddy:
     image: caddy:2-alpine
