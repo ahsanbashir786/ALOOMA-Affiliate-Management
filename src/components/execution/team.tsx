@@ -67,7 +67,7 @@ export function TeamView({ tasks, data, today, onPick }: {
 
       <section className="rounded-2xl border border-line bg-surface p-5 shadow-card">
         <h2 className="text-[16px] font-semibold text-ink">Progress By Category</h2>
-        <div className="mt-3 tile-grid">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {CATEGORIES.map((c) => {
             const s = stats(real.filter((t) => t.category === c.key), today);
             return (

@@ -50,7 +50,7 @@ export async function AlertsPanel() {
   const [{ open, resolved }, sum] = await Promise.all([listAlerts(), alertSummary()]);
   return (
     <div className="space-y-5" data-testid="alerts-panel">
-      <div className="tile-grid" data-testid="health-tiles">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="health-tiles">
         {AREAS.map((a) => {
           const worst = sum.byArea[a.key];
           const n = open.filter((x) => x.area === a.key).length;

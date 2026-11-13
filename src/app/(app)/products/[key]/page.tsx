@@ -150,7 +150,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
           </div>
           <PeriodPicker from={raw.from ?? ""} to={raw.to ?? ""} today={todayKL()} keep={{}} />
         </div>
-        <div className="mt-5 tile-grid">
+        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Tile label="Sales" value={fmtRM(m.sales.now)} sub={<Delta now={m.sales.now} prev={m.sales.prev} />} />
           <Tile label="Orders" value={p.orders.now.toLocaleString("en-MY")} sub={<Delta now={p.orders.now} prev={p.orders.prev} money={false} />} />
           <Tile label="Active Creators" value={cs.active.now} sub={<Delta now={cs.active.now} prev={cs.active.prev} money={false} />} />
@@ -199,7 +199,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
           </Section>
 
           <Section title="Creators" hint="Who sells it, and how much it depends on a few of them">
-            <div className="tile-grid">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Tile label="Active Creators" value={cs.active.now} sub={<Delta now={cs.active.now} prev={cs.active.prev} money={false} />} />
               <Tile label="Started Selling It" value={cs.fresh} sub="first sale of it in this period" />
               <Tile label="Nearly Stopped" value={<span className={cs.quiet > 0 ? "text-warn" : ""}>{cs.quiet}</span>} sub="sold before, almost nothing now" />

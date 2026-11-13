@@ -37,7 +37,7 @@ export function LogBoard({ batches, saved, rangeLabel }: { batches: LogBatch[]; 
   return (
     <div className="space-y-5" data-testid="ads-log">
       {saved && <p className="bx-pop flex items-center gap-2 rounded-2xl border border-good/30 bg-good-soft px-4 py-2.5 text-[14px] font-medium text-good" data-testid="ads-log-saved"><CheckCircle2 className="size-4" />Saved</p>}
-      <section className="tile-grid" aria-label="Scoreboard" data-testid="ads-log-score">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Scoreboard" data-testid="ads-log-score">
         {[
           ["Boosts Logged", nfmt(stats.total), "", ClipboardList], ["Hit Rate", stats.rate == null ? "–" : `${stats.rate}%`, stats.done ? `${stats.up} of ${stats.done} raised sales` : "waiting for results", TrendingUp],
           ["Sales After Boosts", rm(stats.sales), `from ${rm(stats.spend)} spent`, TrendingUp], ["ROI After Boosts", roiFmt(stats.roi), "", TrendingUp],

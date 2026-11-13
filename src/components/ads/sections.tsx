@@ -12,7 +12,7 @@ const head = "border-y border-line bg-surface-2/60";
 function KpiTiles({ now, before, label, compare = true }: { now: Kpi; before: Kpi; label: string; compare?: boolean }) {
   const delta = (n: number | null, b: number | null, neutral?: boolean) => (compare ? <Delta now={n} before={b} neutral={neutral} /> : <span className="text-[12.5px] text-ink-3">no earlier period</span>);
   return (
-    <section className="tile-grid" aria-label={label}>
+    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label={label}>
       <Tile label="Ad Spend" value={rm(now.cost)} sub={delta(now.cost, before.cost, true)} testId="ads-kpi-spend" />
       <Tile label="Sales From Ads" value={rm(now.revenue)} sub={delta(now.revenue, before.revenue)} />
       <Tile label="Orders" value={nfmt(now.orders)} sub={delta(now.orders, before.orders)} />

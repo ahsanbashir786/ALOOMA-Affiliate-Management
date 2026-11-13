@@ -98,7 +98,7 @@ export default async function CreatorProfilePage({ params }: PageProps<"/creator
         </div>
       </Card>
 
-      <div className="tile-grid" data-testid="profile-tiles">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-testid="profile-tiles">
         <Tile label="Total sales" value={fmtRM(totals.gmv)} sub={`${totals.orders} orders · ${totals.units} units`} />
         <Tile label="Last 28 days" value={fmtRM(e.gmv28)} sub={delta == null ? "no earlier period" : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(delta))}% vs before`} />
         <Tile label="Average order" value={totals.aov ? fmtRM(totals.aov) : "–"} sub={totals.returnPct != null ? `${totals.returnPct.toFixed(1)}% returned or cancelled` : undefined} />

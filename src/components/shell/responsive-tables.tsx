@@ -25,24 +25,14 @@ export function ResponsiveTables() {
         });
       });
     };
-    // A table wider than its box turns into cards too, so nothing in the app ever scrolls sideways.
-    const fit = (t: HTMLTableElement) => {
-      if (t.dataset.stack === "off") return;
-      t.removeAttribute("data-stacked");
-      if (t.offsetParent === null || window.innerWidth < 768) return;
-      const box = (t.closest("[class*=overflow-x]") as HTMLElement | null) ?? t.parentElement;
-      if (box && t.scrollWidth > box.clientWidth + 1) t.setAttribute("data-stacked", "1");
-    };
-    const all = () => document.querySelectorAll("main table").forEach((t) => { label(t as HTMLTableElement); fit(t as HTMLTableElement); });
+    const all = () => document.querySelectorAll("main table").forEach((t) => label(t as HTMLTableElement));
     // Wait until React has finished hydrating (labels added earlier would show as a server/browser mismatch).
     let timer: ReturnType<typeof setTimeout> | undefined;
     const later = (ms: number) => { clearTimeout(timer); timer = setTimeout(all, ms); };
-    const mo = new MutationObserver((list) => { if (list.some((m) => m.type === "childList")) later(250); });
-    const onResize = () => later(200);
-    window.addEventListener("resize", onResize);
+    const mo = new MutationObserver(() => later(250));
     const start = () => { later(1200); mo.observe(document.body, { childList: true, subtree: true }); };
     if (document.readyState === "complete") start(); else window.addEventListener("load", start, { once: true });
-    return () => { clearTimeout(timer); mo.disconnect(); window.removeEventListener("resize", onResize); window.removeEventListener("load", start); };
+    return () => { clearTimeout(timer); mo.disconnect(); window.removeEventListener("load", start); };
   }, []);
   return null;
 }

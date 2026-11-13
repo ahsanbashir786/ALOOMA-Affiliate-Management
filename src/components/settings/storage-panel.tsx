@@ -29,13 +29,13 @@ export async function StoragePanel() {
           <span><b>The server disk is {Math.round(usedPct)}% full.</b> {usedPct >= 90 ? "Free some space or upgrade the server soon, or the app and database can stop." : "Plan to free some space or upgrade the server."}</span>
         </Card>
       )}
-      <div className="tile-grid" data-testid="server-tiles">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="server-tiles">
         <StatTile icon={MemoryStick} label="Memory (RAM)" value={`${fmtBytes(v.memory.used)} of ${fmtBytes(v.memory.total)}`} note={`${memPct.toFixed(0)}% used · this app ${fmtBytes(v.memory.appRss)}`} tone={memPct >= 90 ? "critical" : memPct >= 80 ? "warn" : "brand"} />
         <StatTile icon={Cpu} label="vCPU" value={`${v.cpu.cores} ${v.cpu.cores === 1 ? "core" : "cores"}`} note={v.cpu.busyPct != null ? `${v.cpu.busyPct.toFixed(0)}% busy now · load ${v.cpu.load[1].toFixed(2)} (5 min)` : `load ${v.cpu.load[1].toFixed(2)} (5 min)`} tone={v.cpu.busyPct != null && v.cpu.busyPct >= 90 ? "warn" : "neutral"} />
         <StatTile icon={Network} label="Data Transfer This Month" value={v.network ? fmtBytes(v.network.tx + v.network.rx) : "Not measured"} note={v.network ? `Sent ${fmtBytes(v.network.tx)}, received ${fmtBytes(v.network.rx)}. This counts only the traffic the app itself sends and receives (syncs, pages, files) since ${new Date(v.network.since).toLocaleDateString("en-MY", { day: "numeric", month: "short" })}. Your hosting company's own meter is the one that counts for the plan limit (2 TB a month); check it in their panel.` : "Only measured on the server"} tone="neutral" />
         <StatTile icon={Layers} label="Server Running For" value={dur(v.uptimeSec)} note="since the last restart" tone="good" />
       </div>
-      <div className="tile-grid">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile icon={HardDrive} label="Server Disk Total" value={fmtBytes(s.disk.total)} note="The whole disk of your VPS" tone="neutral" />
         <StatTile icon={Layers} label="Used" value={fmtBytes(s.disk.used)} note={`${usedPct.toFixed(1)}% of the disk`} tone={usedPct >= 90 ? "critical" : usedPct >= 80 ? "warn" : "brand"} />
         <StatTile icon={HardDrive} label="Free" value={fmtBytes(s.disk.free)} note={`${(100 - usedPct).toFixed(1)}% left`} tone="good" />

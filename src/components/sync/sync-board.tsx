@@ -202,7 +202,7 @@ export function SyncBoard({ initial, connected, canAdmin, canRun, serverNow }: {
       </section>
 
       {/* datasets */}
-      <section aria-label="Data" className="tile-grid">
+      <section aria-label="Data" className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {ov.datasets.map((d) => {
           const Icon = ICON[d.icon] ?? Package;
           const f = fresh(d.lastSuccessAt, now);

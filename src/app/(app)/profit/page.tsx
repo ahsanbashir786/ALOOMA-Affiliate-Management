@@ -85,7 +85,7 @@ function Orders({ data, period, sp }: { data: ProfitData; period: Period; sp: SP
   return (
     <>
       <div className="flex justify-end"><a href={exportHref} className={buttonClasses({ variant: "secondary" })} data-testid="export-orders"><Download className="size-4" />Download Excel</a></div>
-      <div className="tile-grid" data-testid="profit-tiles">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" data-testid="profit-tiles">
         <StatTile icon={Receipt} label="Orders" value={fmtInt(t.orders)} note={`${fmtInt(t.pieces)} pieces${t.samples ? ` · ${t.samples} samples` : ""}`} tone="neutral" />
         <StatTile icon={Wallet} label="Money From TikTok" value={rm(t.settlement, 0)} note={t.estimated ? `${t.estimated} ${t.estimated === 1 ? "order is" : "orders are"} still an estimate` : "All settled"} />
         <StatTile icon={PackageCheck} label="Product Cost" value={rm(t.cost, 0)} note="First In, First Out" tone="neutral" />
@@ -157,7 +157,7 @@ function Monthly({ data, period }: { data: ProfitData; period: Period }) {
   const chart = shownRows.slice().reverse().map((m) => ({ month: m.month, net: m.net }));
   return (
     <>
-      <div className="tile-grid" data-testid="monthly-tiles">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="monthly-tiles">
         <StatTile icon={Receipt} label="Sales" value={rm(total.sales, 0)} note={`${fmtInt(total.orders)} orders`} tone="neutral" />
         <StatTile icon={PackageCheck} label="Product Cost And Fulfilment" value={rm(total.cost + total.fulfilment, 0)} tone="neutral" />
         <StatTile icon={TrendingUp} label="Real Ad Spend" value={rm(total.adSpend, 0)} tone="warn" />
@@ -202,7 +202,7 @@ async function Claims() {
   const claimed = c.items.filter((i) => i.status === "claimed"), recovered = c.items.filter((i) => i.status === "recovered");
   return (
     <>
-      <div className="tile-grid" data-testid="claim-tiles">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="claim-tiles">
         <StatTile icon={Handshake} label="To Claim" value={rm(sum(open), 0)} note={`${open.length} ${open.length === 1 ? "item" : "items"}`} tone="warn" />
         <StatTile icon={Receipt} label="Already Claimed" value={rm(sum(claimed), 0)} note={`${claimed.length} ${claimed.length === 1 ? "item" : "items"}, waiting for TikTok`} tone="neutral" />
         <StatTile icon={Wallet} label="Recovered By You" value={rm(sum(recovered), 0)} note={`${recovered.length} ${recovered.length === 1 ? "item" : "items"}`} tone="good" />

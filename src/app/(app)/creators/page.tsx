@@ -29,7 +29,7 @@ import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Affiliate Data" };
 const SIZE = 50;
-const COLS = "min-[1440px]:grid-cols-[250px_minmax(100px,1.2fr)_minmax(64px,0.7fr)_58px_72px_92px_104px_minmax(110px,1.1fr)_minmax(96px,0.9fr)]";
+const COLS = "lg:grid-cols-[250px_minmax(100px,1.2fr)_minmax(64px,0.7fr)_58px_72px_92px_104px_minmax(110px,1.1fr)_minmax(96px,0.9fr)]";
 const TONE: Record<CreatorStatus, "good" | "brand" | "warn" | "critical" | "neutral"> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
 /** Change between now and before, as a percentage and a number: "▲ 12% (+56)". `good` says whether going up is good news. */
 function Change({ now, before, good, unit = "", note }: { now: number; before: number | null; good: "up" | "down" | "neutral"; unit?: string; note?: string }) {
@@ -46,7 +46,7 @@ function Change({ now, before, good, unit = "", note }: { now: number; before: n
 /** A compact headline number that links to the table filtered to what it counts. */
 function Kpi({ label, value, sub, change, href: to, wide, hint }: { label: string; value: string; sub: string; change?: React.ReactNode; href: string; wide?: boolean; hint?: string }) {
   return (
-    <Link href={to} title={hint} className={cn("rounded-2xl border border-line bg-surface px-4 py-3.5 transition-colors hover:bg-surface-2",)}>
+    <Link href={to} title={hint} className={cn("rounded-2xl border border-line bg-surface px-4 py-3.5 transition-colors hover:bg-surface-2", wide && "col-span-2 lg:col-span-1")}>
       <p className="text-[13px] font-medium text-ink-3">{label}</p>
       <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
         <span className="tnum text-[26px] leading-tight font-semibold tracking-tight text-ink">{value}</span>
@@ -180,7 +180,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
         actions={<DatesPicker from={pageFilters.from ?? ""} to={pageFilters.to ?? ""} today={todayKL()} emptyLabel="All Time" />}
       />
 
-      <div className="tile-grid" aria-label="Creators at a glance" data-testid="creator-kpis">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Creators at a glance" data-testid="creator-kpis">
         <Kpi label="Creators" value={ov.creators.toLocaleString("en-MY")} sub={`${goldN} Gold · ${ov.tiers.Silver} Silver`} change={ov.newCreators28 > 0 ? <span className="tnum text-[12.5px] font-semibold text-good">▲ (+{ov.newCreators28.toLocaleString("en-MY")} new)</span> : undefined} href="/creators?sort=recent" />
         <Kpi label="Selling lately" value={ov.sellers28.toLocaleString("en-MY")} sub="sold in the last 28 days" change={<Change now={ov.sellers28} before={ov.sellersPrev} good="up" note="Creators who sold, against the 28 days before" />} href="/creators?sort=lately" />
         <Kpi label="Sales, 28 days" value={`RM ${fmtCompact(ov.gmv28)}`} sub={ov.prev28 > 0 ? "vs the 28 days before" : "no earlier period yet"} change={<Change now={ov.gmv28} before={ov.prev28 > 0 ? ov.prev28 : null} good="up" unit="RM " note="Sales against the 28 days before" />} href="/creators?sort=lately" />
@@ -205,13 +205,13 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
           <EmptyState title="No creators match" description="Clear a filter to see more." />
         ) : (
           <>
-            <div className={cn("hidden gap-x-3 border-b border-line px-5 py-2.5 text-[13px] font-medium text-ink-3 min-[1440px]:grid", COLS)}>
+            <div className={cn("hidden gap-x-3 border-b border-line px-5 py-2.5 text-[13px] font-medium text-ink-3 lg:grid", COLS)}>
               <span className="flex items-center gap-2"><SelectAllPage />Creator</span><span>Product</span><span>SKU Sampled</span>{head("Orders", "orders_asc", "orders")}{head("Videos", "videos_all_asc", "videos_all")}{head("GMV", "linegmv_asc", "linegmv")}{head("Total GMV", "gmv_asc", "gmv")}<span>Status</span><span>Action</span>
             </div>
             <ul className="divide-y divide-line">
               {dir.rows.map((r) => (
                 <li key={r.username} data-testid={`dir-${r.username}`} className="px-5 py-4">
-                  <div className={cn("hidden gap-x-3 gap-y-3 min-[1440px]:grid", COLS)}>
+                  <div className={cn("hidden gap-x-3 gap-y-3 lg:grid", COLS)}>
                     <div style={{ gridColumn: 1, gridRow: `1 / span ${r.lines.length}` }}><CreatorBlock r={r} staff={staff} canAct={canAct} /></div>
                     {r.lines.map((l, i) => (
                       <Fragment key={l.pid ?? `n${i}`}>
@@ -232,7 +232,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
                       <div className="mt-1 w-24" title="Weekly sales, last 8 weeks"><Sparkline values={r.extra!.weeks} tone={r.extra!.gmv28 >= r.extra!.prev28 ? "good" : "critical"} label="Weekly sales, last 8 weeks" /></div>
                     </div>
                   </div>
-                  <div className="space-y-3 min-[1440px]:hidden">
+                  <div className="space-y-3 lg:hidden">
                     <div className="flex items-start justify-between gap-3">
                       <CreatorBlock r={r} staff={staff} canAct={canAct} />
                       <p className="tnum shrink-0 text-right text-[13px] text-ink-3">Total GMV<b className="block text-[16px] text-ink">{rmShort(r.gmvAll)}</b></p>

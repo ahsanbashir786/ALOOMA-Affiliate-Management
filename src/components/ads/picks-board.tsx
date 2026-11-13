@@ -81,7 +81,7 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
   return (
     <div className="space-y-5" data-testid="ads-picks">
       {/* ───── where to look ───── */}
-      <section aria-label="Opportunities" className="tile-grid">
+      <section aria-label="Opportunities" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {LANES.map((l, i) => {
           const n = l.key === "best" ? counts.stopped + counts.gem + counts.underfed + counts.explore : counts[l.key as GroupKey];
           const on = view === l.key;

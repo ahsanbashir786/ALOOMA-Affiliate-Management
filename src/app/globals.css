@@ -408,7 +408,11 @@ body {
     min-width: 0 !important;
   }
   main table:not([data-stack="off"]) thead {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
   main table:not([data-stack="off"]) tbody {
     display: block;
@@ -453,75 +457,3 @@ body {
     display: none;
   }
 }
-
-/* Same card layout for a table that is too wide for its box on a bigger screen (marked by ResponsiveTables). */
-  main table[data-stacked="1"]:not([data-stack="off"]) {
-    display: block;
-    width: 100% !important;
-    min-width: 0 !important;
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) thead {
-    display: none;
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) tbody {
-    display: block;
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) tr {
-    display: block;
-    margin: 0 12px 10px;
-    padding: 6px 14px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface);
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) td {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 14px;
-    min-width: 0;
-    padding: 7px 0;
-    border: 0;
-    border-bottom: 1px dashed var(--line);
-    text-align: right;
-    white-space: normal;
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) td:last-child {
-    border-bottom: 0;
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) td[data-label]::before {
-    content: attr(data-label);
-    flex: 0 0 38%;
-    max-width: 44%;
-    color: var(--ink-3);
-    font-size: 12.5px;
-    font-weight: 500;
-    text-align: left;
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) td:not([data-label]) {
-    display: block;
-    text-align: left;
-  }
-  main table[data-stacked="1"]:not([data-stack="off"]) td:empty {
-    display: none;
-  }
-
-/* Headline tiles: as many as fit in a row, never squeezed (a row of 6 on a narrow screen becomes 3 or 4). */
-.tile-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
-}
-
-/* No scroll bars anywhere inside the app (the page itself still scrolls up and down). Wide tables become cards instead of scrolling sideways. */
-*:not(html),
-*:not(html)::before {
-  scrollbar-width: none;
-}
-*:not(html)::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  scrollbar-width: none;
-}
-

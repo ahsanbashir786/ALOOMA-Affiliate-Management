@@ -49,7 +49,7 @@ export default async function AdsVideoPage({ params, searchParams }: { params: P
         <p className="mt-0.5 text-[13.5px] text-ink-2">{v.why}. {g.about}</p>
         <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-ink-2"><span className="inline-flex items-center gap-2">Potential <PotentialBar value={v.potential} /></span><span className="inline-flex items-center gap-2">Proof <EvidenceDots level={v.evidence} /></span>{g.boost && <span className="inline-flex items-center gap-2">Fair test <b className="rounded-full bg-brand-soft px-2 py-0.5 text-brand-strong">RM {v.testAmount} a day</b></span>}</div>
       </section>
-      <section className="tile-grid" aria-label="All-time results">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="All-time results">
         <Tile label="All-Time Ad Spend" value={rm(cost)} sub={<span className="text-[12.5px] text-ink-3">{v.firstSpend ? `first spend ${day(v.firstSpend)}` : "never spent"}</span>} />
         <Tile label="Sales From Ads" value={rm(revenue)} sub={<span className="text-[12.5px] text-ink-3">{nfmt(orders)} orders</span>} />
         <Tile label="All-Time ROI" value={roiFmt(cost > 0 ? revenue / cost : null)} sub={<span className="text-[12.5px] text-ink-3">{orders > 0 && cost > 0 ? `${rm2(cost / orders)} an order` : "no orders"}</span>} />
