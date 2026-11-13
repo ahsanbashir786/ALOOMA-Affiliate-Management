@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, Cpu, Plug, RefreshCw, Bug, TriangleAlert, OctagonAlert, Info } from "lucide-react";
 import { Badge, Card } from "@/components/ui/primitives";
+import { InfoTip } from "@/components/ui/info-tip";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
 import { alertSummary, listAlerts, type AlertRow } from "@/lib/alerts/queries";
 import type { Area, Severity } from "@/lib/alerts/checks";
@@ -67,7 +68,7 @@ export async function AlertsPanel() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13.5px] text-ink-2">Checked every 2 minutes. A problem that goes away clears by itself.</p>
+        <p className="flex items-center gap-1.5 text-[13.5px] text-ink-2">Checked every 2 minutes<InfoTip>A problem that goes away clears by itself.</InfoTip></p>
         <AlertToolbar />
       </div>
 

@@ -10,6 +10,7 @@ import { SyncBoard } from "@/components/sync/sync-board";
 import { AdsSyncBoard } from "@/components/sync/ads-sync-board";
 import { TabLinks } from "@/components/ui/tab-links";
 import { one, type SP } from "@/lib/url";
+import { InfoTip } from "@/components/ui/info-tip";
 
 export const metadata: Metadata = { title: "Data Sync" };
 export const dynamic = "force-dynamic";
@@ -29,9 +30,8 @@ export default async function SyncPage({ searchParams }: PageProps<"/sync">) {
     return (
       <div className="space-y-6">
         <div className="space-y-3">
-          <h1 className="text-[26px] font-semibold tracking-tight text-ink">Data Sync</h1>
+          <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink">Data Sync<InfoTip>TikTok Ads · GMV Max campaigns, creatives and daily results</InfoTip></h1>
           {tabs}
-          <p className="text-[14px] text-ink-3">TikTok Ads · GMV Max campaigns, creatives and daily results</p>
         </div>
         <AdsSyncBoard initial={ov} connected={conn.connected} configured={!!adsConfig()} canAdmin={can(user, "settings")} canRun={can(user, "sync")} canConnect={can(user, "settings")} serverNow={ov.now} />
       </div>
@@ -41,7 +41,7 @@ export default async function SyncPage({ searchParams }: PageProps<"/sync">) {
   return (
     <div className="space-y-6">
       <div className="space-y-3">
-        <h1 className="text-[26px] font-semibold tracking-tight text-ink">Data Sync</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink">Data Sync</h1>
         {tabs}
         {conn.connected && <p className="text-[14px] text-ink-3">{[conn.shopName ?? conn.sellerName, conn.region].filter(Boolean).join(" · ")}</p>}
       </div>

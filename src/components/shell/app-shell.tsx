@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Bell, Menu } from "lucide-react";
 import { ErrorReporter } from "./error-reporter";
+import { ResponsiveTables } from "./responsive-tables";
 import type { PermissionKey } from "@/lib/permissions";
 import { Sidebar } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
@@ -36,6 +37,7 @@ export function AppShell({
   return (
     <CreatorPanelProvider>
     <ErrorReporter />
+    <ResponsiveTables />
     <div className="min-h-screen">
       <Sidebar user={user} sync={sync} open={open} onClose={() => setOpen(false)} collapsed={collapsed} onToggleCollapsed={toggle} />
       <div className={collapsed ? "transition-[padding] duration-200 lg:pl-[76px]" : "transition-[padding] duration-200 lg:pl-[256px]"}>

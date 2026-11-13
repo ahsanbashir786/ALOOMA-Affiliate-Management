@@ -13,6 +13,7 @@ import { GROUP } from "@/lib/ads/groups";
 import { Person } from "@/components/execution/ui";
 import { EstPill, EvidenceDots, GroupPill, Pill, PotentialBar, SpendSalesBars, StatusPill, Tile, day, nfmt, rm, rm2, roiFmt, th, thr, td, tdr } from "@/components/ads/ui";
 import { cn } from "@/lib/utils";
+import { InfoTip } from "@/components/ui/info-tip";
 
 export const metadata: Metadata = { title: "Video · GMV Max" };
 export const dynamic = "force-dynamic";
@@ -70,8 +71,7 @@ export default async function AdsVideoPage({ params, searchParams }: { params: P
       )}
       {conn.connected && <BoostPanel itemId={v.creativeId} campaigns={opt.campaigns} blockers={opt.blockers} enabled={bw.enabled} canWrite={can(user, "settings")} maxBudget={bw.maxBudget} dailyCap={bw.dailyCap} committed={opt.committed} defaultBudget={Number.isFinite(wantBudget) && wantBudget > 0 ? wantBudget : 5} />}
       <section className={cn(card, "p-5")} aria-label="What TikTok sent" data-testid="ads-sent">
-        <h2 className="text-[16px] font-semibold text-ink">What TikTok&apos;s API Sent For This Video</h2>
-        <p className="mt-0.5 text-[13px] text-ink-3">Nothing here is our guess. These are the newest rows we saved, field by field. TikTok&apos;s Exploration status (Explored, Performing, Underperforming) is only shown when TikTok&apos;s API sends it; an empty box below means it did not.</p>
+        <h2 className="flex items-center gap-1.5 text-[16px] font-semibold text-ink">What TikTok&apos;s API Sent For This Video<InfoTip>Nothing here is our guess. These are the newest rows we saved, field by field. TikTok&apos;s Exploration status (Explored, Performing, Underperforming) is only shown when TikTok&apos;s API sends it; an empty box below means it did not.</InfoTip></h2>
         {d.sent.length === 0 ? <p className="mt-3 text-[14px] text-ink-3">No result rows were saved for this video yet (it never appeared in the ads results).</p> : (
           <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[640px] border-collapse text-[13.5px]">
             <thead><tr className="border-y border-line bg-surface-2/60"><th className={cn(th, "pl-1")}>Result Day</th><th className={th}>Delivery Status</th><th className={th}>Exploration Status</th><th className={th}>Boost Status</th><th className={th}>Authorization</th></tr></thead>

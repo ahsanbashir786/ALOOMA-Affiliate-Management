@@ -6,6 +6,7 @@ import type { PlanData, TaskView } from "@/lib/execution/plan";
 import { daysBetweenISO } from "@/lib/time";
 import { cn, fmtRM } from "@/lib/utils";
 import { CATEGORY_COLOR, Person } from "./ui";
+import { InfoTip } from "@/components/ui/info-tip";
 
 type Row = { id: string; name: string; role: string; open: number; notStarted: number; pending: number; done: number; overdue: number; rate: number; days: number | null; stake: number; won: number };
 
@@ -36,7 +37,7 @@ export function TeamView({ tasks, data, today, onPick }: {
     <div className="space-y-5" data-testid="team-view">
       <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
         <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-5 py-3.5">
-          <div><h2 className="text-[16px] font-semibold text-ink">Team Performance</h2><p className="text-[13px] text-ink-3">Actions from the last 60 days, per person. Click a person to see their actions.</p></div>
+          <div><h2 className="flex items-center gap-1.5 text-[16px] font-semibold text-ink">Team Performance<InfoTip>Actions from the last 60 days, per person. Click a person to see their actions.</InfoTip></h2></div>
         </header>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-[14px]">

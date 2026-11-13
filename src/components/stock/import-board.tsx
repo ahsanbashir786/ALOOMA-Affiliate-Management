@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { CheckCircle2, Download, FileSpreadsheet, Loader2, PackagePlus, TriangleAlert, Upload } from "lucide-react";
 import { addStockOrder, importStockFile, type ImportState } from "@/app/actions/stock";
 import { Button, Card, Badge, Input, Label } from "@/components/ui/primitives";
+import { InfoTip } from "@/components/ui/info-tip";
 
 export type ImportCardInfo = { kind: string; step: number; title: string; help: string; accept: string; multiple?: boolean; status: string | null };
 
@@ -17,9 +18,9 @@ function ImportCard({ info }: { info: ImportCardInfo }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[15px] font-semibold text-ink">{info.title}</h3>
+            <InfoTip>{info.help}</InfoTip>
             {info.status ? <Badge tone="good"><CheckCircle2 className="size-3.5" />{info.status}</Badge> : <Badge>Not Imported Yet</Badge>}
           </div>
-          <p className="mt-1 text-[13px] text-ink-2">{info.help}</p>
           <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
             <input type="hidden" name="kind" value={info.kind} />
             <label className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-dashed border-line-strong bg-surface-2 px-3 text-[13.5px] text-ink-2 hover:border-brand">
@@ -50,9 +51,10 @@ function NewOrderCard({ suggest }: { suggest: string }) {
       <div className="flex items-start gap-3">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-good-soft text-good"><PackagePlus className="size-4" /></span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] font-semibold text-ink">Add A New Stock-In Order</h3>
-          <p className="mt-1 text-[13px] text-ink-2">For every new order (31 onward). Give the final order file, the exchange rate and the freight amount. The cost per piece is worked out for you: product price in RM plus freight shared over the paid pieces.</p>
-          <p className="mt-1 text-[13px] text-ink-2">The file needs columns named SKU, Paid Qty and Unit Price RMB (Free Qty is optional). <a href="/api/stock/template" className="inline-flex items-center gap-1 font-medium text-brand hover:underline"><Download className="size-3.5" />Download a template</a></p>
+          <h3 className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-ink">Add A New Stock-In Order
+            <InfoTip>For every new order (31 onward). Give the final order file, the exchange rate and the freight amount. The cost per piece is worked out for you: product price in RM plus freight shared over the paid pieces. The file needs columns named SKU, Paid Qty and Unit Price RMB (Free Qty is optional).</InfoTip>
+            <a href="/api/stock/template" className="inline-flex items-center gap-1 text-[13px] font-medium text-brand hover:underline"><Download className="size-3.5" />Template</a>
+          </h3>
           <form action={action} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div><Label htmlFor="no-order">Order Number</Label><Input id="no-order" name="orderNo" defaultValue={suggest} required /></div>
             <div><Label htmlFor="no-rate">RMB Per RM 1 (Exchange Rate)</Label><Input id="no-rate" name="rate" inputMode="decimal" placeholder="1.65" required /></div>
@@ -79,8 +81,7 @@ export function ImportBoard({ cards, nextOrder }: { cards: ImportCardInfo[]; nex
   return (
     <div className="space-y-3">
       <NewOrderCard suggest={nextOrder} />
-      <p className="pt-2 text-[13.5px] font-medium text-ink">First-Time Files (Orders 1 To 30)</p>
-      <p className="text-[13.5px] text-ink-2">Import these in order. Each file can be imported again later; nothing is counted twice.</p>
+      <p className="flex items-center gap-1.5 pt-2 text-[13.5px] font-medium text-ink">First-Time Files (Orders 1 To 30)<InfoTip>Import these in order. Each file can be imported again later; nothing is counted twice.</InfoTip></p>
       {cards.map((c) => <ImportCard key={c.kind} info={c} />)}
     </div>
   );

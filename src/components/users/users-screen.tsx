@@ -7,6 +7,7 @@ import { Person, Popover } from "@/components/execution/ui";
 import { Button, Input, Select } from "@/components/ui/primitives";
 import { PERMISSIONS, PERMISSION_GROUPS, type PermissionKey } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
+import { InfoTip } from "@/components/ui/info-tip";
 
 type U = { id: string; name: string; email: string; roleId: string; active: boolean; lastLoginAt: string | null };
 type R = { id: string; key: string; name: string; isAdmin: boolean; permissions: PermissionKey[]; people: number };
@@ -147,7 +148,7 @@ function RolesTab({ roles }: { roles: R[] }) {
   return (
     <div className="space-y-4" data-testid="roles-tab">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-[14px] text-ink-2">Choose which screens each role can open. Everyone still sees the whole menu; a screen their role cannot open shows a Permission Denied page. <b className="font-semibold text-ink">Admin</b> always has everything.</p>
+        <p className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">Roles<InfoTip>Choose which screens each role can open. Everyone still sees the whole menu; a screen their role cannot open shows a Permission Denied page. Admin always has everything.</InfoTip></p>
         {!adding && <Button variant="primary" data-testid="new-role" onClick={() => setAdding(true)}><Plus className="size-4" />New Role</Button>}
       </div>
       {adding && (
