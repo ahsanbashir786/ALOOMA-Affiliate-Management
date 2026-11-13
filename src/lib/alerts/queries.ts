@@ -39,3 +39,8 @@ export async function alertSummary(): Promise<AlertSummary> {
 export async function setAlertStatus(key: string, status: "seen" | "resolved", by: string): Promise<void> {
   await pg`update system_alerts set status = ${status}, handled_by = ${by}, resolved_at = ${status === "resolved" ? pg`now()` : pg`null`} where key = ${key}`;
 }
+
+/** Opening the bell counts as looking at everything: the problems stay listed (until they clear) but stop counting on the badge. */
+export async function markAllSeen(by: string): Promise<void> {
+  await pg`update system_alerts set status = 'seen', handled_by = ${by} where status = 'open'`;
+}

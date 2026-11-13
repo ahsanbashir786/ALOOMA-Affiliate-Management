@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { InfoTip } from "@/components/ui/info-tip";
 import Link from "next/link";
 import { Package, Users, Video } from "lucide-react";
 import { gate } from "@/lib/gate";
@@ -135,17 +136,14 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="product-grid">{list.map((p) => <Card13 key={p.key} p={p} q={q} />)}</div>
       )}
 
-      <details className="rounded-xl border border-line bg-surface">
-        <summary className="cursor-pointer px-5 py-4 text-[15px] font-medium text-ink">How To Read This</summary>
-        <div className="space-y-4 px-5 pb-5 text-[14px] text-ink-2">
+      <div className="flex items-center gap-1.5 px-1 text-[15px] font-medium text-ink">How To Read This<InfoTip side="top" width={440} label="How To Read This"><div className="space-y-3 text-[13px] text-ink-2">
           <div><p className="mb-1.5 font-semibold text-ink">The coloured bar: where the sales came from</p><Legend /><ul className="mt-2 space-y-0.5 text-[13px] text-ink-3">{BUCKETS.map((b) => <li key={b.key}><b className="text-ink-2">{b.label}</b>: {b.hint}</li>)}</ul></div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div><p className="mb-1 font-semibold text-ink">Tags (this period against the one before)</p><ul className="space-y-0.5 text-[13px]"><li><b>Growing</b>: sales up 15% or more</li><li><b>Steady</b>: between −15% and +15%</li><li><b>Slipping</b>: down 15% or more</li><li><b>Dying</b>: down 50% or more, or no new video while sales fall</li></ul></div>
             <div><p className="mb-1 font-semibold text-ink">Fragile or Healthy</p><p className="text-[13px]">Fragile means more than 70% of video and LIVE sales come from videos older than 30 days: it lives on old content. Healthy means fresh content is carrying it.</p><p className="mt-2 mb-1 font-semibold text-ink">Converting</p><p className="text-[13px]">The share of new videos that made 3 or more orders within 14 days of being posted.</p></div>
           </div>
           <p className="text-[13px] text-ink-3">Posting dates come from TikTok&apos;s video list. For videos missing from it, the first sale date is used and the number is an estimate{a.estimatedSharePct != null ? ` (${Math.round(a.estimatedSharePct)}% of this period’s video and LIVE sales)` : ""}.</p>
-        </div>
-      </details>
+        </div></InfoTip></div>
     </div>
   );
 }

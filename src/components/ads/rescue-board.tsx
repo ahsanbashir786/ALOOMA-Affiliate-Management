@@ -10,6 +10,7 @@ import { markAuthAsked } from "@/app/actions/ads-boost";
 import { Person } from "@/components/execution/ui";
 import type { RescueData } from "@/lib/ads/rescue";
 import { day, nfmt, rm, roiFmt } from "./ui";
+import { InfoTip } from "@/components/ui/info-tip";
 
 const ago = (iso: string) => { const d = Math.floor((Date.now() - Date.parse(iso)) / 86400_000); return d <= 0 ? "today" : d === 1 ? "yesterday" : `${d} days ago`; };
 
@@ -87,7 +88,7 @@ export function RescueBoard({ data }: { data: RescueData }) {
           </AnimatePresence>
         </ul>
       )}
-      <p className="text-[12.5px] text-ink-3">These videos are locked by TikTok (status Authorization needed). Only the creator can authorize them again. This page never sends anything: copy the message and send it yourself, then press Mark As Asked.</p>
+      <p className="flex items-center gap-1.5 text-[12.5px] text-ink-3">Locked by TikTok<InfoTip>These videos are locked by TikTok (status Authorization needed). Only the creator can authorize them again. This page never sends anything: copy the message and send it yourself, then press Mark As Asked.</InfoTip></p>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { InfoTip } from "@/components/ui/info-tip";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, Building2, CheckCircle2, ChevronDown, Film, Loader2, Package, RefreshCw, Rocket, Store, Target, Video } from "lucide-react";
+import { AlertTriangle, BarChart3, Building2, CheckCircle2, Film, Loader2, Package, RefreshCw, Rocket, Store, Target, Video } from "lucide-react";
 import { setAdsSyncSchedule } from "@/app/actions/tiktok-ads";
 import { DOT, EVERY, ago, dmy, dur, fresh, inMin, span } from "@/components/sync/format";
 import { cn } from "@/lib/utils";
@@ -173,9 +174,7 @@ export function AdsSyncBoard({ initial, connected, configured, canAdmin, canRun,
               </li>
             ))}
           </ul>
-          <details className="mt-4 text-[12.5px] text-ink-3"><summary className="flex cursor-pointer items-center gap-1 hover:text-brand">How this stays correct <ChevronDown className="size-3.5" /></summary>
-            <p className="mt-1.5 leading-relaxed">Rows are inserted or updated, never duplicated. The last 14 days are read again every sync, and the last 60 days once a day, because TikTok restates ad numbers after the day ends. Each row also keeps TikTok&apos;s full answer.</p>
-          </details>
+          <p className="mt-4 flex items-center gap-1.5 text-[12.5px] text-ink-3">How this stays correct <InfoTip side="top" label="How this stays correct">Rows are inserted or updated, never duplicated. The last 14 days are read again every sync, and the last 60 days once a day, because TikTok restates ad numbers after the day ends. Each row also keeps TikTok&apos;s full answer.</InfoTip></p>
         </section>
       </div>
     </div>

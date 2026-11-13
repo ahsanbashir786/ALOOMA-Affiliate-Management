@@ -15,6 +15,7 @@ import { PeriodPicker } from "@/components/products/period-picker";
 import { AgeChart, WeeklyMixChart } from "@/components/products/charts";
 import { BUCKET_COLOR, Delta, HealthChip, Legend, MixBar, TagBadge, bucketHint, bucketLabel } from "@/components/products/ui";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
+import { InfoTip } from "@/components/ui/info-tip";
 
 export async function generateMetadata({ params }: PageProps<"/products/[key]">): Promise<Metadata> {
   const { key } = await params;
@@ -58,7 +59,7 @@ function WhyMoved({ p }: { p: ProductAnalysis }) {
 
 function NewContentCard({ p, covered }: { p: ProductAnalysis; covered: boolean }) {
   const n = p.newContent.now, o = p.newContent.prev;
-  if (!covered) return <p className="text-[14px] text-ink-3">TikTok&apos;s video list does not reach back to this period, so new-video conversion cannot be judged. The sales split by content age above still works, from the order data.</p>;
+  if (!covered) return <p className="flex items-center gap-1.5 text-[14px] text-ink-3">New-video conversion cannot be judged <InfoTip label="Why">TikTok&apos;s video list does not reach back to this period. The sales split by content age above still works, from the order data.</InfoTip></p>;
   const col = (c: NewContent, label: string, main: boolean) => (
     <div className={cn("rounded-xl p-4", main ? "bg-surface-2" : "border border-line")}>
       <p className="text-[12.5px] font-medium text-ink-3">{label}</p>
@@ -143,7 +144,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
       <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6" data-testid="product-head">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-[26px] leading-tight font-semibold tracking-tight text-ink">{p.name}</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-ink">{p.name}</h1>
             <p className="mt-1 text-[13.5px] text-ink-3"><span className="tnum">{fmtDayLabel(per.start)} – {fmtFullDay(per.end)}</span> compared with <span className="tnum">{fmtDayLabel(per.prevStart)} – {fmtFullDay(per.prevEnd)}</span></p>
             <p className="mt-3 flex flex-wrap items-center gap-2"><TagBadge tag={d.tag} size="lg" /><HealthChip fragile={d.fragile} oldPct={d.oldShare != null ? d.oldShare * 100 : null} /></p>
           </div>
@@ -189,7 +190,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
           <Section title="Content Freshness" hint="Is new content replacing old content?">
             <div className="grid gap-5 lg:grid-cols-2">
               <div><p className="mb-2 text-[13.5px] font-medium text-ink-2">Weekly Sales, Last 12 Weeks</p><WeeklyMixChart data={weekly} /><Legend className="mt-2" /></div>
-              <div><p className="mb-2 text-[13.5px] font-medium text-ink-2">Sales By The Age Of The Video</p><AgeChart data={p.ageCurve} /><p className="mt-2 text-[12.5px] text-ink-3">A steep drop after the first weeks means videos fade fast, so this product needs a steady flow of new videos.</p></div>
+              <div><p className="mb-2 flex items-center gap-1.5 text-[13.5px] font-medium text-ink-2">Sales By The Age Of The Video<InfoTip>A steep drop after the first weeks means videos fade fast, so this product needs a steady flow of new videos.</InfoTip></p><AgeChart data={p.ageCurve} /></div>
             </div>
           </Section>
 
@@ -281,14 +282,11 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
         </>
       )}
 
-      <details className="rounded-xl border border-line bg-surface">
-        <summary className="cursor-pointer px-5 py-4 text-[15px] font-medium text-ink">How To Read This</summary>
-        <div className="space-y-2 px-5 pb-5 text-[13.5px] text-ink-2">
+      <div className="flex items-center gap-1.5 px-1 text-[15px] font-medium text-ink">How To Read This<InfoTip side="top" width={440} label="How To Read This"><div className="space-y-3 text-[13px] text-ink-2">
           <ul className="space-y-0.5">{BUCKETS.map((b) => <li key={b.key}><b>{b.label}</b>: {b.hint}.</li>)}</ul>
           <p>Tags: Growing = sales up 15% or more; Steady = within ±15%; Slipping = down 15% or more; Dying = down 50% or more, or no new video while sales fall. Fragile = more than 70% of video and LIVE sales come from videos older than 30 days.</p>
           <p>A video&apos;s posting date comes from TikTok&apos;s video list. For videos missing from it the first sale date is used (marked &quot;est.&quot;){a.estimatedSharePct != null ? `; that is ${Math.round(a.estimatedSharePct)}% of all video and LIVE sales in this period` : ""}.</p>
-        </div>
-      </details>
+        </div></InfoTip></div>
     </div>
   );
 }

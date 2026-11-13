@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Fragment } from "react";
 import Link from "next/link";
 import { ExternalLink, MessageCircle, Users } from "lucide-react";
@@ -261,14 +262,11 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
       </Card>
       </BulkProvider>
 
-      <details className="rounded-xl border border-line bg-surface">
-        <summary className="cursor-pointer px-5 py-4 text-[15px] font-medium text-ink">How Status, Action And Score Work</summary>
-        <div className="grid gap-6 px-5 pb-5 text-[14px] text-ink-2 sm:grid-cols-2">
+      <div className="flex items-center gap-1.5 px-1 text-[15px] font-medium text-ink">How Status, Action And Score Work<InfoTip side="top" width={440} label="How Status, Action And Score Work"><div className="space-y-3 text-[13px] text-ink-2">
           <dl className="space-y-1.5"><dt className="font-semibold text-ink">Status</dt>{STATUS_ORDER.map((s) => <dd key={s}><b className="text-ink">{s}</b> – {STATUS_HELP[s]}</dd>)}</dl>
           <dl className="space-y-1.5"><dt className="font-semibold text-ink">Action</dt>{(Object.keys(ACTION_HELP) as (keyof typeof ACTION_HELP)[]).map((a) => <dd key={a}><b className="text-ink">{a}</b> – {ACTION_HELP[a]}</dd>)}</dl>
           <p className="text-[13px] text-ink-3 sm:col-span-2">Score (0–100) = Sales 35 + Posting 25 + Reliability 15 + Consistency 15 + Reach 10. Gold 70+, Silver 45+, Bronze 20+. Posting = videos and LIVE sessions in the last 28 days (8 = full); Reliability = samples that ended in a post; Consistency = weeks with a sale out of the last 8; Reach = followers. Status and action are worked out for each product line on its own. “Lately” = the 28 days ending at the latest order. Sales exclude cancelled and fully returned orders. V = from videos, L = from LIVE.</p>
-        </div>
-      </details>
+        </div></InfoTip></div>
     </div>
   );
 }

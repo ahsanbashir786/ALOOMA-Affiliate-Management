@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Copy, Loader2, Plug, RefreshCw, ShieldCheck, Unplug, XCircle } from "lucide-react";
 import { disconnectTikTokAds } from "@/app/actions/tiktok-ads";
 import { cn } from "@/lib/utils";
+import { InfoTip } from "@/components/ui/info-tip";
 
 type Check = { name: string; ok: boolean; message: string; count: number | null; fields: string[] | null; sample: string | null };
 export type TikTokAdsView = { configured: boolean; connected: boolean; connectedLabel: string | null; accounts: { id: string; name: string | null; currency: string | null }[]; shops: number; permissions: number; redirectUri: string };
@@ -102,17 +103,15 @@ export function TikTokAdsActions({ v }: { v: TikTokAdsView }) {
 
       {!v.configured && (
         <div className="rounded-xl border border-line bg-surface-2/60 p-4">
-          <p className="mb-2.5 text-[14px] font-semibold text-ink">Finish the setup on the server</p>
+          <p className="mb-2.5 flex items-center gap-1.5 text-[14px] font-semibold text-ink">Finish the setup on the server<InfoTip>Never paste the app secret anywhere except the server&apos;s .env file. Details: docs/TIKTOK-ADS-API.md.</InfoTip></p>
           <ol className="space-y-2.5 text-[14px] text-ink-2">
             <li>1. Add <Code>TIKTOK_ADS_APP_ID</Code> and <Code>TIKTOK_ADS_APP_SECRET</Code> (from the app page in TikTok API for Business) to the private <Code>.env</Code> file.</li>
             <li>2. Restart the app, then come back here and press <b>Connect TikTok Ads</b>.</li>
           </ol>
-          <p className="mt-3 text-[12.5px] text-ink-3">Never paste the app secret anywhere except the server&apos;s <code>.env</code> file. Details: docs/TIKTOK-ADS-API.md.</p>
         </div>
       )}
       <details className="rounded-xl border border-line px-4 py-3 text-[13.5px] text-ink-2">
-        <summary className="cursor-pointer font-medium text-ink">Redirect address for the TikTok app</summary>
-        <p className="mt-2 text-[13px] text-ink-3">TikTok sends you back to this address after you approve. It must be saved in your app in TikTok API for Business exactly as written (no extra slash).</p>
+        <summary className="cursor-pointer font-medium text-ink">Redirect address for the TikTok app <InfoTip>TikTok sends you back to this address after you approve. It must be saved in your app in TikTok API for Business exactly as written (no extra slash).</InfoTip></summary>
         <div className="mt-2 flex items-center gap-2">
           <code data-testid="tiktok-ads-redirect" className="min-w-0 flex-1 rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] break-all">{v.redirectUri}</code>
           <button type="button" onClick={() => { void navigator.clipboard?.writeText(v.redirectUri); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-[13px] font-medium hover:bg-surface-2"><Copy className="size-3.5" />{copied ? "Copied" : "Copy"}</button>

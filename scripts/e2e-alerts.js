@@ -37,6 +37,16 @@ const bell = async (p) => (await p.getByTestId("alert-bell-count").count()) ? Nu
   ok((await bell(p)) === n0 - 1, "seen: the bell count goes down by one, the alert stays listed");
   ok((await p.locator("[data-testid=alert-card]", { hasText: "Seen" }).count()) >= 1, "seen: the alert is still in the list, marked Seen");
 
+  // Clicking the bell clears its number (everything open becomes seen)
+  await p.request.post(BASE + "/api/alerts/client-error", { data: { message: "Bell test 777 in the ads screen", stack: "Error: Bell\n at y", page: "/ads" } });
+  await p.goto(BASE + "/stock"); await p.waitForTimeout(800);
+  const nb = await bell(p);
+  ok(nb >= 1, `bell: a new problem shows on it (${nb})`);
+  await p.getByTestId("alert-bell").click(); await p.waitForTimeout(2000);
+  ok(/tab=alerts/.test(p.url()), "bell: opens System Alerts");
+  ok((await bell(p)) === 0, "bell: the number is gone after clicking it");
+  ok((await p.locator("[data-testid=alert-card]", { hasText: "Bell test 777" }).count()) >= 1, "bell: the problem stays listed");
+
   // Clear every error
   for (let i = 0; i < 6; i++) { const c = p.locator("[data-testid=alert-card]", { has: p.getByTestId("alert-clear") }).first(); if (!(await c.count())) break; await c.getByTestId("alert-clear").click(); await p.waitForTimeout(700); await p.reload(); }
   ok((await p.locator("[data-testid=alert-card]", { hasText: "error on" }).count()) === 0, "clear: cleared errors disappear");

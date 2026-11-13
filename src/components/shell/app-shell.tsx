@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import Link from "next/link";
-import { Bell, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
+import { AlertBell } from "./alert-bell";
 import { ErrorReporter } from "./error-reporter";
 import type { PermissionKey } from "@/lib/permissions";
 import { Sidebar } from "./sidebar";
@@ -49,12 +49,7 @@ export function AppShell({
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-2.5">
-            {alerts && (
-              <Link href="/settings?tab=alerts" aria-label={alerts.unseen ? `${alerts.unseen} system alert${alerts.unseen === 1 ? "" : "s"}` : "System alerts"} data-testid="alert-bell" className="relative flex size-9 items-center justify-center rounded-lg border border-line-strong bg-surface text-ink-2 hover:bg-surface-2">
-                <Bell className="size-[18px]" />
-                {alerts.unseen > 0 && <span data-testid="alert-bell-count" className={`absolute -top-1.5 -right-1.5 flex min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] leading-[18px] font-semibold text-white ${alerts.worst === "critical" ? "bg-critical" : "bg-warn"}`}>{alerts.unseen > 9 ? "9+" : alerts.unseen}</span>}
-              </Link>
-            )}
+            {alerts && <AlertBell unseen={alerts.unseen} worst={alerts.worst} />}
             <CommandPalette />
             <ThemeToggle />
             <UserMenu name={user.name} email={user.email} role={user.roleName} />
