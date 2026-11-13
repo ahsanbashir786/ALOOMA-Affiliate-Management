@@ -85,4 +85,4 @@ Free uptime monitors (UptimeRobot etc.) can watch that address and email you if 
 
 ## 7. Disk space (Settings → Storage)
 
-Settings → Storage shows the server disk (total, used, free), and how much of it is the database, the backups and the program files, plus the biggest database tables and the latest backups. A warning appears at 80% and 90% full. The page reads the `backups/` folder through a read-only mount (`./backups:/app/backups:ro` in `docker-compose.yml`): after updating, run `docker compose up -d --build` once so the app can see it.
+Settings → Storage shows the server disk (total, used, free), memory, vCPU and data transfer, and how much of the disk is the database, the backups and the program files. A warning appears at 80% and 90% full. The page reads the `backups/` folder through a read-only mount (`./backups:/app/backups:ro` in `docker-compose.yml`): after updating, run `docker compose up -d --build` once so the app can see it.

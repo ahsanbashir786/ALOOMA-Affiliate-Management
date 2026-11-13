@@ -1,9 +1,8 @@
 import { AlertTriangle, Archive, Cpu, Database, HardDrive, Layers, MemoryStick, Network, Package } from "lucide-react";
-import { Badge, Card, CardHeader, Td, Th } from "@/components/ui/primitives";
+import { Card, CardHeader } from "@/components/ui/primitives";
 import { StatTile } from "@/components/ui/stat-tile";
 import { fmtBytes, getStorage } from "@/lib/storage/usage";
 import { getServerStats } from "@/lib/storage/server";
-import { fmtInt } from "@/lib/utils";
 
 const pct = (a: number, b: number) => (b > 0 ? (a / b) * 100 : 0);
 
@@ -63,30 +62,6 @@ export async function StoragePanel() {
         </div>
       </Card>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Biggest Tables In The Database" description={`The database is ${fmtBytes(s.database.bytes)} in total.`} />
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse" data-testid="storage-tables">
-              <thead><tr><Th>Table</Th><Th align="right">Rows</Th><Th align="right">Size</Th></tr></thead>
-              <tbody>{s.database.tables.map((t) => <tr key={t.name}><Td className="font-medium">{t.name}</Td><Td align="right">{fmtInt(t.rows)}</Td><Td align="right">{fmtBytes(t.bytes)}</Td></tr>)}</tbody>
-            </table>
-          </div>
-        </Card>
-        <Card>
-          <CardHeader title="Backups" description={s.backups.visible ? `${s.backups.count} backup${s.backups.count === 1 ? "" : "s"} saved, ${fmtBytes(s.backups.bytes)} in total.` : "The backup folder is not visible to the app yet."} />
-          {s.backups.visible && s.backups.latest.length > 0 ? (
-            <table className="w-full border-collapse" data-testid="storage-backups">
-              <thead><tr><Th>Backup</Th><Th>Taken</Th><Th align="right">Size</Th></tr></thead>
-              <tbody>{s.backups.latest.map((b) => <tr key={b.name}><Td className="font-medium">{b.name}</Td><Td className="text-ink-2">{new Date(b.at).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</Td><Td align="right">{fmtBytes(b.bytes)}</Td></tr>)}</tbody>
-            </table>
-          ) : (
-            <div className="px-5 pb-5 text-[13.5px] text-ink-2" data-testid="storage-no-backups">
-              {s.backups.visible ? <p>No backup has been taken yet. <Badge tone="warn">Set up the nightly backup</Badge></p> : <p>Run <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12.5px]">git pull</code> and <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12.5px]">docker compose up -d --build</code> on the server so the app can see the backups folder.</p>}
-            </div>
-          )}
-        </Card>
-      </div>
     </div>
   );
 }

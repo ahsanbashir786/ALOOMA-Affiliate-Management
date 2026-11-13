@@ -21,8 +21,7 @@ async function login(p, email) {
   ok(/Memory \(RAM\)/.test(srv) && /vCPU/.test(srv) && /Data Transfer This Month/.test(srv) && /Server Running For/.test(srv), "storage: memory, vCPU, data transfer and running time tiles");
   const legend = (await p.getByTestId("storage-legend").innerText()).replace(/\s+/g, " ");
   ok(/Database \(your data\)/.test(legend) && /Backups/.test(legend) && /Everything else on the server/.test(legend) && /Free/.test(legend), "storage: the bar legend names the parts");
-  ok((await p.locator("[data-testid=storage-tables] tbody tr").count()) >= 5, "storage: the biggest tables are listed");
-  ok((await p.locator("[data-testid=storage-backups] tbody tr").count()) >= 1, "storage: the backups are listed");
+  ok((await p.locator("[data-testid=storage-tables], [data-testid=storage-backups]").count()) === 0, "storage: the tables and backups lists are gone");
   const w = await p.getByTestId("storage-bar").evaluate((el) => [...el.children].reduce((s, c) => s + c.getBoundingClientRect().width, 0) / el.getBoundingClientRect().width);
   ok(w > 0.97 && w < 1.03, `storage: the bar adds up to the whole disk (${(w * 100).toFixed(1)}%)`);
   const v = await (await b.newContext()).newPage(); await login(v, "viewer@test.local");
