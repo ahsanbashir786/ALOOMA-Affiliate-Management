@@ -7,6 +7,7 @@ import { recordError } from "../src/lib/alerts/record";
 import { syncAlerts } from "../src/lib/alerts/evaluate";
 import { alertSummary, listAlerts, setAlertStatus } from "../src/lib/alerts/queries";
 import { buildReport } from "../src/lib/alerts/report";
+import { getRetentionDays, setRetentionDays } from "../src/lib/alerts/retention";
 import { onRequestError } from "../src/instrumentation";
 
 let pass = 0, fail = 0;
@@ -119,11 +120,19 @@ const keys = (c: { key: string }[]) => c.map((x) => x.key).sort().join(",");
   l = await listAlerts();
   check("alerts: a cleared error comes back when it happens again", l.open.some((a) => a.key === "error:s9" && a.count === 3));
 
-  // old resolved alerts and old log lines are removed
+  // how long alerts are kept is a setting (default 14 days)
+  check("retention: the default is 14 days", (await getRetentionDays()) === 14);
   await pg`update system_alerts set status = 'resolved', resolved_at = now() - interval '20 days' where key = 'sync:tiktok:orders'`;
+  await setRetentionDays(30);
+  await syncAlerts([]);
+  check("retention: with 30 days an alert resolved 20 days ago is still in the history", (await pg`select 1 from system_alerts where key = 'sync:tiktok:orders'`).length === 1 && (await listAlerts()).resolved.some((a) => a.key === "sync:tiktok:orders"));
+  await setRetentionDays(5);
   await pg`update app_error_log set at = now() - interval '9 days' where route = '/loop'`;
   await syncAlerts([]);
-  check("clean-up: alerts resolved 14+ days ago and error lines older than 7 days are deleted", (await pg`select 1 from system_alerts where key = 'sync:tiktok:orders'`).length === 0 && (await pg`select 1 from app_error_log where route = '/loop'`).length === 0);
+  check("retention: with 5 days it is deleted", (await pg`select 1 from system_alerts where key = 'sync:tiktok:orders'`).length === 0);
+  check("retention: error lines are kept at least 7 days", (await pg`select 1 from app_error_log where route = '/loop'`).length === 0);
+  check("retention: the number is kept between 1 and 365", (await setRetentionDays(0)) === 1 && (await setRetentionDays(9999)) === 365);
+  await setRetentionDays(14);
 
   // ── the diagnostic report
   process.env.SHOPEE_PARTNER_KEY = "SUPER-SECRET-PARTNER-KEY"; process.env.SHOPEE_PARTNER_ID = "1253192";

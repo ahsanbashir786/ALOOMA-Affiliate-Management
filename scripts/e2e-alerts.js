@@ -20,6 +20,9 @@ const bell = async (p) => (await p.getByTestId("alert-bell-count").count()) ? Nu
   const tiles = (await p.getByTestId("health-tiles").innerText()).replace(/\s+/g, " ");
   ok(/Connections/.test(tiles) && /Data Sync/.test(tiles) && /Server/.test(tiles) && /App Errors/.test(tiles), "alerts: four health tiles (Connections, Data Sync, Server, App Errors)");
   ok((await p.getByTestId("alert-bell").count()) === 1, "bell: shows in the top bar for the owner");
+  await p.getByTestId("retention-input").fill("30"); await p.getByTestId("retention-save").click(); await p.waitForTimeout(1200); await p.reload();
+  ok((await p.getByTestId("retention-input").inputValue()) === "30", "retention: the number of days to keep alerts is saved");
+  await p.getByTestId("retention-input").fill("14"); await p.getByTestId("retention-save").click(); await p.waitForTimeout(800);
 
   // Clear earlier test errors, then make a browser error and a server error
   for (const c of await p.locator("[data-testid=alert-card]").all()) { if (await c.getByTestId("alert-clear").count()) await c.getByTestId("alert-clear").click(); }
@@ -50,7 +53,7 @@ const bell = async (p) => (await p.getByTestId("alert-bell-count").count()) ? Nu
   // Clear every error
   for (let i = 0; i < 6; i++) { const c = p.locator("[data-testid=alert-card]", { has: p.getByTestId("alert-clear") }).first(); if (!(await c.count())) break; await c.getByTestId("alert-clear").click(); await p.waitForTimeout(700); await p.reload(); }
   ok((await p.locator("[data-testid=alert-card]", { hasText: "error on" }).count()) === 0, "clear: cleared errors disappear");
-  ok(/Recently resolved/.test(await p.getByTestId("alerts-resolved").innerText().catch(() => "")), "clear: they move to Recently resolved");
+  ok(/History/.test(await p.getByTestId("alerts-resolved").innerText().catch(() => "")), "clear: they move to History");
 
   // Report
   const rep = await p.request.get(BASE + "/api/alerts/report"); const txt = await rep.text();

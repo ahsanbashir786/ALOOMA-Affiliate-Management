@@ -1,4 +1,5 @@
 import "server-only";
+import { getRetentionDays } from "./retention";
 import { readFile } from "node:fs/promises";
 import { sql as pg } from "@/db";
 import { tiktokConfig, connectionInfo } from "@/lib/tiktok/client";
@@ -64,6 +65,7 @@ export async function collectCandidates(): Promise<Candidate[]> {
 
 /** Writes the current problems into the alert list: new ones are added, repeats are refreshed, ones that are gone are marked resolved. */
 export async function syncAlerts(cands: Candidate[]): Promise<void> {
+  const keepDays = await getRetentionDays();
   await pg.begin(async (tx) => {
     const existing = new Map((await tx`select key, status, severity, handled_by, resolved_at from system_alerts`).map((r) => [String(r.key), r]));
     const active = new Set<string>();
@@ -82,8 +84,9 @@ export async function syncAlerts(cands: Candidate[]): Promise<void> {
     }
     const gone = [...existing.entries()].filter(([k, r]) => !active.has(k) && r.status !== "resolved").map(([k]) => k);
     if (gone.length) await tx`update system_alerts set status = 'resolved', resolved_at = now() where key = any(${gone})`;
-    await tx`delete from system_alerts where status = 'resolved' and resolved_at < now() - interval '14 days'`;
-    await tx`delete from app_error_log where at < now() - interval '7 days'`;
+    // Alerts are kept for the number of days set in Settings → System Alerts (after the problem has gone).
+    await tx`delete from system_alerts where status = 'resolved' and resolved_at < now() - make_interval(days => ${keepDays})`;
+    await tx`delete from app_error_log where at < now() - make_interval(days => ${Math.max(7, keepDays)})`;
   });
 }
 

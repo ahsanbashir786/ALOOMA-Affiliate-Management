@@ -14,7 +14,7 @@ const ORDER = pg`case severity when 'critical' then 0 when 'warning' then 1 else
 export async function listAlerts(): Promise<{ open: AlertRow[]; resolved: AlertRow[] }> {
   const [open, resolved] = await Promise.all([
     pg`select * from system_alerts where status <> 'resolved' order by ${ORDER}, last_seen desc`,
-    pg`select * from system_alerts where status = 'resolved' order by resolved_at desc limit 15`,
+    pg`select * from system_alerts where status = 'resolved' order by resolved_at desc limit 300`,
   ]);
   return { open: open.map(map), resolved: resolved.map(map) };
 }

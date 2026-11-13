@@ -4,10 +4,11 @@ import { Badge, Card } from "@/components/ui/primitives";
 import { InfoTip } from "@/components/ui/info-tip";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
 import { alertSummary, listAlerts, type AlertRow } from "@/lib/alerts/queries";
+import { getRetentionDays } from "@/lib/alerts/retention";
 import type { Area, Severity } from "@/lib/alerts/checks";
 import { fmtDateTimeKL } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { AlertButtons, AlertToolbar } from "./alert-buttons";
+import { AlertButtons, AlertToolbar, RetentionForm } from "./alert-buttons";
 
 const AREAS: { key: Area; label: string; icon: React.ComponentType<{ className?: string }>; ok: string }[] = [
   { key: "connections", label: "Connections", icon: Plug, ok: "TikTok and Shopee logins work" },
@@ -47,7 +48,7 @@ function AlertCard({ a }: { a: AlertRow }) {
 /** Health at a glance, then every open problem with what to do about it. */
 export async function AlertsPanel() {
   await evaluateAlerts();
-  const [{ open, resolved }, sum] = await Promise.all([listAlerts(), alertSummary()]);
+  const [{ open, resolved }, sum, keepDays] = await Promise.all([listAlerts(), alertSummary(), getRetentionDays()]);
   return (
     <div className="space-y-5" data-testid="alerts-panel">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="health-tiles">
@@ -68,8 +69,11 @@ export async function AlertsPanel() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="flex items-center gap-1.5 text-[13.5px] text-ink-2">Checked every 2 minutes<InfoTip>A problem that goes away clears by itself.</InfoTip></p>
+        <p className="flex items-center gap-1.5 text-[13.5px] text-ink-2">Checked every 2 minutes<InfoTip>An alert stays in the list, even after you mark it Seen, until its problem has gone. Then it moves to History and is kept for the number of days you set.</InfoTip></p>
         <AlertToolbar />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <RetentionForm days={keepDays} />
       </div>
 
       {open.length === 0 ? (
@@ -80,7 +84,7 @@ export async function AlertsPanel() {
 
       {resolved.length > 0 && (
         <details className="rounded-xl border border-line bg-surface px-4 py-3" data-testid="alerts-resolved">
-          <summary className="cursor-pointer text-[14px] font-medium text-ink-2">Recently resolved ({resolved.length})</summary>
+          <summary className="cursor-pointer text-[14px] font-medium text-ink-2">History ({resolved.length})</summary>
           <ul className="mt-3 divide-y divide-line">
             {resolved.map((a) => <li key={a.key} className="flex flex-wrap items-center gap-2 py-2 text-[13.5px]"><CheckCircle2 className="size-4 text-good" /><span className="font-medium text-ink">{a.title}</span><span className="ml-auto text-[12.5px] text-ink-3">resolved {a.resolvedAt ? fmtDateTimeKL(a.resolvedAt) : ""}</span></li>)}
           </ul>
