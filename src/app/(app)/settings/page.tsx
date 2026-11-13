@@ -12,6 +12,7 @@ import { connectionInfo, tiktokConfig } from "@/lib/tiktok/client";
 import { adsConfig, adsConnectionInfo, redirectUriFor } from "@/lib/tiktok-ads/client";
 import { TikTokActions } from "@/components/settings/tiktok-card";
 import { TikTokAdsActions } from "@/components/settings/tiktok-ads-card";
+import { StoragePanel } from "@/components/settings/storage-panel";
 import { ShopeeActions } from "@/components/settings/shopee-card";
 import { shopeeConfig, shopeeConnectionInfo } from "@/lib/shopee/client";
 import { publicUrl } from "@/lib/public-url";
@@ -67,7 +68,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   } else if (!canConn) {
     body = denied("settings", tab === "connection" ? "Settings: Connection" : tab === "storage" ? "Settings: Storage" : "Settings: System Alerts");
   } else if (tab === "storage") {
-    body = <Soon icon={HardDrive} title="Storage" items={["Where files and backups are kept", "How much space is used", "Download a backup of your data"]} />;
+    body = <StoragePanel />;
   } else if (tab === "alerts") {
     body = <Soon icon={Bell} title="System Alerts" items={["Tell the owner when a sync fails", "Warn when a TikTok login stops working", "Choose who gets each alert"]} />;
   } else {

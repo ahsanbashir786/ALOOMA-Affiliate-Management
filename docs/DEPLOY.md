@@ -82,3 +82,7 @@ Free uptime monitors (UptimeRobot etc.) can watch that address and email you if 
 * Logins use secure cookies, so use the **https** address. For a short test by IP address only, set `COOKIE_SECURE=false` in `.env` and run `docker compose up -d`; switch it back afterwards.
 * Several people can use it at the same time.
 * Not yet verified by me: the Docker image itself could not be built in my environment (no Docker engine there). I did verify the equivalent steps: the production build without a database, the standalone server, installing a fresh empty database with the migration script, first-run setup, and every screen on an empty database. If `docker compose up --build` shows an error, send me the last 30 lines.
+
+## 7. Disk space (Settings → Storage)
+
+Settings → Storage shows the server disk (total, used, free), and how much of it is the database, the backups and the program files, plus the biggest database tables and the latest backups. A warning appears at 80% and 90% full. The page reads the `backups/` folder through a read-only mount (`./backups:/app/backups:ro` in `docker-compose.yml`): after updating, run `docker compose up -d --build` once so the app can see it.

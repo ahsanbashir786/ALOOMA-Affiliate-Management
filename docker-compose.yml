@@ -20,6 +20,9 @@ services:
   app:
     build: .
     restart: unless-stopped
+    volumes:
+      # read-only: lets Settings → Storage list the backups made by scripts/backup.sh
+      - ./backups:/app/backups:ro
     depends_on:
       db:
         condition: service_healthy
