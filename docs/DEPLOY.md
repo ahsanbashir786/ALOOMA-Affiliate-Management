@@ -6,7 +6,7 @@ Everything runs in Docker: **database**, **app** and **Caddy** (automatic HTTPS)
 ## 1. One-time setup
 
 1. **Point the domain** to the VPS: add an `A` record `affiliates.yourshop.com → <VPS IP address>` at your domain provider.
-2. **Log in** to the server: `ssh root@<VPS IP address>`
+2. **Log in** to the server: `ssh root@<VPS IP address>` (if your company uses another SSH port, add it: `ssh -p 8288 root@<VPS IP address>`)
 3. **Install Docker**:
    ```bash
    curl -fsSL https://get.docker.com | sh
@@ -15,11 +15,17 @@ Everything runs in Docker: **database**, **app** and **Caddy** (automatic HTTPS)
    ```bash
    ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw --force enable
    ```
+   **If SSH uses a different port (for example 8288), allow that port too, before `ufw enable`, or you will lock yourself out:** `ufw allow 8288/tcp`.
 5. **Add swap** (the first build needs memory; skip if the server has 4 GB or more free):
    ```bash
    fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
    ```
-6. **Get the code** and set the two values:
+6. **Get the code.** If the repository is private, send it from your PC instead of cloning (in the project folder on your PC, in `cmd`):
+   ```bash
+   git archive --format=tar.gz -o alooma.tar.gz HEAD
+   scp -P 8288 alooma.tar.gz root@<VPS IP address>:/root/
+   ```
+   then on the server: `mkdir -p /opt/affiliate-hq && tar -xzf /root/alooma.tar.gz -C /opt/affiliate-hq && cd /opt/affiliate-hq`. Otherwise clone it, and set the two values:
    ```bash
    git clone https://github.com/ahsanbashir786/ALOOMA-Affiliate-Management.git /opt/affiliate-hq
    cd /opt/affiliate-hq && git checkout claude/focused-noether-wfixvh
