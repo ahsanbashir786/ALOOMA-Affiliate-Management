@@ -1,6 +1,6 @@
 import "server-only";
+import { cached } from "@/lib/swr";
 import { sql } from "drizzle-orm";
-import { cache } from "react";
 import { rows } from "@/lib/sql";
 import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { productName } from "@/lib/products/catalog";
@@ -40,7 +40,7 @@ type Raw = {
   product_key: string | null; boosted_now: boolean; last_logged: string | null; main_campaign: string | null;
 };
 
-const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Promise<{ raw: Raw[]; freshest: string | null }> => {
+const loadRaw = async (today: string, rangeFrom: string, rangeTo: string): Promise<{ raw: Raw[]; freshest: string | null }> => {
   const from7 = addDaysISO(today, -6);
   const raw = await rows<Raw>(sql`
     with agg as (
@@ -80,7 +80,8 @@ const load = cache(async (today: string, rangeFrom: string, rangeTo: string): Pr
     where coalesce(pm.product_key, '') <> 'excluded'`);
   const [f] = await rows<{ d: string | null }>(sql`select to_char(max(day), 'YYYY-MM-DD') as d from ads_creative_daily`);
   return { raw, freshest: f?.d ?? null };
-});
+};
+const load = (today: string, rangeFrom: string, rangeTo: string) => cached("vault", `${today}|${rangeFrom}|${rangeTo}`, () => loadRaw(today, rangeFrom, rangeTo));
 
 /** All videos, each in its group. `rules.minRoi` null = automatic (your all-time ROI, rounded up, at least 3). */
 export async function vault(rules: { minRoi: number | null; minOrders: number; idleDays: number } = { minRoi: null, ...DEFAULT_RULES }, range?: Pick<Range, "from" | "to">): Promise<Vault> {

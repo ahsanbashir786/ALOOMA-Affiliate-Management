@@ -1,3 +1,4 @@
+process.env.SWR_OFF = "1";
 // Data Sync tests with a pretend TikTok (no network, no real keys). Needs a *_test database.
 if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to run: DATABASE_URL must point to a *_test database."); process.exit(1); }
 let pass = 0, fail = 0;

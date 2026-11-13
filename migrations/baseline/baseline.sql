@@ -1431,6 +1431,14 @@ CREATE INDEX ads_campaign_daily_day ON public.ads_campaign_daily USING btree (da
 
 
 --
+-- Name: ads_campaign_daily_campaign_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ads_campaign_daily_campaign_day ON public.ads_campaign_daily USING btree (campaign_id, day);
+
+
+
+--
 -- Name: ads_campaigns_status; Type: INDEX; Schema: public; Owner: -
 --
 

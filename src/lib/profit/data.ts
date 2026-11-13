@@ -1,4 +1,5 @@
 import "server-only";
+import { cached } from "@/lib/swr";
 import { sql as pg } from "@/db";
 import { loadCosting } from "@/lib/stock/costing";
 
@@ -57,11 +58,11 @@ export async function getFulfilmentRate(): Promise<number> {
   return Number.isFinite(v) && v >= 0 ? v : DEFAULT_FULFILMENT;
 }
 
-let memo: { at: number; value: ProfitData } | null = null;
-export const clearProfit = () => { memo = null; };
+let version = 0;
+export const clearProfit = () => { version++; };
 
-export async function loadProfit(): Promise<ProfitData> {
-  if (memo && Date.now() - memo.at < 30_000) return memo.value;
+export const loadProfit = (): Promise<ProfitData> => cached("profit", "all", computeProfit, version);
+async function computeProfit(): Promise<ProfitData> {
   const [costing, perUnit, fin, uns, invoices, adDays] = await Promise.all([
     loadCosting(),
     getFulfilmentRate(),
@@ -144,7 +145,6 @@ export async function loadProfit(): Promise<ProfitData> {
     adSpend.set(d.slice(0, 7), (adSpend.get(d.slice(0, 7)) ?? 0) + Number(r.spend));
   }
   const value: ProfitData = { rows, perUnit, invoices: invoiceBy, adSpend, adSpendDays, unknownSkus: costing.unknownSkus, costStart: costing.costStart, startWarning: costing.startWarning };
-  memo = { at: Date.now(), value };
   return value;
 }
 

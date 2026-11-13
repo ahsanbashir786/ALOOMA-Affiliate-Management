@@ -1,3 +1,4 @@
+process.env.SWR_OFF = "1";
 // TikTok Ads (GMV Max) sync tests with a pretend TikTok Business API (no network, no real keys). Needs a *_test database.
 export {};
 // Run: DATABASE_URL=postgres://postgres@localhost:5433/affiliate_test npx tsx --conditions=react-server scripts/test-ads-sync.ts

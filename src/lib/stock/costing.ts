@@ -1,4 +1,5 @@
 import "server-only";
+import { cached } from "@/lib/swr";
 import { sql as pg } from "@/db";
 import { addDaysISO, dayKL } from "@/lib/time";
 import { explode, runFifoWithReturns, type BundleMap, type Costed, type Remaining, type Return, type Sale } from "./fifo";
@@ -20,16 +21,16 @@ export type Costing = {
   startWarning: string | null;
 };
 
-let memo: { at: number; value: Costing } | null = null;
+let version = 0;
 /** Called after anything that changes stock or sales, so the next page reads fresh numbers. */
-export const clearCosting = () => { memo = null; };
+export const clearCosting = () => { version++; };
 
 /**
  * Every TikTok sale costed First In, First Out against the stock layers, returns put back into stock.
  * Cancelled orders are left out. Every line of a TikTok order is one piece.
  */
-export async function loadCosting(): Promise<Costing> {
-  if (memo && Date.now() - memo.at < 30_000) return memo.value;
+export const loadCosting = (): Promise<Costing> => cached("costing", "all", computeCosting, version);
+async function computeCosting(): Promise<Costing> {
   const [{ layers }, bundles] = await Promise.all([loadLayers(), loadBundles()]);
   const orderRows = await pg`select order_id, status, is_sample, created_at, coalesce(paid_at, created_at) as at, lines from tt_orders where coalesce(upper(status), '') <> 'CANCELLED' and created_at is not null and lines is not null`;
   const [st] = await pg`select to_char(min(arrival_date) filter (where kind = 'opening'), 'YYYY-MM-DD') as opening, to_char(min(arrival_date), 'YYYY-MM-DD') as first, to_char(min(arrival_date) filter (where kind = 'order'), 'YYYY-MM-DD') as first_order from stock_orders`;
@@ -72,7 +73,6 @@ export async function loadCosting(): Promise<Costing> {
   for (const [ref, cost] of returnedCost) { const o = byOrder.get(ref); if (o) { o.returnedCost = cost; o.cost -= cost; } }
 
   const value: Costing = { orders, byOrder, costed, remaining, unknownSkus, costStart, startWarning };
-  memo = { at: Date.now(), value };
   return value;
 }
 

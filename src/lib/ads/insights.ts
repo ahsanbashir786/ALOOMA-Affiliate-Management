@@ -1,4 +1,5 @@
 import "server-only";
+import { cached } from "@/lib/swr";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
@@ -29,7 +30,8 @@ export type TodayData = {
   opportunities: { key: string; label: string; count: number }[]; topPicks: VaultVideo[]; activeBoosts: number; activeCampaigns: number;
 };
 
-export async function adsToday(range: Range): Promise<TodayData> {
+export const adsToday = (range: Range): Promise<TodayData> => cached("adsToday", `${todayKL()}|${JSON.stringify(range)}`, () => adsTodayInner(range));
+async function adsTodayInner(range: Range): Promise<TodayData> {
   const today = todayKL();
   const [l] = await rows<{ d: string | null }>(sql`select to_char(max(day), 'YYYY-MM-DD') as d from ads_campaign_daily where coalesce(cost, 0) > 0 or coalesce(orders, 0) > 0`);
   const latestDay = l?.d ?? null;
@@ -79,7 +81,8 @@ export type CampaignRow = {
   id: string; name: string; account: string | null; status: string | null; type: string | null; budget: number | null; roasTarget: number | null;
   now: Kpi; before: Kpi; all: Kpi; lastSpend: string | null; latestCost: number; trend: number[]; health: Health; note: string;
 };
-export async function campaignHealth(range: Range): Promise<{ range: Range; campaigns: CampaignRow[]; total: Kpi; totalBefore: Kpi; hasPrev: boolean }> {
+export const campaignHealth = (range: Range): Promise<{ range: Range; campaigns: CampaignRow[]; total: Kpi; totalBefore: Kpi; hasPrev: boolean }> => cached("campaignHealth", `${todayKL()}|${JSON.stringify(range)}`, () => campaignHealthInner(range));
+async function campaignHealthInner(range: Range): Promise<{ range: Range; campaigns: CampaignRow[]; total: Kpi; totalBefore: Kpi; hasPrev: boolean }> {
   const to = range.to, from = sqlFrom(range), [pFrom, pTo] = sqlPrev(range), t3 = addDaysISO(to, -2), t14 = addDaysISO(to, -13);
   const raw = await rows<{
     campaign_id: string; name: string | null; account: string | null; status: string | null; promotion_type: string | null; budget: number | null; roas_target: number | null;
@@ -124,7 +127,8 @@ export async function campaignHealth(range: Range): Promise<{ range: Range; camp
 
 // ───────────────────────────── Product Performance ─────────────────────────────
 export type ProductRow = { key: string; label: string; now: Kpi; before: Kpi; costPerOrder: number | null; share: number; videosWithSpend: number; golden: number; verdict: "push" | "hold" | "fix" | "idle"; note: string };
-export async function productPerformance(range: Range): Promise<{ range: Range; products: ProductRow[]; accountRoi: number | null }> {
+export const productPerformance = (range: Range): Promise<{ range: Range; products: ProductRow[]; accountRoi: number | null }> => cached("productPerformance", `${todayKL()}|${JSON.stringify(range)}`, () => productPerformanceInner(range));
+async function productPerformanceInner(range: Range): Promise<{ range: Range; products: ProductRow[]; accountRoi: number | null }> {
   const from = sqlFrom(range), to = range.to, [pFrom, pTo] = sqlPrev(range);
   const [raw, v] = await Promise.all([
     rows<{ product_id: string; product_key: string | null; title: string | null; c: number; r: number; o: number; pc: number; pr: number; po: number }>(sql`
@@ -160,7 +164,8 @@ export async function productPerformance(range: Range): Promise<{ range: Range; 
 
 // ───────────────────────────── Creator Ad Scoreboard ─────────────────────────────
 export type CreatorRow = { creator: string; videos: number; sellers: number; all: Kpi; week: Kpi; golden: number; blocked: number; best: VaultVideo | null };
-export async function creatorScoreboard(range: Range): Promise<{ range: Range; creators: CreatorRow[]; unknownVideos: number; accountRoi: number | null }> {
+export const creatorScoreboard = (range: Range): Promise<{ range: Range; creators: CreatorRow[]; unknownVideos: number; accountRoi: number | null }> => cached("creatorScoreboard", `${todayKL()}|${JSON.stringify(range)}`, () => creatorScoreboardInner(range));
+async function creatorScoreboardInner(range: Range): Promise<{ range: Range; creators: CreatorRow[]; unknownVideos: number; accountRoi: number | null }> {
   const v = await vault(undefined, range);
   const m = new Map<string, CreatorRow & { c: number; r: number; o: number; c7: number; r7: number; o7: number }>();
   let unknown = 0;

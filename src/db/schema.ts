@@ -623,7 +623,7 @@ export const adsCampaignDaily = pgTable("ads_campaign_daily", {
   raw: jsonb("raw"),
   h: text("h"),
   syncedAt: tz("synced_at").notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.day] }), index("ads_campaign_daily_day").on(t.day)]);
+}, (t) => [primaryKey({ columns: [t.advertiserId, t.campaignId, t.day] }), index("ads_campaign_daily_day").on(t.day), index("ads_campaign_daily_campaign_day").on(t.campaignId, t.day)]);
 
 export const adsCreativeDaily = pgTable("ads_creative_daily", {
   advertiserId: text("advertiser_id").notNull(),

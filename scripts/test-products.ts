@@ -1,3 +1,4 @@
+process.env.SWR_OFF = "1";
 export {};
 // Product mapping tests: the 13 products, suggestions, add-on SKUs, coverage. Needs a *_test database.
 if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to run: DATABASE_URL must point to a *_test database."); process.exit(1); }

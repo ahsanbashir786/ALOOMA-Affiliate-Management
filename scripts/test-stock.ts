@@ -1,3 +1,4 @@
+process.env.SWR_OFF = "1";
 // Stock and FIFO costing. Run: DATABASE_URL=postgres://…/affiliate_test npx tsx --conditions=react-server scripts/test-stock.ts
 // Set STOCK_FILES to a folder holding the owner's real files to also check the import against them.
 if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to run: DATABASE_URL must point to a *_test database."); process.exit(1); }

@@ -14,12 +14,15 @@ export async function register() {
     const alertTick = () => { sampleServer().then(() => evaluateAlerts(true)).catch(() => {}); };
     setTimeout(alertTick, 30_000);
     setInterval(alertTick, 2 * 60_000).unref?.();
-    // Keep the two heavy screens (Affiliate Data and Product Analysis) ready in memory, so opening them is instant even right after a sync or a restart.
+    // Keep the heavy screens (Affiliate Data, Product Analysis, Profit And Loss, GMV Max) ready in memory, so opening them is instant even right after a sync or a restart.
     const warm = async () => {
       try {
         const { loadCreatorRows } = await import("@/lib/creators/load");
         const { analyseProducts } = await import("@/lib/products/analysis");
         await loadCreatorRows(); await analyseProducts();
+        const { loadProfit } = await import("@/lib/profit/data");
+        const { vault } = await import("@/lib/ads/vault");
+        await loadProfit(); await vault();
       } catch { /* a warm-up failure only means the first visit is slower */ }
     };
     setTimeout(warm, 45_000);

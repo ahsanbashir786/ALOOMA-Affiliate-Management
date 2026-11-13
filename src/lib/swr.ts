@@ -1,4 +1,5 @@
 import "server-only";
+import { localStamp, syncStamp } from "@/lib/data-stamp";
 
 type Entry<T> = { local: string; sync: string; at: number; value: T; refreshing?: Promise<void> };
 
@@ -16,4 +17,17 @@ export async function swr<T>(cache: Map<string, Entry<T>>, key: string, stamp: {
     if (!hit.refreshing) hit.refreshing = build().then(() => undefined, () => { hit.refreshing = undefined; });
   }
   return hit.value;
+}
+
+const caches = new Map<string, Map<string, Entry<unknown>>>();
+/**
+ * Remembers the result of one slow screen query. `name` + `args` say which result it is; `extraLocal` is a counter that a save action bumps.
+ * New TikTok data shows after a quick background refresh; anything the team saves shows at once.
+ */
+export async function cached<T>(name: string, args: string, compute: () => Promise<T>, extraLocal = 0): Promise<T> {
+  if (process.env.SWR_OFF === "1") return compute();
+  let c = caches.get(name);
+  if (!c) { c = new Map(); caches.set(name, c); }
+  const [sync, local] = await Promise.all([syncStamp(), localStamp()]);
+  return swr(c as Map<string, Entry<T>>, args, { local: `${local}|${extraLocal}`, sync }, compute);
 }

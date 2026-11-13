@@ -1,3 +1,4 @@
+process.env.SWR_OFF = "1";
 // Unit tests for the one-word status/action rules. Run: npx tsx scripts/test-status.ts
 import { lineMessage, overviewMessage, type LineStats } from "../src/lib/creators/action-messages";
 import { creatorStatus, explainStatus, winnerThreshold, type StatusInput } from "../src/lib/creators/status";
