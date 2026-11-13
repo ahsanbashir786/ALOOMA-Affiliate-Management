@@ -44,4 +44,5 @@ next-env.d.ts
 /sample-data
 .env
 !.env.example
+!.env.production.example
 backups/
