@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
+import { swr } from "@/lib/swr";
 import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
 import { kd, PK_LISTING, TL } from "@/lib/creators/sql";
 import { SAMPLE_OVERDUE_SQL, SAMPLE_SHIPPED_SQL, hasOrderSql } from "@/lib/creators/sample-status";
@@ -54,19 +55,13 @@ export async function resolvePeriod(range?: { start: string; end: string }): Pro
 type Line = { pk: string; creator: string; oid: string; cid: string | null; ct: string; day: string; pay: number; valid: boolean };
 const median = (a: number[]) => (a.length ? [...a].sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null);
 
-type Cached = { stamp: string; at: number; value: Analysis };
+type Cached = { local: string; sync: string; at: number; value: Analysis; refreshing?: Promise<void> };
 const cache = new Map<string, Cached>();
 
 export async function analyseProducts(range?: { start: string; end: string }): Promise<Analysis> {
   const { period, ref } = await resolvePeriod(range);
-  const [st] = await rows<{ s: string }>(sql`select concat_ws('|', (select max(synced_at) from tt_affiliate_order_lines), (select max(synced_at) from tt_videos), (select max(synced_at) from tt_sample_requests), (select max(synced_at) from tt_orders), (select max(updated_at) from product_map), (select count(*) from product_map), ${todayKL()}::text) as s`);
-  const key = `${period.start}|${period.end}`;
-  const hit = cache.get(key);
-  if (hit && hit.stamp === st.s && Date.now() - hit.at < 5 * 60_000) return hit.value;
-  const value = await compute(period, ref);
-  if (cache.size > 8) cache.clear();
-  cache.set(key, { stamp: st.s, at: Date.now(), value });
-  return value;
+  const [st] = await rows<{ l: string; s: string }>(sql`select concat_ws('|', (select max(updated_at) from product_map), (select count(*) from product_map), ${todayKL()}::text) as l, concat_ws('|', (select max(last_success_at)::text from tt_sync_state), (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_affiliate_order_lines', 'tt_videos', 'tt_sample_requests', 'tt_orders'))) as s`);
+  return swr(cache, `${period.start}|${period.end}`, { local: st.l, sync: st.s }, () => compute(period, ref));
 }
 
 async function compute(period: Period, ref: string | null): Promise<Analysis> {

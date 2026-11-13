@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
+import { swr } from "@/lib/swr";
 import { creatorStatus, explainStatus, winnerThreshold, type StatusInput } from "@/lib/creators/status";
 import { productName, productRank } from "@/lib/products/catalog";
 import { refreshProductKeys } from "@/lib/products/classify";
@@ -29,24 +30,17 @@ export async function hasSyncedData(): Promise<boolean> {
  * Sales are affiliate order lines that were not returned in full or cancelled; "lately" = the 28 days ending at the latest order held.
  */
 type Loaded = { all: DirRow[]; ref: string | null; lately: Map<string, number> };
-const cache = new Map<string, { stamp: string; at: number; value: Loaded }>();
+const cache = new Map<string, { local: string; sync: string; at: number; value: Loaded; refreshing?: Promise<void> }>();
 
 /** Cached while nothing changed: the key is the newest sync time plus the newest staff record, so a new sync or action shows at once. */
 export async function loadCreatorRows(opts: { range?: { start: string; end: string } } = {}): Promise<Loaded> {
-  const [st] = await rows<{ s: string }>(sql`select concat_ws('|',
-    (select max(synced_at) from tt_affiliate_order_lines), (select max(synced_at) from tt_videos), (select max(synced_at) from tt_sample_requests), (select max(synced_at) from tt_orders),
+  const [st] = await rows<{ l: string; s: string }>(sql`select concat_ws('|',
     (select max(id) from staff_events), (select max(reverted_at) from staff_events), (select count(*) from creators), (select max(id) from commitments),
-    (select max(updated_at) from product_map), (select count(*) from product_map), todayKL.d) as s
+    (select max(updated_at) from product_map), (select count(*) from product_map), todayKL.d) as l,
+    concat_ws('|', (select max(last_success_at)::text from tt_sync_state), (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_affiliate_order_lines', 'tt_videos', 'tt_sample_requests', 'tt_orders'))) as s
     from (select to_char(now() at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as d) todayKL`);
   const key = opts.range ? `${opts.range.start}..${opts.range.end}` : "all";
-  const hit = cache.get(key);
-  let value: Loaded;
-  if (hit && hit.stamp === st.s && Date.now() - hit.at < 5 * 60_000) value = hit.value;
-  else {
-    value = await computeCreatorRows(opts);
-    if (cache.size > 12) cache.clear();
-    cache.set(key, { stamp: st.s, at: Date.now(), value });
-  }
+  const value = await swr(cache, key, { local: st.l, sync: st.s }, () => computeCreatorRows(opts));
   return withOwners(value);
 }
 

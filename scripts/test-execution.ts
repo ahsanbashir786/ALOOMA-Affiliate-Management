@@ -1,3 +1,4 @@
+process.env.SWR_OFF = "1";
 // Execution Plan: the rules, and how tasks are written, refreshed, closed and protected from duplicates.
 // Run: DATABASE_URL=postgres://postgres@localhost:5433/affiliate_test npx tsx --conditions=react-server scripts/test-execution.ts   (needs the creators demo data)
 import { sql } from "drizzle-orm";

@@ -1,3 +1,4 @@
+process.env.SWR_OFF = "1";
 export {};
 // Creators module tests: sales rules, sample results, status, filters, owners, profile, export, score. Needs a *_test database.
 if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to run: DATABASE_URL must point to a *_test database."); process.exit(1); }
