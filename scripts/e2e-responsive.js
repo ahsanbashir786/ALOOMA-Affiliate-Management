@@ -15,7 +15,7 @@ const ROUTES = [
   ["settings-shop", "/settings?tab=connection&src=shop"], ["settings-ads", "/settings?tab=connection&src=ads"], ["settings-shopee", "/settings?tab=connection&src=shopee"],
   ["settings-users", "/settings?tab=users"], ["settings-storage", "/settings?tab=storage"], ["settings-alerts", "/settings?tab=alerts"],
 ];
-const SIZES = [["phone", 390, 844], ["tablet", 820, 1100], ["desktop", 1440, 900]];
+const SIZES = [["phone", 390, 844], ["tablet", 820, 1100], ["laptop", 1250, 800], ["desktop", 1440, 900]];
 async function login(p, email) {
   await p.goto(BASE + "/login"); await p.fill("input[name=email]", email); await p.fill("input[name=password]", "Passw0rd!test");
   await Promise.all([p.waitForURL((u) => !/login/.test(u.pathname)), p.click("button[type=submit]")]);
@@ -28,16 +28,18 @@ async function login(p, email) {
     p.on("pageerror", (e) => errs.push(`${sname}: ${e.message}`));
     await login(p, "owner@test.local");
     for (const [name, url] of ROUTES) {
-      await p.goto(BASE + url, { waitUntil: "networkidle" }).catch(() => {}); await p.waitForTimeout(350);
+      await p.goto(BASE + url, { waitUntil: "networkidle" }).catch(() => {}); await p.waitForTimeout(1900);
       const m = await p.evaluate(() => {
         const de = document.documentElement;
         const wide = [...document.querySelectorAll("main *")].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > de.clientWidth + 1 && !el.closest("[data-scroll],table,.overflow-x-auto,[class*=overflow-]"); }).slice(0, 3).map((el) => el.tagName + "." + String(el.className).slice(0, 60));
         const tables = [...document.querySelectorAll("main table")].filter((t) => t.offsetParent !== null).map((t) => ({ display: getComputedStyle(t).display, labelled: t.querySelectorAll("td[data-label]").length }));
-        return { over: de.scrollWidth - de.clientWidth, wide, tables };
+        const inner = [...document.querySelectorAll("main *")].filter((el) => el.offsetParent !== null && el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX) && el.clientWidth > 0 && !el.matches("pre,ul,[role=listbox],.no-scrollbar")).slice(0, 3).map((el) => el.tagName + "." + String(el.className).slice(0, 50));
+        return { over: de.scrollWidth - de.clientWidth, wide, tables, inner };
       });
       ok(m.over <= 1, `${sname} ${name}: no sideways scrolling${m.over > 1 ? ` (${m.over}px over; ${m.wide.join(" | ")})` : ""}`);
+      ok(m.inner.length === 0, `${sname} ${name}: nothing scrolls sideways inside the page${m.inner.length ? " (" + m.inner.join(" | ") + ")" : ""}`);
       if (sname === "phone" && m.tables.length) ok(m.tables.every((t) => t.display === "block"), `phone ${name}: tables turn into cards (${m.tables.length})`);
-      if (sname === "phone") await p.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: false });
+      if (sname === "phone" || sname === "laptop") await p.screenshot({ path: `${SHOTS}/${sname}-${name}.png`, fullPage: false });
     }
   }
   ok(errs.length === 0, "no page errors" + (errs.length ? ": " + errs[0] : ""));

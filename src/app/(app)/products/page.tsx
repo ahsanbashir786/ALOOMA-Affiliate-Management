@@ -103,7 +103,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
         actions={<PeriodPicker from={raw.from ?? ""} to={raw.to ?? ""} today={todayKL()} keep={{ tag: tag, sort: sort === "order" ? "" : sort }} />}
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Products at a glance" data-testid="product-kpis">
+      <div className="tile-grid" aria-label="Products at a glance" data-testid="product-kpis">
         {[
           { l: "Total Sales", v: fmtRM(total.now), sub: <Delta now={total.now} prev={total.prev} />, to: hrefFor({ tag: "" }) },
           { l: "Growing", v: String(count("Growing")), sub: <span className="text-[12.5px] text-ink-3">selling 15% more or better</span>, to: hrefFor({ tag: "Growing" }), tone: "text-good" },

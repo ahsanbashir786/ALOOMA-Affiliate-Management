@@ -62,7 +62,7 @@ function Empty() {
 function Tiles({ ov }: { ov: Overview }) {
   const t = ov.tiles;
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="stock-tiles">
+    <div className="tile-grid" data-testid="stock-tiles">
       <StatTile icon={Boxes} label="Pieces In Stock" value={fmtInt(t.onHand)} note="After TikTok sales only" />
       <StatTile icon={Wallet} label="Stock Value" value={fmtRM(t.value)} note="At real cost per piece" tone="good" />
       <StatTile icon={PackageOpen} label="Stock-In Orders" value={fmtInt(t.orders)} note={`Landed cost ${fmtRM(t.landed)}`} tone="neutral" />

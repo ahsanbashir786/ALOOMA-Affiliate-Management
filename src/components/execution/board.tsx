@@ -238,7 +238,7 @@ export function ExecutionBoard({ data, me, meName, canManage, canWork }: { data:
             <span className="bg-warn" style={{ width: `${counted ? (kpi.pending / counted) * 100 : 0}%` }} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6" data-testid="exec-kpis">
+        <div className="tile-grid" data-testid="exec-kpis">
           {([
             { l: "Open", v: kpi.open, s: "open" as StatusFilter, c: "text-ink" },
             { l: "Not Started", v: kpi.notStarted, s: "not_started" as StatusFilter, c: "text-ink" },

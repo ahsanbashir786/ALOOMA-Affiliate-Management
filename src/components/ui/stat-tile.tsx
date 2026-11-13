@@ -9,12 +9,12 @@ export function StatTile({ icon: Icon, label, value, note, tone = "brand", class
   // A few words stay visible under the number; anything longer becomes an info icon.
   const short = typeof note === "string" && note.length <= 34;
   return (
-    <Card className={cn("flex items-start gap-3 p-4", className)}>
-      <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", TONES[tone])}><Icon className="size-5" /></span>
-      <div className="min-w-0">
-        <p className="flex items-center gap-1 text-[13px] text-ink-3">{label}{note && <InfoTip label={`About ${label}`} className={short ? "lg:hidden" : undefined}>{note}</InfoTip>}</p>
-        <p className="tnum mt-0.5 text-[22px] leading-7 font-semibold tracking-tight text-ink">{value}</p>
-        {note && short && <p className="mt-0.5 hidden truncate text-[12.5px] text-ink-3 lg:block">{note}</p>}
+    <Card className={cn("flex items-start gap-3 p-3.5", className)}>
+      <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", TONES[tone])}><Icon className="size-[18px]" /></span>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1 text-[13px] whitespace-nowrap text-ink-3"><span className="truncate">{label}</span>{note && <InfoTip label={`About ${label}`} className={short ? "lg:hidden" : undefined}>{note}</InfoTip>}</p>
+        <p className="tnum mt-0.5 text-[21px] leading-7 font-semibold tracking-tight whitespace-nowrap text-ink">{value}</p>
+        {note && short && <p className="mt-0.5 hidden text-[12.5px] leading-4 text-ink-3 lg:block">{note}</p>}
       </div>
     </Card>
   );

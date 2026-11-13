@@ -10,7 +10,7 @@ export function PageSkeleton({ cards = 4, rows = 8, className }: { cards?: numbe
         <div className={cn(bar, "h-8 w-56")} />
         <div className={cn(bar, "mt-2.5 h-4 w-[min(32rem,80%)]")} />
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="tile-grid">
         {Array.from({ length: cards }, (_, i) => <div key={i} className={cn(bar, "h-24 border border-line")} />)}
       </div>
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">

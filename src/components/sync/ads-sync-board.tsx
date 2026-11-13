@@ -104,7 +104,7 @@ export function AdsSyncBoard({ initial, connected, configured, canAdmin, canRun,
         {err && <p role="alert" className="relative mt-4 rounded-lg bg-white/15 px-3 py-2 text-[13.5px]">{err}</p>}
       </section>
 
-      <section aria-label="Data" className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+      <section aria-label="Data" className="tile-grid">
         {ov.datasets.map((d) => {
           const Icon = ICON[d.icon] ?? Package;
           const f = fresh(d.lastSuccessAt, now);

@@ -12,7 +12,7 @@ export type TabItem = { href: string; label: string; icon?: React.ComponentType<
 export function TabLinks({ items, label, size = "md" }: { items: TabItem[]; label: string; size?: "md" | "sm" }) {
   if (size === "sm") {
     return (
-      <nav aria-label={label} className="-mx-1 max-w-full overflow-x-auto px-1 py-0.5">
+      <nav aria-label={label} className="no-scrollbar -mx-1 max-w-full overflow-x-auto overflow-y-hidden px-1 py-0.5">
         <div className="inline-flex rounded-lg border border-line-strong bg-surface p-0.5">
           {items.map((t) => (
             <Link key={t.href} href={t.href} data-testid={t.testId} aria-current={t.active ? "page" : undefined} scroll={false}
@@ -25,7 +25,7 @@ export function TabLinks({ items, label, size = "md" }: { items: TabItem[]; labe
     );
   }
   return (
-    <nav aria-label={label} className="-mx-4 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
+    <nav aria-label={label} className="no-scrollbar -mx-4 overflow-x-auto overflow-y-hidden border-b border-line px-4 sm:mx-0 sm:px-0">
       <div className="flex min-w-max gap-1">
         {items.map((t) => (
           <Link key={t.href} href={t.href} data-testid={t.testId} aria-current={t.active ? "page" : undefined} scroll={false}
