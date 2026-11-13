@@ -17,6 +17,8 @@ async function login(p, email) {
   const txt = (await p.getByTestId("storage-panel").innerText()).replace(/\s+/g, " ");
   ok(/Server Disk Total/.test(txt) && /Used/.test(txt) && /Free/.test(txt) && /This Software Uses/.test(txt), "storage: total, used, free and what the software uses");
   ok(/\d+(\.\d)? (GB|TB|MB)/.test(txt), "storage: sizes are readable (GB, MB)");
+  const srv = (await p.getByTestId("server-tiles").innerText()).replace(/\s+/g, " ");
+  ok(/Memory \(RAM\)/.test(srv) && /vCPU/.test(srv) && /Data Transfer This Month/.test(srv) && /Server Running For/.test(srv), "storage: memory, vCPU, data transfer and running time tiles");
   const legend = (await p.getByTestId("storage-legend").innerText()).replace(/\s+/g, " ");
   ok(/Database \(your data\)/.test(legend) && /Backups/.test(legend) && /Everything else on the server/.test(legend) && /Free/.test(legend), "storage: the bar legend names the parts");
   ok((await p.locator("[data-testid=storage-tables] tbody tr").count()) >= 5, "storage: the biggest tables are listed");
