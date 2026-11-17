@@ -79,6 +79,12 @@ async function login(p, email) {
   ok(/Shopee/.test(byc) && /TikTok/.test(byc) && /Both Together/.test(byc), "profit: the monthly view has a By Channel table: Shopee, TikTok and both together");
   const shopeeLine = (await p.getByTestId("channel-row-shopee").innerText()).replace(/\s+/g, " ");
   ok(/RM 22\.50/.test(shopeeLine), "profit: Shopee's real ad spend (RM 12.50 + RM 10.00) is in its line (" + shopeeLine + ")");
+  // Coming back from an order returns to the same channel list
+  await p.goto(BASE + "/profit?channel=shopee&range=lifetime"); await p.waitForSelector("[data-testid=profit-table]");
+  await p.locator("[data-testid=order-row] a").first().click(); await p.waitForSelector("[data-testid=order-waterfall]");
+  ok(/channel=shopee/.test(p.url()) && (await p.getByTestId("submenu-shopee").getAttribute("aria-current")) === "page", "navigation: opening a Shopee order keeps Shopee marked in the menu");
+  await p.getByTestId("order-back").click(); await p.waitForSelector("[data-testid=profit-table]");
+  ok(/channel=shopee/.test(p.url()) && /range=lifetime/.test(p.url()) && (await p.getByTestId("submenu-shopee").getAttribute("aria-current")) === "page", "navigation: Back returns to the Shopee list with the same period (" + p.url().replace(BASE, "") + ")");
   await p.goto(BASE + "/profit/order/2611BBBB"); await p.waitForSelector("[data-testid=order-waterfall]");
   const wf = (await p.getByTestId("order-waterfall").innerText()).replace(/\s+/g, " ");
   ok(/Shopee Commission/.test(wf) && /Settlement From Shopee/.test(wf) && !/Ads Top-Up/.test(wf), "profit: the order page speaks of Shopee");

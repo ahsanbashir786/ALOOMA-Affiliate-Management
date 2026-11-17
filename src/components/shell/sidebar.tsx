@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { ChevronsLeft, ChevronsRight, Lock, X } from "lucide-react";
+import { Lock, X } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
-import { cn, initials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { NAV, navAllowed, type NavChild, type NavItem } from "./nav";
 
 type Props = {
@@ -14,7 +14,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   collapsed: boolean;
-  onToggleCollapsed: () => void;
+  onToggleCollapsed?: () => void;
 };
 
 /** The small items under a menu item (Profit And Loss: All, TikTok, Shopee). The open one follows ?channel= in the address. */
@@ -28,7 +28,7 @@ function SubMenu({ children, open, onClose }: { children: NavChild[]; open: bool
         return (
           <li key={c.label}>
             <Link href={c.href} onClick={onClose} aria-current={active ? "page" : undefined} data-testid={`submenu-${c.label.toLowerCase()}`}
-              className={cn("block rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors", active ? "bg-brand-soft text-brand-strong" : "text-ink-3 hover:bg-surface-2 hover:text-ink")}>
+              className={cn("block rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors [@media(max-height:820px)]:py-1", active ? "bg-brand-soft text-brand-strong" : "text-ink-3 hover:bg-surface-2 hover:text-ink")}>
               {c.label}
             </Link>
           </li>
@@ -38,7 +38,7 @@ function SubMenu({ children, open, onClose }: { children: NavChild[]; open: bool
   );
 }
 
-export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapsed }: Props) {
+export function Sidebar({ user, sync, open, onClose, collapsed }: Props) {
   const pathname = usePathname();
   const isActive = (item: NavItem) => pathname === item.href || pathname.startsWith(item.href + "/");
   // On phones the menu is always the full one.
@@ -66,11 +66,11 @@ export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapse
           </button>
         </div>
 
-        <nav className={cn("flex-1 overflow-y-auto px-3 py-3", rail && "lg:px-2")}>
+        <nav className={cn("flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [@media(max-height:820px)]:py-2", rail && "lg:px-2")}>
           {NAV.map((group, gi) => {
             const items = group.items;
             return (
-              <div key={group.label} className={cn(gi > 0 && "mt-3")}>
+              <div key={group.label} className={cn(gi > 0 && "mt-3 [@media(max-height:820px)]:mt-2")}>
                 <p className={cn("px-3 pb-1.5 text-[12px] font-medium text-ink-3", rail && "lg:hidden")}>{group.label}</p>
                 {rail && gi > 0 && <div className="mx-3 mb-2 hidden border-t border-line lg:block" />}
                 <ul className="space-y-0.5">
@@ -86,7 +86,7 @@ export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapse
                           title={rail ? item.label : allowed ? undefined : "Your role cannot open this"}
                           aria-current={active ? "page" : undefined}
                           className={cn(
-                            "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14.5px] font-medium transition-colors",
+                            "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14.5px] font-medium transition-colors [@media(max-height:820px)]:py-1.5",
                             rail && "lg:justify-center lg:px-0",
                             active ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
                             !allowed && !active && "text-ink-3",
@@ -114,27 +114,11 @@ export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapse
             href="/sync"
             onClick={onClose}
             title={rail ? sync.label : undefined}
-            className={cn("mb-2 flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] text-ink-3 hover:bg-surface-2 hover:text-ink", rail && "lg:justify-center lg:px-0")}
+            className={cn("flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] text-ink-3 hover:bg-surface-2 hover:text-ink", rail && "lg:justify-center lg:px-0")}
           >
             <span className={cn("size-2 shrink-0 rounded-full", sync.ok ? "bg-good" : "bg-warn")} />
             <span className={cn("truncate", rail && "lg:hidden")}>{sync.label}</span>
           </Link>
-          <div className={cn("flex items-center gap-2.5 rounded-lg bg-surface-2 p-2", rail && "lg:justify-center lg:bg-transparent")}>
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[12px] font-semibold text-white" title={rail ? `${user.name} · ${user.roleName}` : undefined}>{initials(user.name)}</span>
-            <span className={cn("min-w-0 flex-1", rail && "lg:hidden")}>
-              <span className="block truncate text-[13.5px] font-medium text-ink">{user.name}</span>
-              <span className="block truncate text-[12px] text-ink-3">{user.roleName}</span>
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            aria-label={rail ? "Expand menu" : "Collapse menu"}
-            title={rail ? "Expand menu" : "Collapse menu"}
-            className={cn("mt-2 hidden h-8 w-full items-center gap-2 rounded-lg px-3 text-[12.5px] text-ink-3 hover:bg-surface-2 hover:text-ink lg:flex", rail && "justify-center px-0")}
-          >
-            {rail ? <ChevronsRight className="size-4" /> : <><ChevronsLeft className="size-4" /> Collapse</>}
-          </button>
         </div>
       </aside>
     </>

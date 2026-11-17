@@ -89,6 +89,7 @@ function Orders({ data, period, sp, channel, chName }: { data: ProfitData; perio
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const shown = rows.slice((Math.min(page, pages) - 1) * PAGE, Math.min(page, pages) * PAGE);
   const exportHref = href("/api/profit/export", { range: one(sp.range), from: one(sp.from), to: one(sp.to) });
+  const backHref = href("/profit", { range: one(sp.range), from: one(sp.from), to: one(sp.to), q: one(sp.q), money: one(sp.money), problem: one(sp.problem), sort: one(sp.sort), page: one(sp.page), channel: channel === "all" ? undefined : channel });
   const base = { tab: undefined, range: one(sp.range), from: one(sp.from), to: one(sp.to), q: one(sp.q), money: one(sp.money), problem: one(sp.problem), sort: one(sp.sort) };
   return (
     <>
@@ -123,7 +124,7 @@ function Orders({ data, period, sp, channel, chName }: { data: ProfitData; perio
           <table className="w-full min-w-[1280px] border-collapse" data-testid="profit-table">
             <thead><tr><Th>Order</Th><Th>Money</Th><Th align="right">Sales</Th><Th align="right">{channel === "all" ? "Platform" : chName} Fees</Th><Th align="right">Shipping Deducted</Th><Th align="right">Adjustments</Th><Th align="right">Settlement</Th><Th align="right">Ads Top-Up</Th><Th align="right">Product Cost</Th><Th align="right">Fulfilment</Th><Th align="right">Profit Before Ads</Th></tr></thead>
             <tbody>
-              {shown.map((r) => <OrderRow key={r.orderId} r={r} showChannel={channel === "all"} />)}
+              {shown.map((r) => <OrderRow key={r.orderId} r={r} showChannel={channel === "all"} back={backHref} channel={channel} />)}
               {!shown.length && <tr><td colSpan={11}><EmptyState title="No orders match" description="Try another period or filter." /></td></tr>}
             </tbody>
           </table>
@@ -162,13 +163,13 @@ function ByChannel({ lines }: { lines: ReturnType<typeof channelLines> }) {
   );
 }
 
-function OrderRow({ r, showChannel }: { r: OrderProfit; showChannel: boolean }) {
+function OrderRow({ r, showChannel, back, channel }: { r: OrderProfit; showChannel: boolean; back: string; channel: Channel }) {
   const ms = MONEY_STATE[r.money];
   const none = r.money === "none" && !r.isSample;
   return (
     <tr className="hover:bg-surface-2/60" data-testid="order-row">
       <Td className="min-w-52">
-        <Link href={`/profit/order/${encodeURIComponent(r.orderId)}`} className="font-medium text-brand hover:underline">{r.orderId}</Link>
+        <Link href={href(`/profit/order/${encodeURIComponent(r.orderId)}`, { channel: channel === "all" ? undefined : channel, back })} className="font-medium text-brand hover:underline">{r.orderId}</Link>
         {showChannel && <Badge tone={r.platform === "shopee" ? "warn" : "neutral"} className="ml-1.5">{r.platform === "shopee" ? "Shopee" : "TikTok"}</Badge>}
         {r.isSample && <Badge className="ml-1.5">Sample</Badge>}{r.returnedPieces > 0 && <Badge tone="warn" className="ml-1.5">Returned</Badge>}
         <span className="block max-w-64 truncate text-[12px] text-ink-3">{r.day} · {r.skus}</span>

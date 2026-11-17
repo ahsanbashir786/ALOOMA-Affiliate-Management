@@ -13,10 +13,13 @@ import { loadCosting } from "@/lib/stock/costing";
 export const metadata: Metadata = { title: "Profit And Loss" };
 export const dynamic = "force-dynamic";
 
-export default async function OrderPage({ params }: PageProps<"/profit/order/[id]">) {
+export default async function OrderPage({ params, searchParams }: PageProps<"/profit/order/[id]">) {
   const { denied } = await gate("profit", "Profit And Loss");
   if (denied) return denied;
   const id = decodeURIComponent((await params).id);
+  // Back goes to the list the person came from (same channel, period, filters and page); only an address inside this screen is accepted.
+  const rawBack = (await searchParams).back;
+  const back = typeof rawBack === "string" && /^\/profit(\?|$)/.test(rawBack) && !rawBack.includes("//") ? rawBack : "/profit";
   const [data, costing] = await Promise.all([loadProfit(), loadCosting()]);
   const r = data.rows.find((x) => x.orderId === id);
   if (!r) notFound();
@@ -50,7 +53,7 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
   ];
   return (
     <div className="space-y-5">
-      <Link href="/profit" className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink"><ArrowLeft className="size-4" /> Profit And Loss</Link>
+      <Link href={back} data-testid="order-back" className="inline-flex items-center gap-1.5 text-[13.5px] text-ink-2 hover:text-ink"><ArrowLeft className="size-4" /> Profit And Loss</Link>
       <PageHeader title={`Order ${r.orderId}`} description={`${r.day} · ${r.pieces} pieces · ${r.status ?? ""}`} actions={<Badge tone={ms.tone}>{ms.label}</Badge>} />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
