@@ -22,7 +22,7 @@ const NOW = Math.floor(Date.UTC(2026, 10, 17, 4, 0, 0) / 1000); // 17 Nov 2026
 const DAY = 86400;
 
 type O = { sn: string; status: string; create: number; update: number; paid?: number; items: { sku: string; qty: number }[]; fbs?: boolean };
-function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean; authFail?: boolean; adsDenied?: boolean } = {}) {
+function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean; authFail?: boolean; adsDenied?: boolean; oddBatch?: boolean } = {}) {
   const calls: { path: string; q: URLSearchParams; body: Record<string, unknown> | null }[] = [];
   let limited = false;
   const f = async (url: string, init?: RequestInit): Promise<Response> => {
@@ -48,6 +48,8 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
       if (sns.length > 50) return ok({ error: "error_param", message: "Too many order numbers." });
       return ok({ error: "", response: { order_list: sns.map((sn) => orders.find((x) => x.sn === sn)).filter(Boolean).map((x) => ({ order_sn: x!.sn, order_status: x!.status, create_time: x!.create, update_time: x!.update, pay_time: x!.paid ?? x!.create + 60, total_amount: 100, currency: "MYR", fulfillment_flag: x!.fbs ? "fulfilled_by_shopee" : "fulfilled_by_cb_seller", item_list: x!.items.map((i, k) => ({ item_id: 1, item_name: "Protector", item_sku: "LISTING-SKU", model_id: k, model_sku: i.sku, model_quantity_purchased: i.qty, model_discounted_price: 50 })) })) } });
     }
+    if (u.pathname === "/api/v2/payment/get_escrow_detail") return ok({ error: "", response: { order_sn: u.searchParams.get("order_sn"), buyer_user_name: "x", order_income: { escrow_amount: 70, original_price: 90, commission_fee: 5 } } });
+    if (u.pathname === "/api/v2/payment/get_escrow_detail_batch" && o.oddBatch) return ok({ error: "", response: ((body?.order_sn_list as string[]) ?? []).map((sn) => ({ order_sn: sn, escrow_info: { something: 1 } })) });
     if (u.pathname === "/api/v2/payment/get_escrow_detail_batch") {
       const sns = (body?.order_sn_list as string[]) ?? [];
       if (sns.length > 50) return ok({ error: "error_param", message: "Too many order numbers." });
@@ -142,6 +144,15 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
   await setShopeeSyncSettings(180);
   check("settings: every 3 hours; with a run just done the scheduler waits", (await getShopeeSyncSettings()).everyMinutes === 180 && (await shopeeSchedulerTick(Date.now())) !== "ran");
   await setShopeeSyncSettings(30);
+
+  // ── if the batch answer cannot be read, say what it looks like and fall back to one order at a time
+  await pg`truncate shopee_escrow`;
+  const odd = fake(orders, { oddBatch: true });
+  const ro = await runShopeeSync({ f: odd.f, cfg, nowSec: NOW, sleep: async () => {}, only: ["escrow"] });
+  check("payments: an unreadable batch answer is described (field names only) and the single-order call is used instead", ro.datasets[0].ok && /could not be read/.test(ro.note ?? "") && /escrow_info/.test(ro.note ?? "") && /That works/.test(ro.note ?? "") && (await pg`select count(*)::int as n from shopee_escrow`)[0].n > 100, `${ro.note} ${JSON.stringify(ro.datasets)}`);
+  check("payments: the note reaches the history line", /could not be read/.test((await pg`select error from shopee_sync_runs where dataset = 'shopee_escrow' and status = 'ok' order by id desc limit 1`)[0].error ?? ""));
+  await pg`truncate shopee_escrow`; await pg`update shopee_orders set escrow_checked_at = null`;
+  await runShopeeSync({ f: fk.f, cfg, nowSec: NOW, sleep: async () => {}, only: ["escrow", "release"] });
 
   // ── a part Shopee has not opened to this app is reported plainly and does not stop the others
   const denied = fake(orders, { adsDenied: true });

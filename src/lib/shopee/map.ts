@@ -46,17 +46,18 @@ export function mapShopeeEscrow(entry: Record<string, unknown>): ShopeeEscrowRow
   const detail = obj(entry.escrow_detail ?? entry);
   const orderSn = String(detail.order_sn ?? entry.order_sn ?? "").trim();
   if (!orderSn) return null;
-  const inc = obj(detail.order_income);
+  // The figures are in order_income; some answers put them straight on the detail.
+  const inc = Object.keys(obj(detail.order_income)).length ? obj(detail.order_income) : "escrow_amount" in detail ? detail : {};
   if (!Object.keys(inc).length) return null; // Shopee has no payment figures for this order yet
   const { buyer_user_name: _name, ...safe } = detail; void _name;
   const pick = (...k: string[]) => { for (const key of k) { const v = n(inc[key]); if (v != null) return v; } return null; };
   return {
     orderSn,
-    escrowAmount: pick("escrow_amount"), originalPrice: pick("original_price"), sellerDiscount: pick("seller_discount"), voucherSeller: pick("voucher_from_seller"),
-    commissionFee: pick("commission_fee"), serviceFee: pick("service_fee"), transactionFee: pick("seller_transaction_fee"), amsFee: pick("ams_commission_fee", "campaign_fee"),
-    actualShippingFee: pick("actual_shipping_fee"), buyerShippingFee: pick("buyer_paid_shipping_fee"), shippingRebate: pick("shopee_shipping_rebate"), reverseShippingFee: pick("reverse_shipping_fee"),
+    escrowAmount: pick("escrow_amount", "payout_amount"), originalPrice: pick("original_price", "order_original_price"), sellerDiscount: pick("seller_discount"), voucherSeller: pick("voucher_from_seller"),
+    commissionFee: pick("commission_fee"), serviceFee: pick("service_fee"), transactionFee: pick("seller_transaction_fee", "credit_card_transaction_fee"), amsFee: pick("ams_commission_fee", "campaign_fee"),
+    actualShippingFee: pick("actual_shipping_fee", "final_shipping_fee"), buyerShippingFee: pick("buyer_paid_shipping_fee"), shippingRebate: pick("shopee_shipping_rebate"), reverseShippingFee: pick("reverse_shipping_fee"),
     refundAmount: pick("seller_return_refund", "drc_adjustable_refund"), compensation: pick("seller_lost_compensation"),
-    raw: safe,
+    raw: { ...safe, order_income: inc },
   };
 }
 

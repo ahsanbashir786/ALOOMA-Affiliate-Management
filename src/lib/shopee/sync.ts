@@ -25,7 +25,7 @@ export const DEFAULT_HISTORY_DAYS = 180;
 /** An order that was still moving is read again for this many days back, so late changes are never missed. */
 const OVERLAP = 2 * DAY;
 
-export type ShopeeSyncDeps = { f?: Fetch; cfg?: ShopeeConfig | null; nowSec?: number; sleep?: (ms: number) => Promise<void>; budgetMs?: number; trigger?: "manual" | "schedule"; userId?: string | null; concurrency?: number };
+export type ShopeeSyncDeps = { f?: Fetch; cfg?: ShopeeConfig | null; nowSec?: number; sleep?: (ms: number) => Promise<void>; budgetMs?: number; trigger?: "manual" | "schedule"; userId?: string | null; concurrency?: number; /** Notes from reading the payments, shown in the history. */ diag?: { note: string | null; single: boolean } };
 export type ShopeeDatasetResult = { key: ShopeeDatasetKey; label: string; ok: boolean; rows: number; error: string | null };
 export type ShopeeSyncResult = { ok: boolean; orders: number; escrow: number; windows: number; error: string | null; note: string | null; datasets: ShopeeDatasetResult[] };
 
@@ -114,11 +114,36 @@ async function escrowCandidates(limit: number): Promise<string[]> {
 async function saveEscrow(sns: string[], deps: ShopeeSyncDeps): Promise<number> {
   const chunks: string[][] = [];
   for (let i = 0; i < sns.length; i += 50) chunks.push(sns.slice(i, i + 50));
-  const counts = await mapLimit(chunks, deps.concurrency ?? 3, async (chunk) => {
-    const r = await call<unknown>("/api/v2/payment/get_escrow_detail_batch", deps, { method: "POST", body: { order_sn_list: chunk } });
-    const list = (Array.isArray(r) ? r : Array.isArray((r as { response?: unknown }).response) ? (r as { response: unknown[] }).response : []) as Record<string, unknown>[];
+  const doChunk = async (chunk: string[]): Promise<number> => {
+    const diag = deps.diag;
+    let list: Record<string, unknown>[] = [];
+    if (!diag?.single) {
+      const r = await call<unknown>("/api/v2/payment/get_escrow_detail_batch", deps, { method: "POST", body: { order_sn_list: chunk } });
+      list = (Array.isArray(r) ? r : ["response", "escrow_detail_list", "escrow_list", "list", "result_list"].map((k) => (r as Record<string, unknown>)[k]).find((v) => Array.isArray(v)) ?? []) as Record<string, unknown>[];
+      if (!list.map(mapShopeeEscrow).some(Boolean) && diag && !diag.note) {
+        // Shopee answered but nothing could be read: say what the answer looks like (field names only), so it can be fixed.
+        const first = (list[0] ?? (Array.isArray(r) ? undefined : r)) as Record<string, unknown> | undefined;
+        const detail = (first?.escrow_detail ?? first) as Record<string, unknown> | undefined;
+        diag.note = `Shopee's payment answer could not be read: ${list.length} entr${list.length === 1 ? "y" : "ies"}; fields ${Object.keys(first ?? {}).slice(0, 12).join(", ") || "none"}${detail && detail !== first ? `; inside: ${Object.keys(detail).slice(0, 12).join(", ")}` : ""}. Trying one order at a time.`;
+        // Try the single-order call on a few orders; if it gives figures, use it for the rest.
+        for (const sn of chunk.slice(0, 3)) {
+          try {
+            const one = await call<Record<string, unknown>>("/api/v2/payment/get_escrow_detail", deps, { query: { order_sn: sn } });
+            if (mapShopeeEscrow({ escrow_detail: { order_sn: sn, ...one } })) { diag.single = true; diag.note += " That works, so it is used."; break; }
+          } catch { /* try the next one */ }
+        }
+      }
+    }
+    if (diag?.single) {
+      const parts = await mapLimit(chunk, 5, async (sn) => {
+        try { const one = await call<Record<string, unknown>>("/api/v2/payment/get_escrow_detail", deps, { query: { order_sn: sn } }); return { escrow_detail: { order_sn: sn, ...(one.escrow_detail ? (one.escrow_detail as Record<string, unknown>) : one) } } as Record<string, unknown>; }
+        catch { return null; }
+      });
+      list = parts.filter((x): x is Record<string, unknown> => !!x);
+    }
     const rows = list.map(mapShopeeEscrow).filter((x): x is NonNullable<typeof x> => !!x);
     const got = new Set(rows.map((x) => x.orderSn));
+    const unreadable = !rows.length && list.length > 0;
     await pg.begin(async (tx) => {
       for (const e of rows) {
         await tx`insert into shopee_escrow (order_sn, escrow_amount, original_price, seller_discount, voucher_seller, commission_fee, service_fee, transaction_fee, ams_fee, actual_shipping_fee, buyer_shipping_fee, shipping_rebate, reverse_shipping_fee, refund_amount, compensation, raw, synced_at)
@@ -129,11 +154,15 @@ async function saveEscrow(sns: string[], deps: ShopeeSyncDeps): Promise<number> 
             compensation = excluded.compensation, raw = excluded.raw, synced_at = now()`;
       }
       // An order Shopee has no figures for yet is not asked again for a few hours: remember we looked.
-      for (const sn of chunk) if (!got.has(sn)) await tx`update shopee_orders set escrow_checked_at = now() where order_sn = ${sn}`;
+      // (not when the answer itself could not be read: then they must be asked again)
+      if (!unreadable) for (const sn of chunk) if (!got.has(sn)) await tx`update shopee_orders set escrow_checked_at = now() where order_sn = ${sn}`;
     });
     return rows.length;
-  });
-  return counts.reduce((x, y) => x + y, 0);
+  };
+  // The first batch goes alone: if Shopee's answer has to be read another way, the rest then use that way.
+  const first = chunks.length ? await doChunk(chunks[0]) : 0;
+  const rest = await mapLimit(chunks.slice(1), deps.concurrency ?? 3, doChunk);
+  return rest.reduce((x, y) => x + y, first);
 }
 
 // ───────── The other datasets ─────────
@@ -207,6 +236,7 @@ async function runEscrow(ctx: Ctx): Promise<number> {
     n += got; await progress(ctx, got);
   }
   ctx.res.escrow += n;
+  if (ctx.deps.diag?.note) ctx.res.note = ctx.deps.diag.note;
   await saveState(SHOPEE_DATASETS.escrow, { ok: true, watermark: new Date(ctx.now * 1000), records: await count("shopee_escrow") });
   return n;
 }
@@ -316,7 +346,7 @@ export async function runShopeeSync(deps: ShopeeSyncDeps & { historyDays?: numbe
   if (!info.connected) return fail("Shopee is not connected yet.");
   running = true;
   const res: ShopeeSyncResult = { ok: true, orders: 0, escrow: 0, windows: 0, error: null, note: null, datasets: [] };
-  const ctx: Ctx = { runId: null, deps: { ...deps, cfg }, now: deps.nowSec ?? Math.floor(Date.now() / 1000), started: Date.now(), budget: deps.budgetMs ?? 25 * 60_000, historyDays: deps.historyDays, res, shopId: info.shopIds[0] ?? null, force: !!deps.force };
+  const ctx: Ctx = { runId: null, deps: { ...deps, cfg, diag: { note: null, single: false } }, now: deps.nowSec ?? Math.floor(Date.now() / 1000), started: Date.now(), budget: deps.budgetMs ?? 25 * 60_000, historyDays: deps.historyDays, res, shopId: info.shopIds[0] ?? null, force: !!deps.force };
   try {
     for (const d of SHOPEE_DATASET_LIST) {
       if (deps.only && !deps.only.includes(d.key)) continue;

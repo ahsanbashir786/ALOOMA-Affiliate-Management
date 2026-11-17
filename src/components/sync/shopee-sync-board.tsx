@@ -136,7 +136,7 @@ export function ShopeeSyncBoard({ initial, connected, configured, canAdmin, canR
               </div>
               {d.oldest && <p className="mt-0.5 text-[12px] text-ink-3">{span(d.oldest, d.newest)}</p>}
               {d.lastError && <p role="alert" className="mt-1 line-clamp-4 text-[12px] leading-snug break-words text-critical">{d.lastError}</p>}
-              {!d.lastError && d.note && <p className="mt-1 text-[12px] font-medium text-warn" title={d.note}>Note (hover to read)</p>}
+              {!d.lastError && d.note && <p className="mt-1 line-clamp-5 text-[12px] leading-snug break-words text-warn" title={d.note} data-testid={`shopee-note-${d.key}`}>{d.note}</p>}
               {d.key === "stock" && d.records > 0 && <p className="mt-1 text-[12px] text-ink-3">Shown in Stock And Costing</p>}
             </article>
           );
