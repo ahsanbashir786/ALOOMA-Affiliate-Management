@@ -29,15 +29,21 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
   // Everything Shopee itemised for this order's payment (vouchers, coins, tax, protection fees ...), as it sent it: a number that is not zero gets a line.
   const income = (typeof sx?.raw === "string" ? JSON.parse(sx.raw) : sx?.raw)?.order_income as Record<string, unknown> | undefined;
   const itemised = Object.entries(income ?? {}).filter(([, v]) => typeof v === "number" && v !== 0).map(([k, v]) => ({ label: titleCase(k.replace(/_/g, " ")), v: v as number }));
+  // The "other fees" of a Shopee order, split into what Shopee itemised. What is left over is shown as one line so the parts always add up.
+  const OTHER: [string, string][] = [["service_fee", "Service Fee"], ["seller_transaction_fee", "Transaction Fee"], ["credit_card_transaction_fee", "Credit Card Fee"], ["voucher_from_seller", "Voucher From You"], ["seller_coin_cash_back", "Coins You Paid"],
+    ["escrow_tax", "Tax"], ["final_product_vat_tax", "Product VAT"], ["delivery_seller_protection_fee_premium_amount", "Delivery Protection Fee"], ["shipping_seller_protection_fee_amount", "Shipping Protection Fee"], ["campaign_fee", "Campaign Fee"]];
+  const otherParts: { label: string; v: number }[] = [];
+  for (const [k, label] of OTHER) { const v = Number(income?.[k]); if (Number.isFinite(v) && v !== 0) otherParts.push({ label, v: -Math.abs(v) }); }
+  if (otherParts.length) { const rest = r.otherFees - otherParts.reduce((a, b) => a + b.v, 0); if (Math.abs(rest) >= 0.005) otherParts.push({ label: "Other, Not Itemised By Shopee", v: rest }); }
   const ms = MONEY_STATE[r.money];
   const plat = r.platform === "shopee" ? "Shopee" : "TikTok";
-  const steps: { label: string; note?: string; v: number; strong?: boolean }[] = r.money === "none" && !r.isSample ? [] : [
+  const steps: { label: string; note?: string; v: number; strong?: boolean; subs?: { label: string; v: number }[] }[] = r.money === "none" && !r.isSample ? [] : [
     { label: "Sales", v: r.sales },
     { label: `${plat} Commission`, v: r.commission },
     { label: "Affiliate Commission", v: r.affiliate },
     ...(r.platform === "tiktok" ? [{ label: "Ads Top-Up Taken By TikTok", note: "GMV Max ad fee deducted from this order's money. Not the real ad spend.", v: r.adFee }] : []),
     { label: "Seller Shipping Fee Deducted", note: r.shippingActual ? `Shipping ${rm(r.shippingActual)}, buyer paid ${rm(r.shippingBuyer)}, platform discount ${rm(r.shippingDiscount)}` : undefined, v: r.shipping },
-    { label: "Transaction Fee, Service Fee, Tax And Other", v: r.otherFees },
+    { label: isShopee ? "Other Fees And Vouchers" : "Transaction Fee, Service Fee, Tax And Other", v: r.otherFees, subs: isShopee ? otherParts : undefined },
     { label: "Reimbursements", v: r.reimbursement },
     { label: "Deductions (Adjustments)", v: r.deduction },
     { label: `Settlement From ${plat}`, v: r.settlement, strong: true },
@@ -51,12 +57,15 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
           <CardHeader title="Where The Money Went" description={r.money === "estimate" ? `${plat} has not paid this order yet. These are ${plat}'s estimates.` : r.money === "none" ? "TikTok has not given money data for this order yet." : undefined} />
           <table className="w-full border-collapse" data-testid="order-waterfall">
             <tbody>
-              {steps.map((s) => (
+              {steps.flatMap((s) => [
                 <tr key={s.label} className={s.strong ? "bg-surface-2" : ""}>
                   <Td className={s.strong ? "font-semibold" : ""}>{s.label}{s.note && <span className="block text-[12px] font-normal text-ink-3">{s.note}</span>}</Td>
                   <Td align="right" className={s.strong ? "font-semibold" : s.v === 0 ? "text-ink-3" : ""}>{rm(s.v)}</Td>
-                </tr>
-              ))}
+                </tr>,
+                ...(s.subs ?? []).map((x) => (
+                  <tr key={s.label + x.label} data-testid="other-part"><Td className="pl-8 text-[13px] text-ink-2">{x.label}</Td><Td align="right" className="text-[13px] text-ink-2">{rm(x.v)}</Td></tr>
+                )),
+              ])}
               <tr><Td>Product Cost <span className="text-[12px] text-ink-3">(First In, First Out{r.returnedPieces ? `, ${r.returnedPieces} returned` : ""})</span></Td><Td align="right">{rm(-r.cost)}</Td></tr>
               <tr><Td>Fulfilment</Td><Td align="right">{rm(-r.fulfilment)}</Td></tr>
               <tr className="bg-surface-2"><Td className="font-semibold">Profit Before Ads <span className="block text-[12px] font-normal text-ink-3">Settlement with the ads top-up added back, less cost and fulfilment</span></Td><Td align="right" className={`font-semibold ${tone(r.profitBeforeAds)}`}>{rm(r.profitBeforeAds)}</Td></tr>

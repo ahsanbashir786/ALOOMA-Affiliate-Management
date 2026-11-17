@@ -82,6 +82,8 @@ async function login(p, email) {
   await p.goto(BASE + "/profit/order/2611BBBB"); await p.waitForSelector("[data-testid=order-waterfall]");
   const wf = (await p.getByTestId("order-waterfall").innerText()).replace(/\s+/g, " ");
   ok(/Shopee Commission/.test(wf) && /Settlement From Shopee/.test(wf) && !/Ads Top-Up/.test(wf), "profit: the order page speaks of Shopee");
+  const parts = (await p.getByTestId("other-part").allInnerTexts()).map((t) => t.replace(/\s+/g, " "));
+  ok(parts.some((t) => /Service Fee/.test(t) && /-RM 6\.00/.test(t)) && parts.some((t) => /Transaction Fee/.test(t) && /-RM 3\.00/.test(t)), "profit: the other fees are broken down into service fee and transaction fee (" + parts.join(" | ") + ")");
   const bd = (await p.getByTestId("shopee-breakdown").innerText()).replace(/\s+/g, " ");
   ok(/Commission Fee/.test(bd) && /Escrow Amount/.test(bd) && /Seller Transaction Fee/.test(bd), "profit: the order page lists every amount Shopee itemised (" + bd.slice(0, 80) + ")");
   ok(/RET1/.test((await p.getByTestId("shopee-returns").innerText())), "profit: the order page lists its return");
