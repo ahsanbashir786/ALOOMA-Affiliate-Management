@@ -1,6 +1,8 @@
 import "server-only";
 import { sql as pg } from "@/db";
 import { ShopeeApiError, shopeeCall, shopeeConfig, shopeeConnectionInfo, type Fetch, type ShopeeConfig } from "./client";
+import { clearProfit } from "@/lib/profit/data";
+import { clearCosting } from "@/lib/stock/costing";
 import { mapShopeeAdsDay, mapShopeeEscrow, mapShopeeOrder, mapShopeeRelease, mapShopeeReturn, mapShopeeStock, mapShopeeWallet } from "./map";
 
 // Shopee orders and payments into our own tables. Orders are read by the time they were last changed, in windows of 14 days
@@ -357,6 +359,7 @@ export async function runShopeeSync(deps: ShopeeSyncDeps & { historyDays?: numbe
         const rows = await RUNNERS[d.key](ctx);
         res.datasets.push({ key: d.key, label: d.label, ok: true, rows, error: null });
         await pg`update shopee_sync_runs set status = 'ok', finished_at = now(), rows_changed = ${rows}, error = ${res.note} where id = ${ctx.runId}`;
+        if (rows) { clearCosting(); clearProfit(); } // Profit And Loss shows what has arrived so far, not what was there when the sync began
       } catch (e) {
         const msg = friendly(e, d.label);
         res.datasets.push({ key: d.key, label: d.label, ok: false, rows: 0, error: msg });
