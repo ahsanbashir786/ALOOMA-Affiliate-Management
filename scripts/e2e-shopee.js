@@ -58,7 +58,7 @@ async function login(p, email) {
   ok(/in RM 160/.test(await p.getByTestId("shopee-wallet-summary").innerText()) && /out RM 100/.test(await p.getByTestId("shopee-wallet-summary").innerText()), "sync: the wallet card sums money in (RM 160) and out (RM 100)");
   await p.getByTestId("shopee-access").click(); await p.getByTestId("shopee-access-result").waitFor({ timeout: 60000 });
   const acc = (await p.getByTestId("shopee-access-result").innerText()).replace(/\s+/g, " ");
-  ok(/Affiliate \(AMS\)/.test(acc) && /No permission/.test(acc) && /1 of 7 parts are not open/.test(acc), "sync: Check What Shopee Allows says affiliate is not open and the other six are (" + acc.slice(0, 90) + ")");
+  ok(/Every part answered/.test(acc) && /Wallet/.test(acc) && /Shopee Ads/.test(acc) && /Returns/.test(acc) && !/Affiliate/.test(acc), "sync: Check What Shopee Allows says every part answered (" + acc.slice(0, 80) + ")");
   const noBuyer = await sql`select count(*)::int as n from shopee_wallet_tx where description ilike '%secret-buyer%'`;
   ok(noBuyer[0].n === 0, "privacy: no buyer name is kept");
   await p.goto(BASE + "/profit?range=lifetime"); await p.waitForSelector("[data-testid=profit-table]");

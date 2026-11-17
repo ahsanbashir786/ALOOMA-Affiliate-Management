@@ -34,7 +34,6 @@ const dmy = (sec: number) => { const d = new Date((sec + 8 * 3600) * 1000); retu
 /**
  * Which parts of the Shopee API this app may use: one small read-only call for each. A part Shopee refuses shows Shopee's own words,
  * so the owner knows which API group to add in the Open Platform Console. Only field names are shown, never details.
- * Affiliate (AMS) is asked for too; Shopee's affiliate programme is often a separate access, so a "no" there is normal.
  */
 export async function runShopeeAccessChecks(f: Fetch = fetch): Promise<{ at: string; checks: ShopeeCheck[] }> {
   const cfg = shopeeConfig();
@@ -53,6 +52,5 @@ export async function runShopeeAccessChecks(f: Fetch = fetch): Promise<{ at: str
   await run("Shopee Ads", "/api/v2/ads/get_all_cpc_ads_daily_performance", { start_date: dmy(week), end_date: dmy(now - 86400) }, ["response"]);
   await run("Wallet", "/api/v2/payment/get_wallet_transaction_list", { create_time_from: week, create_time_to: now, page_size: 1, page_no: 0 }, ["transaction_list"]);
   await run("Stock (products, FBS)", "/api/v2/product/get_item_list", { offset: 0, page_size: 1, item_status: "NORMAL" }, ["item"]);
-  await run("Affiliate (AMS)", "/api/v2/ams/get_shop_performance", { period_type: "Last7d", start_date: dmy(week), end_date: dmy(now - 86400) }, ["response"]);
   return { at: new Date().toISOString(), checks };
 }

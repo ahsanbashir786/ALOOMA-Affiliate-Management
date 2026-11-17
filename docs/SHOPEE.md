@@ -44,7 +44,7 @@ The connection (Settings) and the reading (Data Sync) are separate: Settings onl
 | Shopee Ads | `ads/get_all_cpc_ads_daily_performance` | Real Shopee ad spend per day, in Profit And Loss |
 | Wallet | `payment/get_wallet_transaction_list` | Money in and withdrawals (last-30-days summary) |
 | Stock (FBS) | `product/get_item_list`, `get_item_base_info`, `get_model_list` | Stock in Shopee's warehouse per SKU, in Stock And Costing |
-| Affiliate (AMS) | probe only (`ams/…`) | Shopee's affiliate programme is often a separate access; the Shopee AMS commission already comes in each order's payment (`ams_commission_fee`) |
+| Affiliate (AMS) | not available | Shopee answers `error_api_permission` ("This app type has no permission to this API") for the Seller In-House app type. The Shopee affiliate commission already comes in each order's payment (`ams_commission_fee`), so profit is unaffected |
 
 **Important:** these calls follow Shopee's v2 documentation but have not yet been run against your live shop. If a part says *"Shopee has not given this app access to …"*, add that API group to the app in the Open Platform Console and press Reconnect. If a part fails with another message, send it: each part is separate, so the others still work.
 
