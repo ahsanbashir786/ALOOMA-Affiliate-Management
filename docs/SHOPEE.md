@@ -31,6 +31,23 @@ Settings → Connection → **Shopee**. Connects the shop, reads its **orders** 
 
 `src/lib/shopee/{client,checks}.ts` · `src/app/api/shopee/{connect,callback,test}/route.ts` · `src/components/settings/shopee-card.tsx` · `scripts/test-shopee.ts` (27 checks) · `scripts/e2e-shopee.js` with `scripts/fake-shopee-api.js` (a pretend Shopee)
 
+## What is read (Data Sync → Shopee)
+
+The connection (Settings) and the reading (Data Sync) are separate: Settings only connects; **Data Sync → Shopee** shows every part, when it last ran, and any error, with **Sync Now**, **Load History** and **Check What Shopee Allows**.
+
+| Part | Shopee call | Used for |
+|---|---|---|
+| Orders | `order/get_order_list`, `get_order_detail` | Sales, SKUs, FBS flag |
+| Payments | `payment/get_escrow_detail_batch` | Fees, shipping, payout per order |
+| Payment Release Dates | `payment/get_escrow_list` | The day the money was released (an order is Paid from then) |
+| Returns | `returns/get_return_list` | Accepted returns put the pieces back into stock; refunds shown as deductions |
+| Shopee Ads | `ads/get_all_cpc_ads_daily_performance` | Real Shopee ad spend per day, in Profit And Loss |
+| Wallet | `payment/get_wallet_transaction_list` | Money in and withdrawals (last-30-days summary) |
+| Stock (FBS) | `product/get_item_list`, `get_item_base_info`, `get_model_list` | Stock in Shopee's warehouse per SKU, in Stock And Costing |
+| Affiliate (AMS) | probe only (`ams/…`) | Shopee's affiliate programme is often a separate access; the Shopee AMS commission already comes in each order's payment (`ams_commission_fee`) |
+
+**Important:** these calls follow Shopee's v2 documentation but have not yet been run against your live shop. If a part says *"Shopee has not given this app access to …"*, add that API group to the app in the Open Platform Console and press Reconnect. If a part fails with another message, send it: each part is separate, so the others still work.
+
 ## Orders and payments (the sync)
 
 | What | How |
@@ -48,7 +65,8 @@ Settings → Connection → **Shopee**. Connects the shop, reads its **orders** 
 - **Cost** is FIFO from the same stock file, exactly like TikTok. A Shopee item counts as its quantity; the FBS prefix is ignored. Unpaid and cancelled orders are left out.
 - **Money**: sales = original price − seller discount; commission and Shopee ad-commission (AMS) are negative; **shipping deducted** = actual shipping − what the buyer paid − Shopee's rebate; **settlement** = Shopee's escrow amount; other fees (service, transaction fee, vouchers) are what is left, so the columns always add up. An order is **Paid** once it is *Completed* (that is when Shopee releases the money), otherwise **Estimate**.
 - **Fulfilment cost**: orders Shopee packs itself (FBS) have none; the 3PL invoice is spread over the other pieces.
-- **Not yet**: Shopee returns (restock) and Shopee ad spend. Real ad spend is TikTok GMV Max only for now.
+- **Returns** (accepted, closed or processing) put the pieces back into stock at the cost they left with. A refund without the goods coming back would restock wrongly; check the first live returns.
+- **Real ad spend** is TikTok GMV Max plus Shopee Ads; each channel's line has its own.
 
 ### Going live
 
@@ -56,4 +74,4 @@ Settings → Connection → **Shopee**. Connects the shop, reads its **orders** 
 2. In Settings → Connection → Shopee press **Connect Shopee** (the sandbox login is not used for live) and sign in with the real seller account.
 3. Press **Sync Now**. The first sync reads 180 days; use **Load History** for more.
 
-`src/lib/shopee/{map,sync}.ts` · `scripts/test-shopee-sync.ts` (29 checks) · `scripts/e2e-shopee.js` (27, with `scripts/fake-shopee-api.js`)
+`src/lib/shopee/{map,sync,checks}.ts` · `src/components/sync/shopee-sync-board.tsx` · `migrations/0039_shopee_orders.sql`, `0040_shopee_more.sql` · `scripts/test-shopee-sync.ts` (43 checks) · `scripts/e2e-shopee.js` (33, with `scripts/fake-shopee-api.js`)

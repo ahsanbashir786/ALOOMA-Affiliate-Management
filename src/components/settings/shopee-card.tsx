@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Copy, Loader2, Plug, RefreshCw, ShieldCheck, Unplug, XCircle } from "lucide-react";
-import { disconnectShopee, getShopeeSyncView, startShopeeSync, type ShopeeSyncView } from "@/app/actions/shopee";
+import { disconnectShopee } from "@/app/actions/shopee";
 import { cn } from "@/lib/utils";
 import { InfoTip } from "@/components/ui/info-tip";
 
@@ -10,7 +10,6 @@ type Check = { name: string; ok: boolean; message: string; count: number | null;
 export type ShopeeView = {
   configured: boolean; connected: boolean; env: "sandbox" | "live"; shopName: string | null; shopId: string | null; region: string | null;
   connectedLabel: string | null; accessLabel: string | null; refreshLabel: string | null; redirectUri: string; redirectDomain: string;
-  sync: ShopeeSyncView | null;
 };
 
 const Code = ({ children }: { children: React.ReactNode }) => <code className="rounded bg-surface px-1.5 py-0.5 text-[12.5px]">{children}</code>;
@@ -46,7 +45,7 @@ export function ShopeeActions({ v }: { v: ShopeeView }) {
             </span>
             <span data-testid="shopee-env" className={cn("rounded-full px-2.5 py-0.5 text-[12.5px] font-semibold", v.env === "live" ? "bg-brand-soft text-brand-strong" : "bg-warn-soft text-warn")}>{v.env === "live" ? "Live" : "Sandbox (Test)"}</span>
           </p>
-          <p className="mt-0.5 text-[13.5px] text-ink-3">{v.connected ? "The system reads this Shopee shop. Its orders and payments go into Profit And Loss next to TikTok." : "Connect once. The login then renews itself."}</p>
+          <p className="mt-0.5 text-[13.5px] text-ink-3">{v.connected ? "The system reads this Shopee shop. Choose what to read and press Sync Now in Data Sync → Shopee." : "Connect once. The login then renews itself."}</p>
         </div>
       </div>
 
@@ -58,8 +57,6 @@ export function ShopeeActions({ v }: { v: ShopeeView }) {
           <div className="rounded-xl border border-line p-3.5"><dt className="text-[12.5px] text-ink-3">Valid until</dt><dd className="mt-0.5 text-[15px] font-semibold text-ink">{v.refreshLabel ?? "–"}<span className="ml-1.5 text-[12.5px] font-normal text-ink-3">extends on use</span></dd></div>
         </dl>
       )}
-
-      {v.connected && v.sync && <ShopeeSyncPanel initial={v.sync} />}
 
       <div className="flex flex-wrap items-center gap-2">
         {v.configured && <a href="/api/shopee/connect" data-testid="shopee-connect" className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-[14px] font-medium text-white hover:bg-brand-strong">{v.connected ? <RefreshCw className="size-4" /> : <Plug className="size-4" />}{v.connected ? "Reconnect" : "Connect Shopee"}</a>}
@@ -129,49 +126,3 @@ export function ShopeeActions({ v }: { v: ShopeeView }) {
   );
 }
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Not yet");
-
-/** Orders and payments: what has been read from Shopee, a Sync Now button, and a way to read further back. */
-export function ShopeeSyncPanel({ initial }: { initial: ShopeeSyncView }) {
-  const [v, setV] = useState(initial);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [days, setDays] = useState("365");
-  const [pending, start] = useTransition();
-  // While a sync runs, look again every 3 seconds.
-  useEffect(() => {
-    if (!v.running) return;
-    const t = setInterval(() => { getShopeeSyncView().then(setV).catch(() => {}); }, 3000);
-    return () => clearInterval(t);
-  }, [v.running]);
-  const run = (d?: number) => start(async () => {
-    setMsg(null);
-    const r = await startShopeeSync(d);
-    if (!r.started) setMsg(r.message);
-    setV(await getShopeeSyncView());
-  });
-  const tile = "rounded-xl border border-line p-3.5";
-  return (
-    <div className="space-y-3" data-testid="shopee-sync">
-      <p className="flex items-center gap-1.5 text-[14.5px] font-semibold text-ink">Orders And Payments
-        <InfoTip>Orders are read every 30 minutes, with the SKU and quantity of each item. Payments are what Shopee pays out for each order and every fee it takes. Both go into Profit And Loss next to TikTok.</InfoTip>
-      </p>
-      <dl className="grid gap-3 sm:grid-cols-4">
-        <div className={tile}><dt className="text-[12.5px] text-ink-3">Orders Read</dt><dd data-testid="shopee-orders-count" className="mt-0.5 text-[15px] font-semibold text-ink">{v.orders.toLocaleString("en-MY")}</dd><dd className="text-[12.5px] text-ink-3">{v.firstOrder ? `${v.firstOrder} to ${v.lastOrder}` : "None yet"}</dd></div>
-        <div className={tile}><dt className="text-[12.5px] text-ink-3">Payments Read</dt><dd className="mt-0.5 text-[15px] font-semibold text-ink">{v.payments.toLocaleString("en-MY")}</dd><dd className="text-[12.5px] text-ink-3">{v.awaiting ? `${v.awaiting.toLocaleString("en-MY")} orders waiting for Shopee` : "Nothing waiting"}</dd></div>
-        <div className={tile}><dt className="text-[12.5px] text-ink-3">Last Orders Sync</dt><dd className="mt-0.5 text-[15px] font-semibold text-ink">{when(v.ordersAt)}</dd></div>
-        <div className={tile}><dt className="text-[12.5px] text-ink-3">Last Payments Sync</dt><dd className="mt-0.5 text-[15px] font-semibold text-ink">{when(v.escrowAt)}</dd></div>
-      </dl>
-      {v.error && <p role="alert" data-testid="shopee-sync-error" className="flex items-start gap-2 rounded-lg bg-critical-soft px-3.5 py-2.5 text-[13.5px] break-words text-critical"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{v.error}</p>}
-      {msg && <p className="text-[13.5px] text-ink-2">{msg}</p>}
-      <div className="flex flex-wrap items-center gap-2">
-        <button data-testid="shopee-sync-now" disabled={pending || v.running} onClick={() => run()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-[14px] font-medium text-white hover:bg-brand-strong disabled:opacity-60">
-          {v.running ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}{v.running ? "Syncing…" : "Sync Now"}
-        </button>
-        <span className="ml-2 flex items-center gap-2 text-[13.5px] text-ink-2">Read back
-          <input value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} inputMode="numeric" aria-label="Days to read back" className="h-9 w-[72px] rounded-md border border-line-strong bg-surface px-2 text-center text-[13.5px]" />days
-          <button data-testid="shopee-sync-older" disabled={pending || v.running || !Number(days)} onClick={() => run(Number(days))} className="inline-flex h-9 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-60">Load History</button>
-        </span>
-      </div>
-    </div>
-  );
-}

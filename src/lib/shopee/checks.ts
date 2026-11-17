@@ -28,3 +28,31 @@ export async function runShopeeChecks(f: Fetch = fetch): Promise<{ at: string; c
   });
   return { at: new Date().toISOString(), checks };
 }
+
+const dmy = (sec: number) => { const d = new Date((sec + 8 * 3600) * 1000); return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`; };
+
+/**
+ * Which parts of the Shopee API this app may use: one small read-only call for each. A part Shopee refuses shows Shopee's own words,
+ * so the owner knows which API group to add in the Open Platform Console. Only field names are shown, never details.
+ * Affiliate (AMS) is asked for too; Shopee's affiliate programme is often a separate access, so a "no" there is normal.
+ */
+export async function runShopeeAccessChecks(f: Fetch = fetch): Promise<{ at: string; checks: ShopeeCheck[] }> {
+  const cfg = shopeeConfig();
+  const checks: ShopeeCheck[] = [];
+  const now = Math.floor(Date.now() / 1000), week = now - 7 * 86400;
+  const run = async (name: string, path: string, query: Record<string, unknown>, listKeys: string[]) => {
+    try {
+      const r = await shopeeCall<unknown>(path, { cfg, f, query });
+      const list = Array.isArray(r) ? r : listKeys.map((k) => (r as Record<string, unknown>)[k]).find((v) => Array.isArray(v)) as unknown[] | undefined;
+      checks.push({ name, ok: true, message: "", count: Array.isArray(list) ? list.length : null, fields: keys(Array.isArray(list) ? list[0] : r), sample: null });
+    } catch (e) { checks.push({ name, ok: false, message: text(e), count: null, fields: null, sample: null }); }
+  };
+  await run("Orders", "/api/v2/order/get_order_list", { time_range_field: "update_time", time_from: week, time_to: now, page_size: 1 }, ["order_list"]);
+  await run("Payments (escrow)", "/api/v2/payment/get_escrow_list", { release_time_from: week, release_time_to: now, page_size: 1, page_no: 0 }, ["escrow_list"]);
+  await run("Returns", "/api/v2/returns/get_return_list", { update_time_from: week, update_time_to: now, page_size: 1, page_no: 0 }, ["return", "return_list"]);
+  await run("Shopee Ads", "/api/v2/ads/get_all_cpc_ads_daily_performance", { start_date: dmy(week), end_date: dmy(now - 86400) }, ["response"]);
+  await run("Wallet", "/api/v2/payment/get_wallet_transaction_list", { create_time_from: week, create_time_to: now, page_size: 1, page_no: 0 }, ["transaction_list"]);
+  await run("Stock (products, FBS)", "/api/v2/product/get_item_list", { offset: 0, page_size: 1, item_status: "NORMAL" }, ["item"]);
+  await run("Affiliate (AMS)", "/api/v2/ams/get_shop_performance", { period_type: "Last7d", start_date: dmy(week), end_date: dmy(now - 86400) }, ["response"]);
+  return { at: new Date().toISOString(), checks };
+}

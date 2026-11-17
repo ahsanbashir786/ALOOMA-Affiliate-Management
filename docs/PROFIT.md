@@ -44,4 +44,4 @@ Each item has a status (To Claim, Claimed, Recovered, Not Claiming) and a note, 
 
 ## Shopee next to TikTok
 
-Orders and payments from Shopee (see `docs/SHOPEE.md`) are in the same list. Use the channel switch for TikTok only, Shopee only, or both; the monthly view has a By Channel table. Shopee ad spend and returns are not included yet.
+Orders and payments from Shopee (see `docs/SHOPEE.md`) are in the same list. The menu has **Profit And Loss → All / TikTok / Shopee**; the monthly view has a By Channel table. Shopee's returns, ad spend, release dates and FBS stock are included.

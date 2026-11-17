@@ -97,6 +97,17 @@ async function loadReturns(bundles: BundleMap, known: Set<string>, orders: Map<s
   const rows = await pg`select order_id, skus, coalesce(updated_at, created_at) as at from tt_returns
     where order_id is not null and coalesce(upper(return_type), '') like '%RETURN%' and coalesce(upper(status), '') !~ '(CANCEL|REJECT|CLOSE)'`;
   const out: Return[] = [];
+  const shopee = await pg`select order_sn, items, coalesce(remote_updated_at, created_at) as at from shopee_returns where status in ('ACCEPTED', 'CLOSED', 'COMPLETED', 'REFUND_PAID', 'PROCESSING')`;
+  for (const r of shopee) {
+    const id = String(r.order_sn);
+    if (!known.has(id) || !r.at) continue;
+    const items = ((typeof r.items === "string" ? JSON.parse(r.items) : r.items) ?? []) as { sku?: string; qty?: number }[];
+    const count = new Map<string, number>();
+    for (const i of items) { const sk = normSku(i.sku); if (sk && i.qty) count.set(sk, (count.get(sk) ?? 0) + Number(i.qty)); }
+    const day = dayKL(r.at as Date);
+    if (count.size) { for (const [sku, qty] of count) for (const p of explode(sku, qty, bundles)) out.push({ ref: id, day, sku: p.sku, qty: p.qty }); }
+    else for (const it of orders.get(id)?.items ?? []) out.push({ ref: id, day, sku: it.sku, qty: it.qty }); // no SKUs given: the whole order came back
+  }
   for (const r of rows) {
     const id = String(r.order_id);
     if (!known.has(id) || !r.at) continue;

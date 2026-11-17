@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { ChevronsLeft, ChevronsRight, Lock, X } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import { NAV, navAllowed, type NavItem } from "./nav";
+import { NAV, navAllowed, type NavChild, type NavItem } from "./nav";
 
 type Props = {
   user: { name: string; email: string; roleName: string; isAdmin: boolean; permissions: PermissionKey[] };
@@ -16,6 +17,26 @@ type Props = {
   onToggleCollapsed: () => void;
 };
 
+/** The small items under a menu item (Profit And Loss: All, TikTok, Shopee). The open one follows ?channel= in the address. */
+function SubMenu({ children, open, onClose }: { children: NavChild[]; open: boolean; onClose: () => void }) {
+  const q = useSearchParams();
+  const channel = open ? (q.get("channel") ?? "") : null;
+  return (
+    <ul className="mt-0.5 mb-1 ml-[22px] space-y-0.5 border-l border-line pl-3" data-testid="submenu">
+      {children.map((c) => {
+        const active = channel === c.channel;
+        return (
+          <li key={c.label}>
+            <Link href={c.href} onClick={onClose} aria-current={active ? "page" : undefined} data-testid={`submenu-${c.label.toLowerCase()}`}
+              className={cn("block rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors", active ? "bg-brand-soft text-brand-strong" : "text-ink-3 hover:bg-surface-2 hover:text-ink")}>
+              {c.label}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapsed }: Props) {
   const pathname = usePathname();
@@ -76,6 +97,9 @@ export function Sidebar({ user, sync, open, onClose, collapsed, onToggleCollapse
                           <span className={cn("flex-1 truncate", rail && "lg:hidden")}>{item.label}</span>
                           {!allowed && <Lock data-testid="nav-lock" aria-label="Locked for your role" className={cn("size-3.5 shrink-0 text-ink-3", rail && "lg:absolute lg:top-1 lg:right-2 lg:size-3")} />}
                         </Link>
+                        {item.children && !rail && (
+                          <Suspense fallback={null}><SubMenu open={active} onClose={onClose}>{item.children}</SubMenu></Suspense>
+                        )}
                       </li>
                     );
                   })}

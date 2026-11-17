@@ -42,6 +42,7 @@ const bell = async (p) => (await p.getByTestId("alert-bell-count").count()) ? Nu
 
   // Clicking the bell clears its number (everything open becomes seen)
   await p.request.post(BASE + "/api/alerts/client-error", { data: { message: "Bell test 777 in the ads screen", stack: "Error: Bell\n at y", page: "/ads" } });
+  await p.goto(BASE + "/settings?tab=alerts"); await p.getByTestId("alerts-check").click(); await p.waitForTimeout(1800);
   await p.goto(BASE + "/stock"); await p.waitForTimeout(800);
   const nb = await bell(p);
   ok(nb >= 1, `bell: a new problem shows on it (${nb})`);

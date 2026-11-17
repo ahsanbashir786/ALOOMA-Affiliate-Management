@@ -1,7 +1,8 @@
 import { Banknote, Boxes, ListChecks, Package, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 
-export type NavItem = { href: string; label: string; icon: LucideIcon; /** The permission that opens this screen. */ perm: PermissionKey; /** A screen with parts under different permissions opens with any of these (Settings: Connection and User Management). */ perms?: PermissionKey[] };
+export type NavChild = { href: string; label: string; /** The value of ?channel= that makes this child the open one (empty = none). */ channel: string };
+export type NavItem = { /** Small items shown under this one. */ children?: NavChild[]; href: string; label: string; icon: LucideIcon; /** The permission that opens this screen. */ perm: PermissionKey; /** A screen with parts under different permissions opens with any of these (Settings: Connection and User Management). */ perms?: PermissionKey[] };
 export type NavGroup = { label: string; items: NavItem[] };
 
 /** The whole menu. Everyone sees every item; a role without the permission gets the Permission Denied page when opening it. */
@@ -21,7 +22,7 @@ export const NAV: NavGroup[] = [
   {
     label: "Profit",
     items: [
-      { href: "/profit", label: "Profit And Loss", icon: Banknote, perm: "profit" },
+      { href: "/profit", label: "Profit And Loss", icon: Banknote, perm: "profit", children: [{ href: "/profit", label: "All", channel: "" }, { href: "/profit?channel=tiktok", label: "TikTok", channel: "tiktok" }, { href: "/profit?channel=shopee", label: "Shopee", channel: "shopee" }] },
       { href: "/stock", label: "Stock And Costing", icon: Boxes, perm: "stock" },
     ],
   },

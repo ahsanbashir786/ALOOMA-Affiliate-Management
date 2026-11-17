@@ -968,5 +968,55 @@ export const shopeeEscrow = pgTable("shopee_escrow", {
   refundAmount: numeric("refund_amount", { precision: 14, scale: 2 }),
   compensation: numeric("compensation", { precision: 14, scale: 2 }),
   raw: jsonb("raw"),
+  releasedAt: tz("released_at"),
+  payoutAmount: numeric("payout_amount", { precision: 14, scale: 2 }),
   syncedAt: tz("synced_at").notNull().defaultNow(),
 });
+
+// More Shopee data (migrations/0040_shopee_more.sql)
+export const shopeeReturns = pgTable("shopee_returns", {
+  returnSn: text("return_sn").primaryKey(),
+  orderSn: text("order_sn").notNull(),
+  status: text("status"),
+  reason: text("reason"),
+  createdAt: tz("created_at"),
+  remoteUpdatedAt: tz("remote_updated_at"),
+  refundAmount: numeric("refund_amount", { precision: 14, scale: 2 }),
+  currency: text("currency"),
+  items: jsonb("items").notNull().default([]),
+  pieces: integer("pieces").notNull().default(0),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [index("shopee_returns_order").on(t.orderSn)]);
+export const shopeeAdsDaily = pgTable("shopee_ads_daily", {
+  day: date("day").primaryKey(),
+  impressions: bigint("impressions", { mode: "number" }),
+  clicks: bigint("clicks", { mode: "number" }),
+  expense: numeric("expense", { precision: 14, scale: 2 }).notNull().default("0"),
+  orders: integer("orders"),
+  gmv: numeric("gmv", { precision: 14, scale: 2 }),
+  raw: jsonb("raw"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});
+export const shopeeWalletTx = pgTable("shopee_wallet_tx", {
+  txKey: text("tx_key").primaryKey(),
+  createdAt: tz("created_at").notNull(),
+  transactionType: text("transaction_type"),
+  moneyFlow: text("money_flow"),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  balance: numeric("balance", { precision: 14, scale: 2 }),
+  status: text("status"),
+  orderSn: text("order_sn"),
+  withdrawalId: text("withdrawal_id"),
+  description: text("description"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [index("shopee_wallet_tx_created").on(t.createdAt)]);
+export const shopeeStock = pgTable("shopee_stock", {
+  itemId: bigint("item_id", { mode: "number" }).notNull(),
+  modelId: bigint("model_id", { mode: "number" }).notNull().default(0),
+  sku: text("sku"),
+  name: text("name"),
+  sellerStock: integer("seller_stock").notNull().default(0),
+  shopeeStock: integer("shopee_stock").notNull().default(0),
+  reserved: integer("reserved").notNull().default(0),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.itemId, t.modelId] }), index("shopee_stock_sku").on(t.sku)]);

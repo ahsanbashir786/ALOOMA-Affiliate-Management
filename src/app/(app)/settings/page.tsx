@@ -16,7 +16,6 @@ import { AlertsPanel } from "@/components/settings/alerts-panel";
 import { StoragePanel } from "@/components/settings/storage-panel";
 import { ShopeeActions } from "@/components/settings/shopee-card";
 import { shopeeConfig, shopeeConnectionInfo } from "@/lib/shopee/client";
-import { getShopeeSyncView } from "@/app/actions/shopee";
 import { publicUrl } from "@/lib/public-url";
 import { BoostWriteCard } from "@/components/settings/boost-write-card";
 import { getBoostWriteSettings, recentBoostActions } from "@/lib/tiktok-ads/boost-write";
@@ -81,7 +80,6 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
     const adsMsg = ({ connected: "Connected to TikTok Ads.", denied: "TikTok did not approve the connection.", state: "The connection check failed (security code did not match). Please try Connect again.", missing: "The TikTok Ads app ID or secret is missing on the server.", error: `TikTok Ads connection failed: ${one(sp.why) ?? "unknown error"}` } as Record<string, string>)[one(sp.ads) ?? ""];
     const shopee = await shopeeConnectionInfo();
     const shopeeCfg = shopeeConfig();
-    const shopeeSync = shopee.connected ? await getShopeeSyncView() : null;
     const shopeeMsg = ({ connected: "Connected to Shopee.", denied: "Shopee did not send the approval. Please try Connect again.", state: "The connection check failed (it did not start from this browser). Please try Connect again.", missing: "The Shopee partner ID or key is missing on the server.", error: `Shopee connection failed: ${one(sp.why) ?? "unknown error"}` } as Record<string, string>)[one(sp.shopee) ?? ""];
     const shopeeRedirect = publicUrl("/api/shopee/callback", new Request(`${hdr.get("x-forwarded-proto") ?? "http"}://${hdr.get("x-forwarded-host") ?? hdr.get("host") ?? "localhost:3000"}/`, { headers: hdr })).toString();
     const origin = `${hdr.get("x-forwarded-proto") ?? "http"}://${hdr.get("host") ?? "localhost:3000"}/`;
@@ -108,9 +106,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           <>
             {shopeeMsg && <p role="status" className="rounded-lg border border-line-strong bg-surface-2 px-4 py-3 text-[14px] text-ink" data-testid="shopee-msg">{shopeeMsg}</p>}
             <Card>
-              <CardHeader title="Shopee connection" description="Read-only access to your Shopee shop through the Shopee Open Platform. Orders and payments sync into Profit And Loss." />
+              <CardHeader title="Shopee connection" description="Read-only access to your Shopee shop through the Shopee Open Platform. What is read, and when, is in Data Sync → Shopee." />
               <div className="border-t border-line p-5">
-                <ShopeeActions v={{ configured: !!shopeeCfg, connected: shopee.connected, env: shopeeCfg?.env ?? "sandbox", shopName: shopee.shopName, shopId: shopee.shopIds[0] ?? null, region: shopee.region, connectedLabel: shopee.connectedAt ? fmtDayLabel(dayKL(shopee.connectedAt)) : null, accessLabel: shopee.accessExpiresAt ? fmtDayLabel(dayKL(new Date(shopee.accessExpiresAt * 1000))) : null, refreshLabel: shopee.refreshExpiresAt ? fmtDayLabel(dayKL(new Date(shopee.refreshExpiresAt * 1000))) : null, redirectUri: shopeeRedirect, redirectDomain: shopeeRedirect.replace(/\/api\/shopee\/callback$/, "") , sync: shopeeSync}} />
+                <ShopeeActions v={{ configured: !!shopeeCfg, connected: shopee.connected, env: shopeeCfg?.env ?? "sandbox", shopName: shopee.shopName, shopId: shopee.shopIds[0] ?? null, region: shopee.region, connectedLabel: shopee.connectedAt ? fmtDayLabel(dayKL(shopee.connectedAt)) : null, accessLabel: shopee.accessExpiresAt ? fmtDayLabel(dayKL(new Date(shopee.accessExpiresAt * 1000))) : null, refreshLabel: shopee.refreshExpiresAt ? fmtDayLabel(dayKL(new Date(shopee.refreshExpiresAt * 1000))) : null, redirectUri: shopeeRedirect, redirectDomain: shopeeRedirect.replace(/\/api\/shopee\/callback$/, "") }} />
               </div>
             </Card>
           </>

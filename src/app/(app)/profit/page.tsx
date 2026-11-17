@@ -39,7 +39,6 @@ export default async function ProfitPage({ searchParams }: PageProps<"/profit">)
   const all = await loadProfit();
   const channel = parseChannel(one(sp.channel));
   const data = forChannel(all, channel);
-  const hasShopee = all.rows.some((r) => r.platform === "shopee");
   const chName = channel === "all" ? "The Platform" : channel === "tiktok" ? "TikTok" : "Shopee";
   // The monthly view starts with every month; the order list starts with the current month.
   const period = resolvePeriod(one(sp.range), one(sp.from), one(sp.to), tab === "monthly" ? "lifetime" : "this_month");
@@ -47,12 +46,9 @@ export default async function ProfitPage({ searchParams }: PageProps<"/profit">)
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Profit And Loss" description={<span data-testid="cost-start">What TikTok paid on every order, what the pieces cost, and what is left. Orders are counted in the month they were sold.{data.costStart ? ` Orders and ad spend from ${data.costStart} onward are counted; before that there are no stock records to work out a cost.` : ""}</span>} actions={tab === "orders" || tab === "monthly" ? <RangePicker today={todayKL()} rangeKey={period.key} from={period.from} to={period.to} label={period.label} compare={false} /> : undefined} />
+      <PageHeader title={channel === "all" ? "Profit And Loss" : `Profit And Loss · ${chName}`} description={<span data-testid="cost-start">What TikTok paid on every order, what the pieces cost, and what is left. Orders are counted in the month they were sold.{data.costStart ? ` Orders and ad spend from ${data.costStart} onward are counted; before that there are no stock records to work out a cost.` : ""}</span>} actions={tab === "orders" || tab === "monthly" ? <RangePicker today={todayKL()} rangeKey={period.key} from={period.from} to={period.to} label={period.label} compare={false} /> : undefined} />
       {data.startWarning && <Card className="flex items-start gap-2 bg-warn-soft px-4 py-3 text-[13.5px]" data-testid="start-warning"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" /><span>{data.startWarning} <Link href="/stock?tab=import" className="font-medium text-brand hover:underline">Open Import Files</Link></span></Card>}
       <TabLinks label="Profit sections" items={TABS.map((t) => ({ href: href("/profit", { tab: t.key === "orders" ? undefined : t.key, ...(t.key === "orders" || t.key === "monthly" ? keep : {}) }), label: t.label, icon: t.icon, active: tab === t.key, testId: `profit-tab-${t.key}` }))} />
-      {(tab === "orders" || tab === "monthly") && hasShopee && (
-        <TabLinks label="Channel" size="sm" items={CHANNELS.map((c) => ({ href: href("/profit", { tab: tab === "orders" ? undefined : tab, range: one(sp.range), from: one(sp.from), to: one(sp.to), channel: c.key === "all" ? undefined : c.key }), label: c.label, active: channel === c.key, testId: `channel-${c.key}` }))} />
-      )}
       {data.rows.length === 0 && tab !== "costs" ? (
         <Card><EmptyState icon={<Banknote className="size-5" />} title="No TikTok orders yet" description="Run a sync in Data Sync so the orders and TikTok's finance records are here." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
       ) : tab === "orders" ? <Orders data={data} period={period} sp={sp} channel={channel} chName={chName} />
@@ -63,6 +59,11 @@ export default async function ProfitPage({ searchParams }: PageProps<"/profit">)
   );
 }
 
+function adSpendOf(days: Map<string, number>, period: Period): number {
+  let s = 0;
+  for (const [d, v] of days) if (inPeriod(d, period)) s += v;
+  return s;
+}
 function adSpendIn(data: ProfitData, period: Period): number {
   let s = 0;
   for (const [d, v] of data.adSpendDays) if (inPeriod(d, period)) s += v;
@@ -138,7 +139,7 @@ function ByChannel({ lines }: { lines: ReturnType<typeof channelLines> }) {
   const sales = sum("sales"), net = sum("net");
   return (
     <Card data-testid="by-channel">
-      <CardHeader title="By Channel" description="TikTok and Shopee side by side for the period, and both together. Real ad spend is TikTok GMV Max only; Shopee ads are not connected yet." />
+      <CardHeader title="By Channel" description="TikTok and Shopee side by side for the period, and both together. Real ad spend is TikTok GMV Max and Shopee Ads." />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[820px] border-collapse">
           <thead><tr><Th>Channel</Th><Th align="right">Orders</Th><Th align="right">Sales</Th><Th align="right">Paid By Platform</Th><Th align="right">Product Cost</Th><Th align="right">Fulfilment</Th><Th align="right">Profit Before Ads</Th><Th align="right">Real Ad Spend</Th><Th align="right">Net Profit</Th><Th align="right">Margin</Th></tr></thead>
@@ -199,7 +200,7 @@ function Monthly({ data, all: everything, period, channel, chName }: { data: Pro
         <StatTile icon={TrendingUp} label="Real Ad Spend" value={rm(total.adSpend, 0)} tone="warn" />
         <StatTile icon={Banknote} label="Net Profit" value={<span className={tone(total.net)}>{rm(total.net, 0)}</span>} note={total.margin != null ? `${(total.margin * 100).toFixed(1)}% of sales` : undefined} tone={total.net < 0 ? "critical" : "good"} />
       </div>
-      {everything.rows.some((r) => r.platform === "shopee") && channel === "all" && <ByChannel lines={channelLines(everything, (d) => inPeriod(d, period), (d) => adSpendIn(d, period))} />}
+      {everything.rows.some((r) => r.platform === "shopee") && channel === "all" && <ByChannel lines={channelLines(everything, (d) => inPeriod(d, period), (days) => adSpendOf(days, period))} />}
       <Card><CardHeader title="Net Profit By Month" description="After product cost, fulfilment and the real ad spend." /><MonthlyChart data={chart} /></Card>
       <Card>
         <CardHeader title="Monthly Profit And Loss" description="Months with unpaid orders use the platform's estimate, shown in the Estimate column. Those numbers become exact when the platform pays." />

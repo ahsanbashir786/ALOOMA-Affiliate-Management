@@ -38,11 +38,11 @@ export function sumMonths(ms: MonthRow[]): MonthRow {
 
 /** One line per channel for a period, and the total: the "separately and together" view. */
 export type ChannelLine = { channel: "tiktok" | "shopee"; orders: number; sales: number; settlement: number; cost: number; fulfilment: number; profitBeforeAds: number; adSpend: number; net: number; margin: number | null; noMoney: number };
-export function channelLines(data: ProfitData, inRange: (day: string) => boolean, adSpendIn: (d: ProfitData) => number): ChannelLine[] {
+export function channelLines(data: ProfitData, inRange: (day: string) => boolean, adSpendIn: (days: Map<string, number>) => number): ChannelLine[] {
   const out: ChannelLine[] = [];
   for (const ch of ["tiktok", "shopee"] as const) {
     const rows = data.rows.filter((r) => r.platform === ch && inRange(r.day));
-    const l: ChannelLine = { channel: ch, orders: 0, sales: 0, settlement: 0, cost: 0, fulfilment: 0, profitBeforeAds: 0, adSpend: ch === "tiktok" ? adSpendIn(data) : 0, net: 0, margin: null, noMoney: 0 };
+    const l: ChannelLine = { channel: ch, orders: 0, sales: 0, settlement: 0, cost: 0, fulfilment: 0, profitBeforeAds: 0, adSpend: adSpendIn(data.adDays[ch]), net: 0, margin: null, noMoney: 0 };
     for (const r of rows) {
       l.orders++;
       if (r.money === "none" && !r.isSample) { l.noMoney++; continue; }

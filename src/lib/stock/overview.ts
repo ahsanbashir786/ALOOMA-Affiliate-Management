@@ -3,10 +3,11 @@ import { sql as pg } from "@/db";
 import { loadLayers } from "./load";
 import { loadCosting } from "./costing";
 import type { Remaining } from "./fifo";
+import { normSku } from "./sku";
 
 export type SkuRow = {
   sku: string; name: string | null; family: string | null;
-  received: number; free: number; sold: number; short: number; onHand: number; value: number; avgCost: number | null; oldestOrder: string | null;
+  received: number; free: number; sold: number; short: number; onHand: number; value: number; avgCost: number | null; /** Pieces Shopee says are in its warehouse (FBS); null when Shopee stock has not been read. */ fbs: number | null; oldestOrder: string | null;
 };
 export type OrderRow = {
   orderNo: string; kind: "opening" | "order"; purchaseDate: string | null; arrival: string | null; exact: boolean; arrivalNote: string | null;
@@ -37,13 +38,15 @@ export async function stockOverview(): Promise<Overview> {
   const bySku = new Map<string, SkuRow>();
   const row = (sku: string): SkuRow => {
     let r = bySku.get(sku);
-    if (!r) { const m = meta.get(sku); r = { sku, name: (m?.name as string) ?? null, family: (m?.family as string) ?? null, received: 0, free: 0, sold: 0, short: 0, onHand: 0, value: 0, avgCost: null, oldestOrder: null }; bySku.set(sku, r); }
+    if (!r) { const m = meta.get(sku); r = { sku, name: (m?.name as string) ?? null, family: (m?.family as string) ?? null, received: 0, free: 0, sold: 0, short: 0, onHand: 0, value: 0, avgCost: null, fbs: null, oldestOrder: null }; bySku.set(sku, r); }
     return r;
   };
   for (const l of layerRows) void l;
   const layerQty = new Map<string, { paid: number; free: number }>();
   for (const r of await pg`select sku, sum(paid_qty)::int as paid, sum(free_qty)::int as free from stock_layers group by sku`) layerQty.set(String(r.sku), { paid: f(r.paid), free: f(r.free) });
   for (const [sku, q] of layerQty) { const r = row(sku); r.received = q.paid + q.free; r.free = q.free; }
+  // Stock Shopee holds for us (FBS), read from the Shopee product list by SKU.
+  for (const x of await pg`select upper(sku) as sku, sum(shopee_stock)::int as fbs from shopee_stock where sku is not null and sku <> '' group by 1`) { const r = bySku.get(normSku(String(x.sku))); if (r) r.fbs = f(x.fbs); }
   const rem = new Map<string, Remaining[]>();
   for (const x of remaining) { const a = rem.get(x.sku) ?? []; a.push(x); rem.set(x.sku, a); }
   for (const [sku, ls] of rem) {

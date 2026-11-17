@@ -63,7 +63,7 @@ function Tiles({ ov }: { ov: Overview }) {
   const t = ov.tiles;
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="stock-tiles">
-      <StatTile icon={Boxes} label="Pieces In Stock" value={fmtInt(t.onHand)} note="After TikTok sales only" />
+      <StatTile icon={Boxes} label="Pieces In Stock" value={fmtInt(t.onHand)} note="After TikTok and Shopee sales" />
       <StatTile icon={Wallet} label="Stock Value" value={fmtRM(t.value)} note="At real cost per piece" tone="good" />
       <StatTile icon={PackageOpen} label="Stock-In Orders" value={fmtInt(t.orders)} note={`Landed cost ${fmtRM(t.landed)}`} tone="neutral" />
       <StatTile icon={t.shortPieces ? AlertTriangle : CalendarClock} label={t.shortPieces ? "Sold With No Stock Found" : "Estimated Arrival Dates"} value={fmtInt(t.shortPieces || t.estimated)} note={t.shortPieces ? "Pieces costed at the nearest known cost" : "Only the month is known"} tone={t.shortPieces ? "warn" : "neutral"} />
@@ -74,6 +74,7 @@ function Tiles({ ov }: { ov: Overview }) {
 function StockTable({ ov, q, family }: { ov: Overview; q: string; family: string }) {
   const families = [...new Set(ov.skus.map((s) => s.family).filter((f): f is string => !!f))].sort();
   const needle = q.toLowerCase();
+  const hasFbs = ov.skus.some((r) => r.fbs != null);
   const rows = ov.skus.filter((r) => (!family || r.family === family) && (!needle || r.sku.toLowerCase().includes(needle) || (r.name ?? "").toLowerCase().includes(needle)));
   return (
     <Card>
@@ -86,7 +87,7 @@ function StockTable({ ov, q, family }: { ov: Overview; q: string; family: string
       } />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[920px] border-collapse" data-testid="stock-table">
-          <thead><tr><Th>SKU</Th><Th>Product</Th><Th align="right">Received</Th><Th align="right">Sold</Th><Th className="w-44">Left In Stock</Th><Th align="right">Cost Per Piece</Th><Th align="right">Stock Value</Th><Th>Oldest Order Left</Th></tr></thead>
+          <thead><tr><Th>SKU</Th><Th>Product</Th><Th align="right">Received</Th><Th align="right">Sold</Th><Th className="w-44">Left In Stock</Th><Th align="right">Cost Per Piece</Th><Th align="right">Stock Value</Th>{hasFbs && <Th align="right">In Shopee Warehouse</Th>}<Th>Oldest Order Left</Th></tr></thead>
           <tbody>
             {rows.map((r) => {
               const pct = r.received ? Math.max(0, Math.min(1, r.onHand / r.received)) : 0;
@@ -99,11 +100,12 @@ function StockTable({ ov, q, family }: { ov: Overview; q: string; family: string
                   <Td><div className="flex items-center gap-2"><div className="h-1.5 w-20 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand" style={{ width: `${pct * 100}%` }} /></div><span className="tnum text-[13px] text-ink-2">{fmtInt(r.onHand)}</span></div></Td>
                   <Td align="right">{money(r.avgCost)}</Td>
                   <Td align="right">{fmtRM(r.value)}</Td>
+                  {hasFbs && <Td align="right" className="text-ink-2">{r.fbs == null ? "–" : fmtInt(r.fbs)}</Td>}
                   <Td className="text-ink-2">{r.oldestOrder ? (r.oldestOrder === "OPENING" ? "Opening Stock" : `Order ${r.oldestOrder}`) : "–"}</Td>
                 </tr>
               );
             })}
-            {!rows.length && <tr><td colSpan={8}><EmptyState title="No SKU matches" description="Try a different search." /></td></tr>}
+            {!rows.length && <tr><td colSpan={9}><EmptyState title="No SKU matches" description="Try a different search." /></td></tr>}
           </tbody>
         </table>
       </div>

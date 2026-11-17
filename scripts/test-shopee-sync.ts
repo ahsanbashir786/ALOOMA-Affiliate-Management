@@ -5,7 +5,7 @@ if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to
 import { createHmac } from "node:crypto";
 import { sql as pg } from "../src/db";
 import { shopeeConnectWithCode, shopeeDisconnect, type ShopeeConfig } from "../src/lib/shopee/client";
-import { mapShopeeEscrow, mapShopeeOrder } from "../src/lib/shopee/map";
+import { mapShopeeAdsDay, mapShopeeEscrow, mapShopeeOrder, mapShopeeRelease, mapShopeeReturn, mapShopeeStock, mapShopeeWallet } from "../src/lib/shopee/map";
 import { runShopeeSync, shopeeSyncStatus } from "../src/lib/shopee/sync";
 import { clearProfit, forChannel, loadProfit, totalsOf } from "../src/lib/profit/data";
 import { channelLines } from "../src/lib/profit/monthly";
@@ -22,7 +22,7 @@ const NOW = Math.floor(Date.UTC(2026, 10, 17, 4, 0, 0) / 1000); // 17 Nov 2026
 const DAY = 86400;
 
 type O = { sn: string; status: string; create: number; update: number; paid?: number; items: { sku: string; qty: number }[]; fbs?: boolean };
-function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean; authFail?: boolean } = {}) {
+function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean; authFail?: boolean; adsDenied?: boolean } = {}) {
   const calls: { path: string; q: URLSearchParams; body: Record<string, unknown> | null }[] = [];
   let limited = false;
   const f = async (url: string, init?: RequestInit): Promise<Response> => {
@@ -53,6 +53,14 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
       if (sns.length > 50) return ok({ error: "error_param", message: "Too many order numbers." });
       return ok({ error: "", response: sns.map((sn) => (o.noEscrow?.has(sn) ? { escrow_detail: { order_sn: sn, order_income: {} } } : { escrow_detail: { order_sn: sn, buyer_user_name: "someone", order_income: { escrow_amount: 79.5, original_price: 100, seller_discount: 10, commission_fee: 6, service_fee: 3, seller_transaction_fee: 1.5, actual_shipping_fee: 8, buyer_paid_shipping_fee: 3, shopee_shipping_rebate: 2 } } })) });
     }
+    const dmy = (t: number) => { const d = new Date((t + 8 * 3600) * 1000); return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`; };
+    if (u.pathname === "/api/v2/payment/get_escrow_list") return ok({ error: "", response: { more: false, escrow_list: [{ order_sn: "SN0000", payout_amount: 79.5, escrow_release_time: NOW - DAY }] } });
+    if (u.pathname === "/api/v2/returns/get_return_list") return ok({ error: "", response: { more: false, return: [{ return_sn: "R1", order_sn: "SN0000", status: "ACCEPTED", create_time: NOW - DAY, update_time: NOW - 3600, refund_amount: 50, item: [{ variation_sku: "NMP-S-WH-ST", amount: 1, refund_amount: 50 }], user: { username: "secret" } }, { return_sn: "R2", order_sn: "SN0001", status: "REQUESTED", create_time: NOW - DAY, update_time: NOW - 3600, item: [{ variation_sku: "NMP-S-WH-ST", amount: 1 }] }] } });
+    if (u.pathname === "/api/v2/ads/get_all_cpc_ads_daily_performance") return o.adsDenied ? ok({ error: "error_permission", message: "No permission." }) : ok({ error: "", response: [{ date: dmy(NOW - 2 * DAY), expense: 12.5, broad_gmv: 100, impression: 10, clicks: 1 }, { date: dmy(NOW - DAY), expense: 10, broad_gmv: 50 }] });
+    if (u.pathname === "/api/v2/payment/get_wallet_transaction_list") return ok({ error: "", response: { more: false, transaction_list: [{ create_time: NOW - DAY, transaction_type: "ESCROW_VERIFIED_ADD", amount: 79.5, money_flow: "MONEY_IN", current_balance: 79.5, order_sn: "SN0000", buyer_name: "secret" }, { create_time: NOW - 3600, transaction_type: "WITHDRAWAL_CREATED", amount: 50, money_flow: "MONEY_OUT", current_balance: 29.5, withdrawal_id: 7 }] } });
+    if (u.pathname === "/api/v2/product/get_item_list") return ok({ error: "", response: { item: [{ item_id: 1 }, { item_id: 2 }], has_next_page: false } });
+    if (u.pathname === "/api/v2/product/get_item_base_info") return ok({ error: "", response: { item_list: [{ item_id: 1, item_name: "P1", has_model: true }, { item_id: 2, item_name: "P2", item_sku: "SINGLE-SKU", has_model: false, stock_info_v2: { seller_stock: [{ stock: 5 }], shopee_stock: [{ stock: 7 }, { stock: 1 }], summary_info: { total_reserved_stock: 1 } } }] } });
+    if (u.pathname === "/api/v2/product/get_model_list") return ok({ error: "", response: { model: [{ model_id: 10, model_name: "S", model_sku: "NMP-S-WH-ST", stock_info_v2: { seller_stock: [{ stock: 3 }], shopee_stock: [{ stock: 40 }] } }] } });
     return ok({ error: "error_not_found", message: "no such api" });
   };
   return { f, calls };
@@ -72,8 +80,20 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
   check("map: the buyer's name is never kept", !JSON.stringify(e.raw).includes("secret-name"));
   check("map: no payment figures yet gives nothing", mapShopeeEscrow({ escrow_detail: { order_sn: "SN2", order_income: {} } }) === null);
 
+  // ── the other mappers
+  const rt = mapShopeeReturn({ return_sn: "R9", order_sn: "SN1", status: "accepted", create_time: NOW, update_time: NOW, refund_amount: "20.5", item: [{ variation_sku: "V-SKU", item_sku: "L", amount: 2, refund_amount: 20.5 }, { amount: 0 }], user: { username: "secret" } })!;
+  check("map: a return keeps its SKU (the variation's), quantity and refund, in capitals status, no buyer", rt.pieces === 2 && rt.items[0].sku === "V-SKU" && rt.status === "ACCEPTED" && rt.refundAmount === 20.5 && !JSON.stringify(rt).includes("secret"));
+  check("map: a return with no number is skipped", mapShopeeReturn({ order_sn: "x" }) === null);
+  const ad = mapShopeeAdsDay({ date: "05-11-2026", expense: "12.5", broad_gmv: 100, impression: 9 })!;
+  check("map: an ad day reads Shopee's DD-MM-YYYY date and the spend", ad.day === "2026-11-05" && ad.expense === 12.5 && ad.gmv === 100 && mapShopeeAdsDay({ date: "nope" }) === null);
+  const wl = mapShopeeWallet({ create_time: NOW, transaction_type: "WITHDRAWAL_CREATED", amount: 50, money_flow: "MONEY_OUT", current_balance: 10, buyer_name: "secret" })!;
+  check("map: money out is stored negative, money in positive, no buyer name", wl.amount === -50 && mapShopeeWallet({ create_time: NOW, amount: 5, money_flow: "MONEY_IN" })!.amount === 5 && !JSON.stringify(wl).includes("secret"));
+  check("map: a release date is read", mapShopeeRelease({ order_sn: "A", escrow_release_time: NOW, payout_amount: 3 })!.payoutAmount === 3 && mapShopeeRelease({ order_sn: "A" }) === null);
+  const sk = mapShopeeStock(1, 2, " SKU ", "N", { seller_stock: [{ stock: 3 }, { stock: 2 }], shopee_stock: [{ stock: 40 }], summary_info: { total_reserved_stock: 4 } });
+  check("map: stock adds up each warehouse (yours 5, Shopee's FBS 40, reserved 4)", sk.sellerStock === 5 && sk.shopeeStock === 40 && sk.reserved === 4 && sk.sku === "SKU");
+
   // ── the sync
-  await pg`truncate shopee_orders, shopee_escrow`; await pg`delete from tt_sync_state where dataset like 'shopee\\_%'`; await shopeeDisconnect();
+  await pg`truncate shopee_orders, shopee_escrow, shopee_returns, shopee_ads_daily, shopee_wallet_tx, shopee_stock`; await pg`delete from tt_sync_state where dataset like 'shopee\\_%'`; await shopeeDisconnect();
   const mk = (i: number, status: string, ago: number, fbs = false): O => ({ sn: `SN${String(i).padStart(4, "0")}`, status, create: NOW - ago * DAY, update: NOW - ago * DAY + 3600, items: [{ sku: "NMP-S-WH-ST", qty: 1 }], fbs });
   const orders: O[] = [];
   for (let i = 0; i < 130; i++) orders.push(mk(i, "COMPLETED", 1 + (i % 20)));          // 20 days: two windows, 130 orders: three detail chunks, two pages
@@ -100,9 +120,22 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
   orders.find((x) => x.sn === "SN0902")!.status = "COMPLETED"; orders.find((x) => x.sn === "SN0902")!.update = NOW - 3600;
   noEscrow.delete("SN0902");
   const r2 = await runShopeeSync({ f: fk.f, cfg, nowSec: NOW, sleep: async () => {} });
+  const dsum = (r: typeof r1) => Object.fromEntries(r.datasets.map((x) => [x.key, x.rows]));
+  const nn = async (t: string) => Number((await pg.unsafe(`select count(*)::int as n from ${t}`))[0].n);
+  check("sync: every part ran and saved once (returns 2, ad days 2, wallet 2, stock 2, one release date), repeated windows add nothing twice", r1.datasets.length === 7 && r1.datasets.every((x) => x.ok) && (await nn("shopee_returns")) === 2 && (await nn("shopee_ads_daily")) === 2 && (await nn("shopee_wallet_tx")) === 2 && (await nn("shopee_stock")) === 2 && (await pg`select count(*)::int as n from shopee_escrow where released_at is not null`)[0].n === 1, JSON.stringify(dsum(r1)));
+  check("sync: the stock separates your warehouse from Shopee's (FBS)", (await pg`select seller_stock, shopee_stock, sku from shopee_stock where item_id = 1 and model_id = 10`)[0].shopee_stock === 40 && (await pg`select seller_stock, shopee_stock from shopee_stock where item_id = 2`)[0].shopee_stock === 8);
+  check("sync: the release date is saved on the payment", (await pg`select released_at from shopee_escrow where order_sn = 'SN0000'`)[0].released_at != null);
+  check("privacy: no buyer name is kept in returns or the wallet", (await pg`select 1 from shopee_wallet_tx where description ilike '%secret%'`).length === 0 && (await pg`select 1 from shopee_returns where reason ilike '%secret%'`).length === 0);
   check("again: only the newest days are read, the changed order is updated", r2.ok && r2.orders >= 1 && r2.orders < 20 && (await pg`select status from shopee_orders where order_sn = 'SN0902'`)[0].status === "COMPLETED", JSON.stringify(r2));
   check("again: the changed order now has its payment", (await pg`select 1 from shopee_escrow where order_sn = 'SN0902'`).length === 1);
   check("again: nothing is doubled", (await pg`select count(*)::int as n from shopee_orders`)[0].n === 134);
+
+  // ── a part Shopee has not opened to this app is reported plainly and does not stop the others
+  const denied = fake(orders, { adsDenied: true });
+  const rd = await runShopeeSync({ f: denied.f, cfg, nowSec: NOW, sleep: async () => {}, only: ["ads", "returns"] });
+  check("permission: a refused part says what to do, the other part still ran", !rd.ok && rd.datasets.find((x) => x.key === "ads")!.ok === false && /has not given this app access to Shopee Ads/.test(rd.datasets.find((x) => x.key === "ads")!.error ?? "") && rd.datasets.find((x) => x.key === "returns")!.ok, JSON.stringify(rd.datasets));
+  check("permission: the failure is remembered for the screen", /Shopee Ads/.test((await shopeeSyncStatus()).datasets.find((x) => x.key === "ads")!.error ?? ""));
+  await runShopeeSync({ f: fk.f, cfg, nowSec: NOW, sleep: async () => {}, only: ["ads"] });
 
   // ── a refused login is reported, not hidden
   const bad = fake(orders, { authFail: true });
@@ -127,11 +160,14 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
   check("profit: commission is negative, shipping deducted = shipping RM 8 − buyer RM 3 − Shopee rebate RM 2 = −RM 3", near(a.commission, -6) && near(a.shipping, -3) && near(a.shippingActual, 8), `${a.commission} ${a.shipping}`);
   check("profit: settlement is what Shopee pays out, other fees make the columns add up", near(a.settlement, 79.5) && near(a.sales + a.commission + a.affiliate + a.adFee + a.shipping + a.reimbursement + a.deduction + a.otherFees, a.settlement), JSON.stringify(a));
   check("profit: completed means paid", a.money === "paid");
-  check("profit: the piece is costed from the stock (RM 10), a normal order carries the fulfilment rate", near(a.cost, 10) && a.fulfilment > 0 && near(a.profitBeforeAds ?? 0, 79.5 - 10 - a.fulfilment));
+  check("profit: an accepted return puts the piece back into stock, so the order's net cost is RM 0; a normal order carries the fulfilment rate", a.returnedPieces === 1 && near(a.cost, 0) && a.fulfilment > 0 && near(a.profitBeforeAds ?? 0, 79.5 - a.fulfilment), JSON.stringify(a));
+  check("profit: money Shopee has released is paid (with its release date); completed but not released is 'settled, not paid yet'", a.money === "paid" && !!a.paidAt && sp.find((x) => x.orderId === "SN0903")!.money === "processing");
   const fbs = sp.find((x) => x.orderId === "SN0903")!;
   check("profit: an order Shopee packs itself has no fulfilment cost", fbs.fulfilment === 0 && near(fbs.cost, 10));
   const onlyShopee = forChannel(p, "shopee"), onlyTik = forChannel(p, "tiktok");
-  check("channel: Shopee alone has Shopee rows and no TikTok ad spend; TikTok alone has none of Shopee's", onlyShopee.rows.every((x) => x.platform === "shopee") && onlyShopee.adSpend.size === 0 && onlyTik.rows.every((x) => x.platform === "tiktok"));
+  const shopeeAds = [...onlyShopee.adSpendDays.values()].reduce((x, y) => x + y, 0), tiktokAds = [...onlyTik.adSpendDays.values()].reduce((x, y) => x + y, 0);
+  check("channel: Shopee alone has Shopee rows and its own ad spend (RM 22.50); TikTok alone has none of it", onlyShopee.rows.every((x) => x.platform === "shopee") && near(shopeeAds, 22.5) && tiktokAds === 0 && onlyTik.rows.every((x) => x.platform === "tiktok"), `${shopeeAds} ${tiktokAds}`);
+  check("channel: all together adds both channels' ad spend", near([...p.adSpendDays.values()].reduce((x, y) => x + y, 0), 22.5));
   const lines = channelLines(p, () => true, () => 0);
   check("channel: the by-channel lines add up to both together", lines.length === 2 && near(lines[1].net, totalsOf(onlyShopee.rows).profitBeforeAds) && lines[1].orders === 2);
 

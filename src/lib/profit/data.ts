@@ -41,6 +41,8 @@ export type OrderProfit = {
 
 export type ProfitData = {
   rows: OrderProfit[];
+  /** Real ad spend per day for each channel: TikTok GMV Max and Shopee Ads. adSpend and adSpendDays below are the two added together. */
+  adDays: { tiktok: Map<string, number>; shopee: Map<string, number> };
   perUnit: number;
   invoices: Map<string, number>; // month → real 3PL invoice
   adSpend: Map<string, number>; // month → real ad spend (GMV Max)
@@ -63,7 +65,7 @@ export const clearProfit = () => { version++; };
 
 export const loadProfit = (): Promise<ProfitData> => cached("profit", "all", computeProfit, version);
 async function computeProfit(): Promise<ProfitData> {
-  const [costing, perUnit, fin, uns, invoices, adDays, shopeeEscrow] = await Promise.all([
+  const [costing, perUnit, fin, uns, invoices, adDays, shopeeEscrow, shopeeAds] = await Promise.all([
     loadCosting(),
     getFulfilmentRate(),
     pg`
@@ -94,7 +96,8 @@ async function computeProfit(): Promise<ProfitData> {
     pg`select to_char(month, 'YYYY-MM') as m, amount::float8 as amount from profit_fulfilment_months`,
     pg`select to_char(day, 'YYYY-MM-DD') as d, sum(coalesce(cost, 0))::float8 as spend from ads_campaign_daily group by 1`,
     pg`select order_sn, escrow_amount::float8 as escrow, original_price::float8 as orig, seller_discount::float8 as disc, commission_fee::float8 as comm, ams_fee::float8 as ams,
-        actual_shipping_fee::float8 as ship_actual, buyer_shipping_fee::float8 as ship_buyer, shipping_rebate::float8 as ship_rebate, compensation::float8 as comp, refund_amount::float8 as refund from shopee_escrow`,
+        actual_shipping_fee::float8 as ship_actual, buyer_shipping_fee::float8 as ship_buyer, shipping_rebate::float8 as ship_rebate, compensation::float8 as comp, refund_amount::float8 as refund, released_at from shopee_escrow`,
+    pg`select to_char(day, 'YYYY-MM-DD') as d, expense::float8 as spend from shopee_ads_daily`,
   ]);
   const spBy = new Map(shopeeEscrow.map((r) => [String(r.order_sn), r]));
   const finBy = new Map(fin.map((r) => [String(r.order_id), r]));
@@ -118,8 +121,9 @@ async function computeProfit(): Promise<ProfitData> {
     let sales = 0, commission = 0, affiliate = 0, adFee = 0, shipping = 0, shipA = 0, shipB = 0, shipD = 0, reimb = 0, adjOther = 0, settlement = 0, paidAt: string | null = null;
     const sp = o.platform === "shopee" ? spBy.get(o.orderId) : undefined;
     if (sp) {
-      // Shopee: what Shopee pays out (escrow) and the fees it takes. "paid" once the order is completed, because that is when Shopee releases the money.
-      money = o.status === "COMPLETED" ? "paid" : "estimate";
+      // Shopee: what Shopee pays out (escrow) and the fees it takes. "paid" once Shopee has released the money (the release date), "settled, not paid yet" when the order is completed but not released, otherwise an estimate.
+      money = sp.released_at ? "paid" : o.status === "COMPLETED" ? "processing" : "estimate";
+      paidAt = sp.released_at ? new Date(sp.released_at as Date).toISOString() : null;
       sales = n(sp.orig) - n(sp.disc); commission = -Math.abs(n(sp.comm)); affiliate = -Math.abs(n(sp.ams));
       shipA = n(sp.ship_actual); shipB = n(sp.ship_buyer); shipD = n(sp.ship_rebate);
       shipping = -(shipA - shipB - shipD);
@@ -150,13 +154,18 @@ async function computeProfit(): Promise<ProfitData> {
   // Ad spend counts only from the first day orders are counted. Ads that ran before have no sales or stock cost to set against them.
   const adSpendDays = new Map<string, number>();
   const adSpend = new Map<string, number>();
-  for (const r of adDays) {
-    const d = String(r.d);
-    if (costing.costStart && d < costing.costStart) continue;
-    adSpendDays.set(d, Number(r.spend));
-    adSpend.set(d.slice(0, 7), (adSpend.get(d.slice(0, 7)) ?? 0) + Number(r.spend));
+  const adDaysBy = { tiktok: new Map<string, number>(), shopee: new Map<string, number>() };
+  for (const [ch, list] of [["tiktok", adDays], ["shopee", shopeeAds]] as const) {
+    for (const r of list) {
+      const d = String(r.d);
+      if (costing.costStart && d < costing.costStart) continue;
+      const v = Number(r.spend);
+      adDaysBy[ch].set(d, v);
+      adSpendDays.set(d, (adSpendDays.get(d) ?? 0) + v);
+      adSpend.set(d.slice(0, 7), (adSpend.get(d.slice(0, 7)) ?? 0) + v);
+    }
   }
-  const value: ProfitData = { rows, perUnit, invoices: invoiceBy, adSpend, adSpendDays, unknownSkus: costing.unknownSkus, costStart: costing.costStart, startWarning: costing.startWarning };
+  const value: ProfitData = { rows, adDays: adDaysBy, perUnit, invoices: invoiceBy, adSpend, adSpendDays, unknownSkus: costing.unknownSkus, costStart: costing.costStart, startWarning: costing.startWarning };
   return value;
 }
 
@@ -182,9 +191,11 @@ export type Channel = "all" | "tiktok" | "shopee";
 export const CHANNELS: { key: Channel; label: string }[] = [{ key: "all", label: "All Channels" }, { key: "tiktok", label: "TikTok" }, { key: "shopee", label: "Shopee" }];
 export const parseChannel = (v: string | undefined): Channel => (v === "tiktok" || v === "shopee" ? v : "all");
 
-/** The same data for one channel. Real ad spend comes from TikTok GMV Max only, so Shopee alone has none yet. */
+/** The same data for one channel, with that channel's own real ad spend (TikTok GMV Max, Shopee Ads). */
 export function forChannel(data: ProfitData, ch: Channel): ProfitData {
   if (ch === "all") return data;
-  const rows = data.rows.filter((r) => r.platform === ch);
-  return ch === "tiktok" ? { ...data, rows } : { ...data, rows, adSpend: new Map(), adSpendDays: new Map() };
+  const days = data.adDays[ch];
+  const adSpend = new Map<string, number>();
+  for (const [d, v] of days) adSpend.set(d.slice(0, 7), (adSpend.get(d.slice(0, 7)) ?? 0) + v);
+  return { ...data, rows: data.rows.filter((r) => r.platform === ch), adSpend, adSpendDays: days };
 }
