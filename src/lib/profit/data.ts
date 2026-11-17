@@ -96,7 +96,9 @@ async function computeProfit(): Promise<ProfitData> {
     pg`select to_char(month, 'YYYY-MM') as m, amount::float8 as amount from profit_fulfilment_months`,
     pg`select to_char(day, 'YYYY-MM-DD') as d, sum(coalesce(cost, 0))::float8 as spend from ads_campaign_daily group by 1`,
     pg`select order_sn, escrow_amount::float8 as escrow, original_price::float8 as orig, seller_discount::float8 as disc, commission_fee::float8 as comm, ams_fee::float8 as ams,
-        actual_shipping_fee::float8 as ship_actual, buyer_shipping_fee::float8 as ship_buyer, shipping_rebate::float8 as ship_rebate, compensation::float8 as comp, refund_amount::float8 as refund, released_at from shopee_escrow`,
+        actual_shipping_fee::float8 as ship_actual, buyer_shipping_fee::float8 as ship_buyer, shipping_rebate::float8 as ship_rebate, compensation::float8 as comp, refund_amount::float8 as refund, released_at,
+        -- the small amount Shopee moves from the order's money into the seller's ads wallet ("Ads Escrow Top Up Fee"); only newer orders have it
+        (select coalesce(sum(abs(value::numeric)), 0) from jsonb_each_text(coalesce(raw -> 'order_income', '{}'::jsonb)) where key ~* 'ads' and value ~ '^-?[0-9]+(\.[0-9]+)?$')::float8 as ads_topup from shopee_escrow`,
     pg`select to_char(day, 'YYYY-MM-DD') as d, expense::float8 as spend from shopee_ads_daily`,
   ]);
   const spBy = new Map(shopeeEscrow.map((r) => [String(r.order_sn), r]));
@@ -127,6 +129,7 @@ async function computeProfit(): Promise<ProfitData> {
       sales = n(sp.orig) - n(sp.disc); commission = -Math.abs(n(sp.comm)); affiliate = -Math.abs(n(sp.ams));
       shipA = n(sp.ship_actual); shipB = n(sp.ship_buyer); shipD = n(sp.ship_rebate);
       shipping = -(shipA - shipB - shipD);
+      adFee = -n(sp.ads_topup); // shown on the order, added back in profit (the real ad spend is taken off for the period instead), like TikTok's GMV Max top-up
       reimb = n(sp.comp); adjOther = -Math.abs(n(sp.refund)); settlement = n(sp.escrow);
     } else if (f) {
       money = f.all_paid ? "paid" : "processing";

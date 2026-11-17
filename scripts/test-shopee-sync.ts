@@ -53,7 +53,7 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
     if (u.pathname === "/api/v2/payment/get_escrow_detail_batch") {
       const sns = (body?.order_sn_list as string[]) ?? [];
       if (sns.length > 50) return ok({ error: "error_param", message: "Too many order numbers." });
-      return ok({ error: "", response: sns.map((sn) => (o.noEscrow?.has(sn) ? { escrow_detail: { order_sn: sn, order_income: {} } } : { escrow_detail: { order_sn: sn, buyer_user_name: "someone", order_income: { escrow_amount: 79.5, original_price: 100, seller_discount: 10, commission_fee: 6, service_fee: 3, seller_transaction_fee: 1.5, actual_shipping_fee: 8, buyer_paid_shipping_fee: 3, shopee_shipping_rebate: 2 } } })) });
+      return ok({ error: "", response: sns.map((sn) => (o.noEscrow?.has(sn) ? { escrow_detail: { order_sn: sn, order_income: {} } } : { escrow_detail: { order_sn: sn, buyer_user_name: "someone", order_income: { escrow_amount: 79.5, original_price: 100, seller_discount: 10, commission_fee: 6, service_fee: 3, seller_transaction_fee: 1.5, actual_shipping_fee: 8, buyer_paid_shipping_fee: 3, shopee_shipping_rebate: 2, ads_escrow_top_up_fee_or_adjustment_amount: 1.5 } } })) });
     }
     const dmy = (t: number) => { const d = new Date((t + 8 * 3600) * 1000); return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`; };
     if (u.pathname === "/api/v2/payment/get_escrow_list") return ok({ error: "", response: { more: false, escrow_list: [{ order_sn: "SN0000", payout_amount: 79.5, escrow_release_time: NOW - DAY }] } });
@@ -184,7 +184,8 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
   check("profit: commission is negative, shipping deducted = shipping RM 8 − buyer RM 3 − Shopee rebate RM 2 = −RM 3", near(a.commission, -6) && near(a.shipping, -3) && near(a.shippingActual, 8), `${a.commission} ${a.shipping}`);
   check("profit: settlement is what Shopee pays out, other fees make the columns add up", near(a.settlement, 79.5) && near(a.sales + a.commission + a.affiliate + a.adFee + a.shipping + a.reimbursement + a.deduction + a.otherFees, a.settlement), JSON.stringify(a));
   check("profit: completed means paid", a.money === "paid");
-  check("profit: an accepted return puts the piece back into stock, so the order's net cost is RM 0; a normal order carries the fulfilment rate", a.returnedPieces === 1 && near(a.cost, 0) && a.fulfilment > 0 && near(a.profitBeforeAds ?? 0, 79.5 - a.fulfilment), JSON.stringify(a));
+  check("profit: an accepted return puts the piece back into stock, so the order's net cost is RM 0; a normal order carries the fulfilment rate", a.returnedPieces === 1 && near(a.cost, 0) && a.fulfilment > 0 && near(a.profitBeforeAds ?? 0, 79.5 + 1.5 - a.fulfilment), JSON.stringify(a));
+  check("profit: the ads escrow top-up (RM 1.50) is shown on the order, added back in profit, and not counted twice in the other fees", near(a.adFee, -1.5) && near(a.otherFees, 79.5 - (a.sales + a.commission + a.affiliate - 1.5 + a.shipping + a.reimbursement + a.deduction)), `${a.adFee} ${a.otherFees}`);
   check("profit: money Shopee has released is paid (with its release date); completed but not released is 'settled, not paid yet'", a.money === "paid" && !!a.paidAt && sp.find((x) => x.orderId === "SN0903")!.money === "processing");
   const fbs = sp.find((x) => x.orderId === "SN0903")!;
   check("profit: an order Shopee packs itself has no fulfilment cost", fbs.fulfilment === 0 && near(fbs.cost, 10));

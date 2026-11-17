@@ -36,15 +36,35 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pr
   const OTHER: [string, string][] = [["service_fee", "Service Fee"], ["seller_transaction_fee", "Transaction Fee"], ["credit_card_transaction_fee", "Credit Card Fee"], ["voucher_from_seller", "Voucher From You"], ["seller_coin_cash_back", "Coins You Paid"],
     ["escrow_tax", "Tax"], ["final_product_vat_tax", "Product VAT"], ["delivery_seller_protection_fee_premium_amount", "Delivery Protection Fee"], ["shipping_seller_protection_fee_amount", "Shipping Protection Fee"], ["campaign_fee", "Campaign Fee"]];
   const otherParts: { label: string; v: number }[] = [];
-  for (const [k, label] of OTHER) { const v = Number(income?.[k]); if (Number.isFinite(v) && v !== 0) otherParts.push({ label, v: -Math.abs(v) }); }
+  for (const [k, label] of OTHER) {
+    const v = Number(income?.[k]);
+    if (!Number.isFinite(v) || v === 0) continue;
+    if (k === "credit_card_transaction_fee" && Math.abs(v) === Math.abs(Number(income?.seller_transaction_fee))) continue; // the same amount as the transaction fee, not a second fee
+    otherParts.push({ label, v: -Math.abs(v) });
+  }
   if (otherParts.length) { const rest = r.otherFees - otherParts.reduce((a, b) => a + b.v, 0); if (Math.abs(rest) >= 0.005) otherParts.push({ label: "Other, Not Itemised By Shopee", v: rest }); }
+  // The page follows the Shopee app's "Income Details": merchandise, shipping, vouchers, fees, order income.
+  const num = (k: string) => { const v = Number(income?.[k]); return Number.isFinite(v) ? v : 0; };
+  const byKey = (re: RegExp) => { for (const [k, v] of Object.entries(income ?? {})) if (re.test(k) && typeof v === "number" && v !== 0) return v; return 0; };
+  const adsTop = -Math.abs(byKey(/ads/i));
+  const price = num("order_selling_price") || num("original_price") - num("seller_discount");
+  const sstShip = -Math.abs(byKey(/ship.*sst|sst.*ship/i));
+  const nz = (a: { label: string; v: number }[]) => a.filter((x) => x.v !== 0);
+  const feeLines = nz([{ label: "Commission Fee", v: -Math.abs(num("commission_fee")) }, { label: "Saver Programme Fee", v: -Math.abs(num("shipping_seller_protection_fee_amount")) }, { label: "Service Fee", v: -Math.abs(num("service_fee")) }, { label: "Transaction Fee", v: -Math.abs(num("seller_transaction_fee")) }, { label: "Ads Escrow Top-Up Fee", v: adsTop }, { label: "Tax", v: -Math.abs(num("escrow_tax")) }]);
+  const incomeSections: { title: string; total: number | null; lines: { label: string; v: number }[] }[] = !income ? [] : [
+    { title: "Merchandise Subtotal", total: price, lines: [{ label: "Product Price", v: price }] },
+    { title: "Shipping Subtotal", total: num("buyer_paid_shipping_fee") - Math.abs(num("actual_shipping_fee")) + num("shopee_shipping_rebate") + sstShip, lines: [{ label: "Shipping Fee Paid By Buyer", v: num("buyer_paid_shipping_fee") }, { label: "Shipping Fee Charged By Logistic Provider", v: -Math.abs(num("actual_shipping_fee")) }, { label: "Shipping Fee Rebate From Shopee", v: num("shopee_shipping_rebate") }, ...nz([{ label: "Seller Paid Shipping Fee SST", v: sstShip }])] },
+    ...(num("voucher_from_seller") || num("seller_coin_cash_back") ? [{ title: "Vouchers And Rebates", total: -Math.abs(num("voucher_from_seller")) - Math.abs(num("seller_coin_cash_back")), lines: nz([{ label: "Shop Voucher Paid By You", v: -Math.abs(num("voucher_from_seller")) }, { label: "Coins You Paid", v: -Math.abs(num("seller_coin_cash_back")) }]) }] : []),
+    { title: "Fees And Charges", total: feeLines.reduce((x, y) => x + y.v, 0), lines: feeLines },
+    { title: "Order Income", total: num("escrow_amount"), lines: [] },
+  ];
   const ms = MONEY_STATE[r.money];
   const plat = r.platform === "shopee" ? "Shopee" : "TikTok";
   const steps: { label: string; note?: string; v: number; strong?: boolean; subs?: { label: string; v: number }[] }[] = r.money === "none" && !r.isSample ? [] : [
     { label: "Sales", v: r.sales },
     { label: `${plat} Commission`, v: r.commission },
     { label: "Affiliate Commission", v: r.affiliate },
-    ...(r.platform === "tiktok" ? [{ label: "Ads Top-Up Taken By TikTok", note: "GMV Max ad fee deducted from this order's money. Not the real ad spend.", v: r.adFee }] : []),
+    ...(r.platform === "tiktok" ? [{ label: "Ads Top-Up Taken By TikTok", note: "GMV Max ad fee deducted from this order's money. Not the real ad spend.", v: r.adFee }] : r.adFee !== 0 ? [{ label: "Ads Escrow Top-Up Taken By Shopee", note: "Moved from this order into your ads wallet. Shown here only: profit adds it back and takes off the real ad spend for the period instead.", v: r.adFee }] : []),
     { label: "Seller Shipping Fee Deducted", note: r.shippingActual ? `Shipping ${rm(r.shippingActual)}, buyer paid ${rm(r.shippingBuyer)}, platform discount ${rm(r.shippingDiscount)}` : undefined, v: r.shipping },
     { label: isShopee ? "Other Fees And Vouchers" : "Transaction Fee, Service Fee, Tax And Other", v: r.otherFees, subs: isShopee ? otherParts : undefined },
     { label: "Reimbursements", v: r.reimbursement },
@@ -89,10 +109,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pr
           {isShopee ? (
             <>
               <Card>
-                <CardHeader title="Shopee Payment Breakdown" description={sx ? `Every amount Shopee itemised for this order${sx.released ? `. Money released on ${sx.released}${sx.payout != null ? ` (${rm(sx.payout)})` : ""}.` : ". Shopee has not released the money yet."}` : "Shopee has not given payment figures for this order yet."} />
+                <CardHeader title="Shopee Income Details" description={sx ? `The same lines as in the Shopee app${sx.released ? `. Money released on ${sx.released}${sx.payout != null ? ` (${rm(sx.payout)})` : ""}.` : ". Shopee has not released the money yet."}` : "Shopee has not given payment figures for this order yet."} />
                 <table className="w-full border-collapse" data-testid="shopee-breakdown"><tbody>
-                  {itemised.map((x) => <tr key={x.label}><Td>{x.label}</Td><Td align="right" className={x.v < 0 ? "text-critical" : ""}>{rm(x.v)}</Td></tr>)}
-                  {!itemised.length && <tr><Td colSpan={2} className="text-ink-3">No payment lines yet.</Td></tr>}
+                  {incomeSections.map((sec) => [
+                    <tr key={sec.title} className="bg-surface-2"><Td className="font-semibold">{sec.title}</Td><Td align="right" className="font-semibold">{sec.total == null ? "" : rm(sec.total)}</Td></tr>,
+                    ...sec.lines.map((l) => <tr key={sec.title + l.label}><Td className="pl-6 text-[13.5px] text-ink-2">{l.label}</Td><Td align="right" className={`text-[13.5px] ${l.v < 0 ? "text-ink-2" : "text-ink-2"}`}>{rm(l.v)}</Td></tr>),
+                  ])}
+                  {!incomeSections.length && <tr><Td colSpan={2} className="text-ink-3">No payment lines yet.</Td></tr>}
                 </tbody></table>
               </Card>
               {rets.length > 0 && (

@@ -88,10 +88,11 @@ async function login(p, email) {
   await p.goto(BASE + "/profit/order/2611BBBB"); await p.waitForSelector("[data-testid=order-waterfall]");
   const wf = (await p.getByTestId("order-waterfall").innerText()).replace(/\s+/g, " ");
   ok(/Shopee Commission/.test(wf) && /Settlement From Shopee/.test(wf) && !/Ads Top-Up/.test(wf), "profit: the order page speaks of Shopee");
+  ok(/Ads Escrow Top-Up Taken By Shopee/.test(wf) && /-RM 1\.86/.test(wf), "profit: the order shows the ads escrow top-up (RM 1.86) as its own line");
   const parts = (await p.getByTestId("other-part").allInnerTexts()).map((t) => t.replace(/\s+/g, " "));
   ok(parts.some((t) => /Service Fee/.test(t) && /-RM 6\.00/.test(t)) && parts.some((t) => /Transaction Fee/.test(t) && /-RM 3\.00/.test(t)), "profit: the other fees are broken down into service fee and transaction fee (" + parts.join(" | ") + ")");
   const bd = (await p.getByTestId("shopee-breakdown").innerText()).replace(/\s+/g, " ");
-  ok(/Commission Fee/.test(bd) && /Escrow Amount/.test(bd) && /Seller Transaction Fee/.test(bd), "profit: the order page lists every amount Shopee itemised (" + bd.slice(0, 80) + ")");
+  ok(/Merchandise Subtotal/.test(bd) && /Shipping Subtotal/.test(bd) && /Fees And Charges/.test(bd) && /Commission Fee/.test(bd) && /Ads Escrow Top-Up Fee/.test(bd) && /Order Income/.test(bd) && !/Cost Of Goods Sold/.test(bd), "profit: the order page follows Shopee's Income Details (" + bd.slice(0, 90) + ")");
   ok(/RET1/.test((await p.getByTestId("shopee-returns").innerText())), "profit: the order page lists its return");
   const vs = await (await b.newContext()).newPage(); await login(vs, "viewer@test.local");
   const sr = await vs.request.get(BASE + "/settings?tab=connection&src=shopee"); ok(sr.status() === 200 || sr.status() === 403 || sr.status() === 307, "permissions: the viewer does not get the sync panel");
