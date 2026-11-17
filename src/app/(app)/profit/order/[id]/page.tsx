@@ -24,16 +24,17 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
   const tx = await pg`select t.type, t.adjustment_id, coalesce(t.settlement_amount, 0)::float8 as amount, s.payment_status, to_char(s.statement_time, 'YYYY-MM-DD') as day
     from tt_fin_transactions t left join tt_fin_statements s on s.id = t.statement_id where t.order_id = ${id} order by s.statement_time`;
   const ms = MONEY_STATE[r.money];
+  const plat = r.platform === "shopee" ? "Shopee" : "TikTok";
   const steps: { label: string; note?: string; v: number; strong?: boolean }[] = r.money === "none" && !r.isSample ? [] : [
     { label: "Sales", v: r.sales },
-    { label: "TikTok Commission", v: r.commission },
+    { label: `${plat} Commission`, v: r.commission },
     { label: "Affiliate Commission", v: r.affiliate },
-    { label: "Ads Top-Up Taken By TikTok", note: "GMV Max ad fee deducted from this order's money. Not the real ad spend.", v: r.adFee },
+    ...(r.platform === "tiktok" ? [{ label: "Ads Top-Up Taken By TikTok", note: "GMV Max ad fee deducted from this order's money. Not the real ad spend.", v: r.adFee }] : []),
     { label: "Seller Shipping Fee Deducted", note: r.shippingActual ? `Shipping ${rm(r.shippingActual)}, buyer paid ${rm(r.shippingBuyer)}, platform discount ${rm(r.shippingDiscount)}` : undefined, v: r.shipping },
     { label: "Transaction Fee, Service Fee, Tax And Other", v: r.otherFees },
     { label: "Reimbursements", v: r.reimbursement },
     { label: "Deductions (Adjustments)", v: r.deduction },
-    { label: "Settlement From TikTok", v: r.settlement, strong: true },
+    { label: `Settlement From ${plat}`, v: r.settlement, strong: true },
   ];
   return (
     <div className="space-y-5">
@@ -41,7 +42,7 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
       <PageHeader title={`Order ${r.orderId}`} description={`${r.day} · ${r.pieces} pieces · ${r.status ?? ""}`} actions={<Badge tone={ms.tone}>{ms.label}</Badge>} />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Where The Money Went" description={r.money === "estimate" ? "TikTok has not paid this order yet. These are TikTok's estimates." : r.money === "none" ? "TikTok has not given money data for this order yet." : undefined} />
+          <CardHeader title="Where The Money Went" description={r.money === "estimate" ? `${plat} has not paid this order yet. These are ${plat}'s estimates.` : r.money === "none" ? "TikTok has not given money data for this order yet." : undefined} />
           <table className="w-full border-collapse" data-testid="order-waterfall">
             <tbody>
               {steps.map((s) => (

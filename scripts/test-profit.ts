@@ -52,7 +52,7 @@ async function xlsx(rows: (string | number | null)[][]): Promise<Buffer> {
   check("returns: 2 pieces come back at RM 10 and join the stock after layer B (older first)", near(rr.returnedCost.get("o1"), 20) && rr.costed[1].takes[0].orderNo === "B" && rr.costed[1].takes[1].orderNo === "RETURN" && near(rr.costed[1].cost, 4 * 20 + 1 * 10), JSON.stringify(rr.costed[1]));
 
   // ── database
-  await pg`truncate tt_orders, tt_returns, tt_fin_transactions, tt_fin_statements, tt_fin_unsettled, ads_campaign_daily, stock_layers, stock_orders, stock_bundle_parts, stock_bundles, stock_skus, claim_back_items, profit_fulfilment_months cascade`;
+  await pg`truncate shopee_orders, shopee_escrow, tt_orders, tt_returns, tt_fin_transactions, tt_fin_statements, tt_fin_unsettled, ads_campaign_daily, stock_layers, stock_orders, stock_bundle_parts, stock_bundles, stock_skus, claim_back_items, profit_fulfilment_months cascade`;
   await pg`delete from settings where key = 'profit_fulfilment'`;
   await pg`insert into stock_orders (order_no, sort_no, kind, arrival_date, arrival_exact) values ('A', 1, 'order', '2026-01-01', true), ('B', 2, 'order', '2026-02-01', true)`;
   await pg`insert into stock_layers (order_no, sku, paid_qty, free_qty, total_cost_rm) values ('A', 'X', 10, 0, 100), ('B', 'X', 10, 0, 200)`;

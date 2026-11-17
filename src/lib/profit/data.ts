@@ -7,9 +7,9 @@ export const DEFAULT_FULFILMENT = 1.2;
 
 export type MoneyState = "paid" | "processing" | "estimate" | "none";
 
-/** One TikTok order with what TikTok paid (or will pay), what the pieces cost, and the profit before ads. Money TikTok takes away is a negative number. */
+/** One TikTok or Shopee order with what the platform paid (or will pay), what the pieces cost, and the profit before ads. Money TikTok takes away is a negative number. */
 export type OrderProfit = {
-  platform: "tiktok";
+  platform: "tiktok" | "shopee";
   orderId: string;
   day: string; // the day the order was placed (Kuala Lumpur)
   month: string; // YYYY-MM, the month the order was sold
@@ -63,7 +63,7 @@ export const clearProfit = () => { version++; };
 
 export const loadProfit = (): Promise<ProfitData> => cached("profit", "all", computeProfit, version);
 async function computeProfit(): Promise<ProfitData> {
-  const [costing, perUnit, fin, uns, invoices, adDays] = await Promise.all([
+  const [costing, perUnit, fin, uns, invoices, adDays, shopeeEscrow] = await Promise.all([
     loadCosting(),
     getFulfilmentRate(),
     pg`
@@ -93,41 +93,53 @@ async function computeProfit(): Promise<ProfitData> {
       from tt_fin_unsettled where order_id is not null group by order_id`,
     pg`select to_char(month, 'YYYY-MM') as m, amount::float8 as amount from profit_fulfilment_months`,
     pg`select to_char(day, 'YYYY-MM-DD') as d, sum(coalesce(cost, 0))::float8 as spend from ads_campaign_daily group by 1`,
+    pg`select order_sn, escrow_amount::float8 as escrow, original_price::float8 as orig, seller_discount::float8 as disc, commission_fee::float8 as comm, ams_fee::float8 as ams,
+        actual_shipping_fee::float8 as ship_actual, buyer_shipping_fee::float8 as ship_buyer, shipping_rebate::float8 as ship_rebate, compensation::float8 as comp, refund_amount::float8 as refund from shopee_escrow`,
   ]);
+  const spBy = new Map(shopeeEscrow.map((r) => [String(r.order_sn), r]));
   const finBy = new Map(fin.map((r) => [String(r.order_id), r]));
   const unsBy = new Map(uns.map((r) => [String(r.order_id), r]));
   const invoiceBy = new Map(invoices.map((r) => [String(r.m), Number(r.amount)]));
 
   // Pieces shipped in each month, to spread a real 3PL invoice over them.
   const monthPieces = new Map<string, number>();
-  for (const o of costing.orders) { const m = o.day.slice(0, 7); monthPieces.set(m, (monthPieces.get(m) ?? 0) + (costing.byOrder.get(o.orderId)?.pieces ?? 0)); }
+  // Shopee FBS orders are packed by Shopee, so they are not part of the 3PL invoice.
+  for (const o of costing.orders) { if (o.isFbs) continue; const m = o.day.slice(0, 7); monthPieces.set(m, (monthPieces.get(m) ?? 0) + (costing.byOrder.get(o.orderId)?.pieces ?? 0)); }
   const rateOf = (m: string) => { const inv = invoiceBy.get(m); const p = monthPieces.get(m) ?? 0; return inv != null && p > 0 ? inv / p : perUnit; };
 
   const rows: OrderProfit[] = [];
   for (const o of costing.orders) {
     const c = costing.byOrder.get(o.orderId);
-    const f = finBy.get(o.orderId);
-    const u = unsBy.get(o.orderId);
+    const f = o.platform === "tiktok" ? finBy.get(o.orderId) : undefined;
+    const u = o.platform === "tiktok" ? unsBy.get(o.orderId) : undefined;
     const month = o.day.slice(0, 7);
     const pieces = c?.pieces ?? 0;
     let money: MoneyState = "none";
     let sales = 0, commission = 0, affiliate = 0, adFee = 0, shipping = 0, shipA = 0, shipB = 0, shipD = 0, reimb = 0, adjOther = 0, settlement = 0, paidAt: string | null = null;
-    if (f) {
+    const sp = o.platform === "shopee" ? spBy.get(o.orderId) : undefined;
+    if (sp) {
+      // Shopee: what Shopee pays out (escrow) and the fees it takes. "paid" once the order is completed, because that is when Shopee releases the money.
+      money = o.status === "COMPLETED" ? "paid" : "estimate";
+      sales = n(sp.orig) - n(sp.disc); commission = -Math.abs(n(sp.comm)); affiliate = -Math.abs(n(sp.ams));
+      shipA = n(sp.ship_actual); shipB = n(sp.ship_buyer); shipD = n(sp.ship_rebate);
+      shipping = -(shipA - shipB - shipD);
+      reimb = n(sp.comp); adjOther = -Math.abs(n(sp.refund)); settlement = n(sp.escrow);
+    } else if (f) {
       money = f.all_paid ? "paid" : "processing";
       sales = n(f.rev); commission = n(f.comm); affiliate = n(f.aff); adFee = n(f.adfee); shipping = n(f.ship); shipA = n(f.ship_actual); shipB = n(f.ship_buyer); shipD = n(f.ship_disc);
       reimb = n(f.reimb); adjOther = n(f.adj_other); settlement = n(f.settle);
       paidAt = f.paid_at ? new Date(f.paid_at as Date).toISOString() : null;
-    } else if (u) {
+    } else if (u && o.platform === "tiktok") {
       money = "estimate";
       sales = n(u.rev); commission = n(u.comm); affiliate = n(u.aff); adFee = n(u.adfee); shipping = n(u.ship); settlement = n(u.settle);
       adjOther = n(u.adj);
     }
     // Everything else TikTok takes (transaction fee, service fee, coupons, tax ...) is what is left, so the columns always add up to the settlement.
     const otherFees = money === "none" ? 0 : settlement - (sales + commission + affiliate + adFee + shipping + reimb + adjOther);
-    const fulfilment = pieces * rateOf(month);
+    const fulfilment = o.isFbs ? 0 : pieces * rateOf(month);
     const cost = c?.cost ?? 0;
     rows.push({
-      platform: "tiktok", orderId: o.orderId, day: o.day, month, status: o.status, isSample: o.isSample,
+      platform: o.platform, orderId: o.orderId, day: o.day, month, status: o.status, isSample: o.isSample,
       skus: o.items.length ? (o.items.length > 2 ? `${o.items[0].qty} × ${o.items[0].sku} +${o.items.length - 1} more` : o.items.map((i) => `${i.qty} × ${i.sku}`).join(", ")) : "–",
       pieces, money, paidAt, sales, commission, affiliate, adFee, shipping, shippingActual: shipA, shippingBuyer: shipB, shippingDiscount: shipD, otherFees, reimbursement: reimb, deduction: adjOther, settlement,
       cost, fulfilment, returnedPieces: c?.returnedPieces ?? 0, flags: { noCost: c?.noCost ?? 0, short: c?.short ?? 0 },
@@ -164,4 +176,15 @@ export function totalsOf(rows: OrderProfit[]): Totals {
     t.reimbursement += r.reimbursement; t.deduction += r.deduction; t.cost += r.cost; t.fulfilment += r.fulfilment; t.profitBeforeAds += r.profitBeforeAds ?? 0; t.noCost += r.flags.noCost;
   }
   return t;
+}
+
+export type Channel = "all" | "tiktok" | "shopee";
+export const CHANNELS: { key: Channel; label: string }[] = [{ key: "all", label: "All Channels" }, { key: "tiktok", label: "TikTok" }, { key: "shopee", label: "Shopee" }];
+export const parseChannel = (v: string | undefined): Channel => (v === "tiktok" || v === "shopee" ? v : "all");
+
+/** The same data for one channel. Real ad spend comes from TikTok GMV Max only, so Shopee alone has none yet. */
+export function forChannel(data: ProfitData, ch: Channel): ProfitData {
+  if (ch === "all") return data;
+  const rows = data.rows.filter((r) => r.platform === ch);
+  return ch === "tiktok" ? { ...data, rows } : { ...data, rows, adSpend: new Map(), adSpendDays: new Map() };
 }

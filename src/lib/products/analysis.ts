@@ -60,7 +60,7 @@ const cache = new Map<string, Cached>();
 
 export async function analyseProducts(range?: { start: string; end: string }): Promise<Analysis> {
   const { period, ref } = await resolvePeriod(range);
-  const [st] = await rows<{ l: string; s: string }>(sql`select concat_ws('|', (select max(updated_at) from product_map), (select count(*) from product_map), ${todayKL()}::text) as l, concat_ws('|', (select max(last_success_at)::text from tt_sync_state), (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_affiliate_order_lines', 'tt_videos', 'tt_sample_requests', 'tt_orders'))) as s`);
+  const [st] = await rows<{ l: string; s: string }>(sql`select concat_ws('|', (select max(updated_at) from product_map), (select count(*) from product_map), ${todayKL()}::text) as l, concat_ws('|', (select max(last_success_at)::text from tt_sync_state where dataset not like 'shopee\\_%'), (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_affiliate_order_lines', 'tt_videos', 'tt_sample_requests', 'tt_orders'))) as s`);
   return swr(cache, `${period.start}|${period.end}`, { local: st.l, sync: st.s }, () => compute(period, ref));
 }
 

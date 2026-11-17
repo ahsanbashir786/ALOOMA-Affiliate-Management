@@ -479,7 +479,7 @@ export type SyncOverview = { /** Sample orders in the shop's order list, and how
 
 export async function syncOverview(): Promise<SyncOverview> {
   const [states, running, runs, lastSched, settings, latest] = await Promise.all([
-    rows<{ dataset: string; records: number; last_success_at: Date | null; last_error: string | null }>(sql`select dataset, records, last_success_at, last_error from tt_sync_state`),
+    rows<{ dataset: string; records: number; last_success_at: Date | null; last_error: string | null }>(sql`select dataset, records, last_success_at, last_error from tt_sync_state where dataset not like 'shopee\\_%'`),
     rows<{ dataset: string; seen: number }>(sql`select dataset, max(rows_seen)::int as seen from tt_sync_runs where status = 'running' and started_at > now() - (case when dataset = ${CYCLE} then ${CYCLE_WINDOW_MIN}::int else ${REPEAT_WINDOW_MIN}::int end * interval '1 minute') group by dataset`),
     rows<{ id: number; dataset: string; started_at: Date; finished_at: Date | null; status: string; trigger: string; rows_changed: number; rows_seen: number; error: string | null; by: string | null }>(sql`
       select r.id, r.dataset, r.started_at, r.finished_at, r.status, r.trigger, r.rows_changed, r.rows_seen, r.error, u.name as by

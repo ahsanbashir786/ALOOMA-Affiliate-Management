@@ -11,7 +11,7 @@ export async function syncStamp(): Promise<string> {
   if (last && Date.now() - last.at < 2_000) return last.value;
   const [r] = await pg`select concat_ws('|',
     (select max(last_success_at)::text from tt_sync_state), (select max(last_success_at)::text from ads_sync_state),
-    (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_orders', 'tt_fin_transactions', 'tt_fin_unsettled', 'tt_fin_statements', 'tt_affiliate_order_lines', 'ads_campaign_daily', 'ads_creative_daily', 'ads_product_daily', 'ads_boosts', 'tt_videos'))) as s`;
+    (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_orders', 'tt_fin_transactions', 'tt_fin_unsettled', 'tt_fin_statements', 'tt_affiliate_order_lines', 'ads_campaign_daily', 'ads_creative_daily', 'ads_product_daily', 'ads_boosts', 'tt_videos', 'shopee_orders', 'shopee_escrow'))) as s`;
   const value = String(r?.s ?? "");
   last = { at: Date.now(), value };
   return value;

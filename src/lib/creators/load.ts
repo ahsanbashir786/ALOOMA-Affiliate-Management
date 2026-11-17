@@ -37,7 +37,7 @@ export async function loadCreatorRows(opts: { range?: { start: string; end: stri
   const [st] = await rows<{ l: string; s: string }>(sql`select concat_ws('|',
     (select max(id) from staff_events), (select max(reverted_at) from staff_events), (select count(*) from creators), (select max(id) from commitments),
     (select max(updated_at) from product_map), (select count(*) from product_map), todayKL.d) as l,
-    concat_ws('|', (select max(last_success_at)::text from tt_sync_state), (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_affiliate_order_lines', 'tt_videos', 'tt_sample_requests', 'tt_orders'))) as s
+    concat_ws('|', (select max(last_success_at)::text from tt_sync_state where dataset not like 'shopee\\_%'), (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_affiliate_order_lines', 'tt_videos', 'tt_sample_requests', 'tt_orders'))) as s
     from (select to_char(now() at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as d) todayKL`);
   const key = opts.range ? `${opts.range.start}..${opts.range.end}` : "all";
   const value = await swr(cache, key, { local: st.l, sync: st.s }, () => computeCreatorRows(opts));

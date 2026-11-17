@@ -10,9 +10,9 @@ import { RangePicker } from "@/components/ui/range-picker";
 import { ClaimsTable } from "@/components/profit/claims-board";
 import { FulfilmentCard } from "@/components/profit/fulfilment-card";
 import { MonthlyChart } from "@/components/profit/monthly-chart";
-import { loadProfit, totalsOf, type OrderProfit, type ProfitData } from "@/lib/profit/data";
+import { CHANNELS, forChannel, loadProfit, parseChannel, totalsOf, type Channel, type OrderProfit, type ProfitData } from "@/lib/profit/data";
 import { loadClaims, titleCase } from "@/lib/profit/claims";
-import { monthlyRows, sumMonths } from "@/lib/profit/monthly";
+import { channelLines, monthlyRows, sumMonths } from "@/lib/profit/monthly";
 import { inPeriod, resolvePeriod, type Period } from "@/lib/profit/period";
 import { MONEY_STATE, rm, tone } from "@/lib/profit/format";
 import { todayKL } from "@/lib/time";
@@ -36,20 +36,27 @@ export default async function ProfitPage({ searchParams }: PageProps<"/profit">)
   if (denied) return denied;
   const sp = (await searchParams) as SP;
   const tab: Tab = TABS.some((t) => t.key === one(sp.tab)) ? (one(sp.tab) as Tab) : "orders";
-  const data = await loadProfit();
+  const all = await loadProfit();
+  const channel = parseChannel(one(sp.channel));
+  const data = forChannel(all, channel);
+  const hasShopee = all.rows.some((r) => r.platform === "shopee");
+  const chName = channel === "all" ? "The Platform" : channel === "tiktok" ? "TikTok" : "Shopee";
   // The monthly view starts with every month; the order list starts with the current month.
   const period = resolvePeriod(one(sp.range), one(sp.from), one(sp.to), tab === "monthly" ? "lifetime" : "this_month");
-  const keep = { range: one(sp.range), from: one(sp.from), to: one(sp.to) };
+  const keep = { range: one(sp.range), from: one(sp.from), to: one(sp.to), channel: channel === "all" ? undefined : channel };
 
   return (
     <div className="space-y-5">
       <PageHeader title="Profit And Loss" description={<span data-testid="cost-start">What TikTok paid on every order, what the pieces cost, and what is left. Orders are counted in the month they were sold.{data.costStart ? ` Orders and ad spend from ${data.costStart} onward are counted; before that there are no stock records to work out a cost.` : ""}</span>} actions={tab === "orders" || tab === "monthly" ? <RangePicker today={todayKL()} rangeKey={period.key} from={period.from} to={period.to} label={period.label} compare={false} /> : undefined} />
       {data.startWarning && <Card className="flex items-start gap-2 bg-warn-soft px-4 py-3 text-[13.5px]" data-testid="start-warning"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" /><span>{data.startWarning} <Link href="/stock?tab=import" className="font-medium text-brand hover:underline">Open Import Files</Link></span></Card>}
       <TabLinks label="Profit sections" items={TABS.map((t) => ({ href: href("/profit", { tab: t.key === "orders" ? undefined : t.key, ...(t.key === "orders" || t.key === "monthly" ? keep : {}) }), label: t.label, icon: t.icon, active: tab === t.key, testId: `profit-tab-${t.key}` }))} />
+      {(tab === "orders" || tab === "monthly") && hasShopee && (
+        <TabLinks label="Channel" size="sm" items={CHANNELS.map((c) => ({ href: href("/profit", { tab: tab === "orders" ? undefined : tab, range: one(sp.range), from: one(sp.from), to: one(sp.to), channel: c.key === "all" ? undefined : c.key }), label: c.label, active: channel === c.key, testId: `channel-${c.key}` }))} />
+      )}
       {data.rows.length === 0 && tab !== "costs" ? (
         <Card><EmptyState icon={<Banknote className="size-5" />} title="No TikTok orders yet" description="Run a sync in Data Sync so the orders and TikTok's finance records are here." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
-      ) : tab === "orders" ? <Orders data={data} period={period} sp={sp} />
-      : tab === "monthly" ? <Monthly data={data} period={period} />
+      ) : tab === "orders" ? <Orders data={data} period={period} sp={sp} channel={channel} chName={chName} />
+      : tab === "monthly" ? <Monthly data={data} all={all} period={period} channel={channel} chName={chName} />
       : tab === "claims" ? <Claims />
       : <Costs data={data} />}
     </div>
@@ -62,7 +69,7 @@ function adSpendIn(data: ProfitData, period: Period): number {
   return s;
 }
 
-function Orders({ data, period, sp }: { data: ProfitData; period: Period; sp: SP }) {
+function Orders({ data, period, sp, channel, chName }: { data: ProfitData; period: Period; sp: SP; channel: Channel; chName: string }) {
   const inRange = data.rows.filter((r) => inPeriod(r.day, period));
   const t = totalsOf(inRange);
   const adSpend = adSpendIn(data, period);
@@ -87,7 +94,7 @@ function Orders({ data, period, sp }: { data: ProfitData; period: Period; sp: SP
       <div className="flex justify-end"><a href={exportHref} className={buttonClasses({ variant: "secondary" })} data-testid="export-orders"><Download className="size-4" />Download Excel</a></div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" data-testid="profit-tiles">
         <StatTile icon={Receipt} label="Orders" value={fmtInt(t.orders)} note={`${fmtInt(t.pieces)} pieces${t.samples ? ` · ${t.samples} samples` : ""}`} tone="neutral" />
-        <StatTile icon={Wallet} label="Money From TikTok" value={rm(t.settlement, 0)} note={t.estimated ? `${t.estimated} ${t.estimated === 1 ? "order is" : "orders are"} still an estimate` : "All settled"} />
+        <StatTile icon={Wallet} label={`Money From ${chName}`} value={rm(t.settlement, 0)} note={t.estimated ? `${t.estimated} ${t.estimated === 1 ? "order is" : "orders are"} still an estimate` : "All settled"} />
         <StatTile icon={PackageCheck} label="Product Cost" value={rm(t.cost, 0)} note="First In, First Out" tone="neutral" />
         <StatTile icon={Truck} label="Fulfilment" value={rm(t.fulfilment, 0)} note="Packing and sending" tone="neutral" />
         <StatTile icon={TrendingUp} label="Profit Before Ads" value={<span className={tone(t.profitBeforeAds)}>{rm(t.profitBeforeAds, 0)}</span>} note={`Real ad spend ${rm(adSpend, 0)}`} tone="good" />
@@ -96,7 +103,7 @@ function Orders({ data, period, sp }: { data: ProfitData; period: Period; sp: SP
       {(t.noMoney > 0 || t.noCost > 0) && (
         <Card className="flex flex-wrap items-center gap-x-5 gap-y-1 bg-warn-soft px-4 py-3 text-[13.5px]" data-testid="profit-warnings">
           <AlertTriangle className="size-4 text-warn" />
-          {t.noMoney > 0 && <span><b>{t.noMoney}</b> {t.noMoney === 1 ? "order has" : "orders have"} no money data from TikTok yet. {t.noMoney === 1 ? "It is" : "They are"} not counted in the totals.</span>}
+          {t.noMoney > 0 && <span><b>{t.noMoney}</b> {t.noMoney === 1 ? "order has" : "orders have"} no money data from {chName} yet. {t.noMoney === 1 ? "It is" : "They are"} not counted in the totals.</span>}
           {t.noCost > 0 && <span><b>{fmtInt(t.noCost)}</b> pieces have no cost because their SKU is not in the stock list (see Stock And Costing).</span>}
         </Card>
       )}
@@ -113,9 +120,9 @@ function Orders({ data, period, sp }: { data: ProfitData; period: Period; sp: SP
         } />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1280px] border-collapse" data-testid="profit-table">
-            <thead><tr><Th>Order</Th><Th>Money</Th><Th align="right">Sales</Th><Th align="right">TikTok Fees</Th><Th align="right">Shipping Deducted</Th><Th align="right">Adjustments</Th><Th align="right">Settlement</Th><Th align="right">Ads Top-Up</Th><Th align="right">Product Cost</Th><Th align="right">Fulfilment</Th><Th align="right">Profit Before Ads</Th></tr></thead>
+            <thead><tr><Th>Order</Th><Th>Money</Th><Th align="right">Sales</Th><Th align="right">{channel === "all" ? "Platform" : chName} Fees</Th><Th align="right">Shipping Deducted</Th><Th align="right">Adjustments</Th><Th align="right">Settlement</Th><Th align="right">Ads Top-Up</Th><Th align="right">Product Cost</Th><Th align="right">Fulfilment</Th><Th align="right">Profit Before Ads</Th></tr></thead>
             <tbody>
-              {shown.map((r) => <OrderRow key={r.orderId} r={r} />)}
+              {shown.map((r) => <OrderRow key={r.orderId} r={r} showChannel={channel === "all"} />)}
               {!shown.length && <tr><td colSpan={11}><EmptyState title="No orders match" description="Try another period or filter." /></td></tr>}
             </tbody>
           </table>
@@ -126,13 +133,42 @@ function Orders({ data, period, sp }: { data: ProfitData; period: Period; sp: SP
   );
 }
 
-function OrderRow({ r }: { r: OrderProfit }) {
+function ByChannel({ lines }: { lines: ReturnType<typeof channelLines> }) {
+  const sum = (k: "orders" | "sales" | "settlement" | "cost" | "fulfilment" | "profitBeforeAds" | "adSpend" | "net" | "noMoney") => lines.reduce((s, l) => s + l[k], 0);
+  const sales = sum("sales"), net = sum("net");
+  return (
+    <Card data-testid="by-channel">
+      <CardHeader title="By Channel" description="TikTok and Shopee side by side for the period, and both together. Real ad spend is TikTok GMV Max only; Shopee ads are not connected yet." />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[820px] border-collapse">
+          <thead><tr><Th>Channel</Th><Th align="right">Orders</Th><Th align="right">Sales</Th><Th align="right">Paid By Platform</Th><Th align="right">Product Cost</Th><Th align="right">Fulfilment</Th><Th align="right">Profit Before Ads</Th><Th align="right">Real Ad Spend</Th><Th align="right">Net Profit</Th><Th align="right">Margin</Th></tr></thead>
+          <tbody>
+            {lines.map((l) => (
+              <tr key={l.channel} className="hover:bg-surface-2/60" data-testid={`channel-row-${l.channel}`}>
+                <Td className="font-medium">{l.channel === "shopee" ? "Shopee" : "TikTok"}</Td>
+                <Td align="right">{fmtInt(l.orders)}{l.noMoney > 0 && <span className="ml-1 text-[12px] text-ink-3">({l.noMoney} waiting)</span>}</Td>
+                <Td align="right">{rm(l.sales)}</Td><Td align="right">{rm(l.settlement)}</Td><Td align="right">{rm(l.cost)}</Td><Td align="right">{rm(l.fulfilment)}</Td>
+                <Td align="right">{rm(l.profitBeforeAds)}</Td><Td align="right">{rm(l.adSpend)}</Td>
+                <Td align="right" className={`font-semibold ${tone(l.net)}`}>{rm(l.net)}</Td>
+                <Td align="right">{l.margin == null ? "–" : `${(l.margin * 100).toFixed(1)}%`}</Td>
+              </tr>
+            ))}
+            <tr className="bg-surface-2 font-semibold" data-testid="channel-row-total"><Td>Both Together</Td><Td align="right">{fmtInt(sum("orders"))}</Td><Td align="right">{rm(sales)}</Td><Td align="right">{rm(sum("settlement"))}</Td><Td align="right">{rm(sum("cost"))}</Td><Td align="right">{rm(sum("fulfilment"))}</Td><Td align="right">{rm(sum("profitBeforeAds"))}</Td><Td align="right">{rm(sum("adSpend"))}</Td><Td align="right" className={tone(net)}>{rm(net)}</Td><Td align="right">{sales > 0 ? `${((net / sales) * 100).toFixed(1)}%` : "–"}</Td></tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function OrderRow({ r, showChannel }: { r: OrderProfit; showChannel: boolean }) {
   const ms = MONEY_STATE[r.money];
   const none = r.money === "none" && !r.isSample;
   return (
     <tr className="hover:bg-surface-2/60" data-testid="order-row">
       <Td className="min-w-52">
         <Link href={`/profit/order/${encodeURIComponent(r.orderId)}`} className="font-medium text-brand hover:underline">{r.orderId}</Link>
+        {showChannel && <Badge tone={r.platform === "shopee" ? "warn" : "neutral"} className="ml-1.5">{r.platform === "shopee" ? "Shopee" : "TikTok"}</Badge>}
         {r.isSample && <Badge className="ml-1.5">Sample</Badge>}{r.returnedPieces > 0 && <Badge tone="warn" className="ml-1.5">Returned</Badge>}
         <span className="block max-w-64 truncate text-[12px] text-ink-3">{r.day} · {r.skus}</span>
       </Td>
@@ -150,7 +186,7 @@ function OrderRow({ r }: { r: OrderProfit }) {
   );
 }
 
-function Monthly({ data, period }: { data: ProfitData; period: Period }) {
+function Monthly({ data, all: everything, period, channel, chName }: { data: ProfitData; all: ProfitData; period: Period; channel: Channel; chName: string }) {
   const all = monthlyRows(data);
   const shownRows = all.filter((m) => (!period.from || m.month >= period.from.slice(0, 7)) && (!period.to || m.month <= period.to.slice(0, 7)));
   const total = sumMonths(shownRows);
@@ -163,12 +199,13 @@ function Monthly({ data, period }: { data: ProfitData; period: Period }) {
         <StatTile icon={TrendingUp} label="Real Ad Spend" value={rm(total.adSpend, 0)} tone="warn" />
         <StatTile icon={Banknote} label="Net Profit" value={<span className={tone(total.net)}>{rm(total.net, 0)}</span>} note={total.margin != null ? `${(total.margin * 100).toFixed(1)}% of sales` : undefined} tone={total.net < 0 ? "critical" : "good"} />
       </div>
+      {everything.rows.some((r) => r.platform === "shopee") && channel === "all" && <ByChannel lines={channelLines(everything, (d) => inPeriod(d, period), (d) => adSpendIn(d, period))} />}
       <Card><CardHeader title="Net Profit By Month" description="After product cost, fulfilment and the real ad spend." /><MonthlyChart data={chart} /></Card>
       <Card>
-        <CardHeader title="Monthly Profit And Loss" description="Months with unpaid orders use TikTok's estimate, shown in the Estimate column. Those numbers become exact when TikTok pays." />
+        <CardHeader title="Monthly Profit And Loss" description="Months with unpaid orders use the platform's estimate, shown in the Estimate column. Those numbers become exact when the platform pays." />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1180px] border-collapse" data-testid="monthly-table">
-            <thead><tr><Th>Month</Th><Th align="right">Orders</Th><Th align="right">Sales</Th><Th align="right">TikTok Fees</Th><Th align="right">Shipping Deducted</Th><Th align="right">Adjustments</Th><Th align="right">Product Cost</Th><Th align="right">Fulfilment</Th><Th align="right">Real Ad Spend</Th><Th align="right">Net Profit</Th><Th align="right">Margin</Th><Th align="right">Estimate</Th></tr></thead>
+            <thead><tr><Th>Month</Th><Th align="right">Orders</Th><Th align="right">Sales</Th><Th align="right">{channel === "all" ? "Platform" : chName} Fees</Th><Th align="right">Shipping Deducted</Th><Th align="right">Adjustments</Th><Th align="right">Product Cost</Th><Th align="right">Fulfilment</Th><Th align="right">Real Ad Spend</Th><Th align="right">Net Profit</Th><Th align="right">Margin</Th><Th align="right">Estimate</Th></tr></thead>
             <tbody>
               {shownRows.map((m) => (
                 <tr key={m.month} className="hover:bg-surface-2/60" data-testid="month-row">

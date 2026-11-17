@@ -35,3 +35,22 @@ export function sumMonths(ms: MonthRow[]): MonthRow {
   t.estimatedShare = t.sales > 0 ? est / t.sales : 0;
   return t;
 }
+
+/** One line per channel for a period, and the total: the "separately and together" view. */
+export type ChannelLine = { channel: "tiktok" | "shopee"; orders: number; sales: number; settlement: number; cost: number; fulfilment: number; profitBeforeAds: number; adSpend: number; net: number; margin: number | null; noMoney: number };
+export function channelLines(data: ProfitData, inRange: (day: string) => boolean, adSpendIn: (d: ProfitData) => number): ChannelLine[] {
+  const out: ChannelLine[] = [];
+  for (const ch of ["tiktok", "shopee"] as const) {
+    const rows = data.rows.filter((r) => r.platform === ch && inRange(r.day));
+    const l: ChannelLine = { channel: ch, orders: 0, sales: 0, settlement: 0, cost: 0, fulfilment: 0, profitBeforeAds: 0, adSpend: ch === "tiktok" ? adSpendIn(data) : 0, net: 0, margin: null, noMoney: 0 };
+    for (const r of rows) {
+      l.orders++;
+      if (r.money === "none" && !r.isSample) { l.noMoney++; continue; }
+      l.sales += r.sales; l.settlement += r.settlement; l.cost += r.cost; l.fulfilment += r.fulfilment; l.profitBeforeAds += r.profitBeforeAds ?? 0;
+    }
+    l.net = l.profitBeforeAds - l.adSpend;
+    l.margin = l.sales > 0 ? l.net / l.sales : null;
+    out.push(l);
+  }
+  return out;
+}

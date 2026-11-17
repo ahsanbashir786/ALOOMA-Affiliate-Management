@@ -40,3 +40,8 @@ Each item has a status (To Claim, Claimed, Recovered, Not Claiming) and a note, 
 ## Files
 
 `migrations/0035_profit.sql` · `src/lib/profit/{data,claims,monthly,period,format}.ts` · `src/lib/stock/{costing,neworder}.ts` · `src/app/(app)/profit/` · `src/app/api/profit/export` · `src/app/actions/{profit,stock}.ts` · `scripts/test-profit.ts` (41 checks) · `scripts/e2e-profit.js` (run `test-profit` first)
+
+
+## Shopee next to TikTok
+
+Orders and payments from Shopee (see `docs/SHOPEE.md`) are in the same list. Use the channel switch for TikTok only, Shopee only, or both; the monthly view has a By Channel table. Shopee ad spend and returns are not included yet.

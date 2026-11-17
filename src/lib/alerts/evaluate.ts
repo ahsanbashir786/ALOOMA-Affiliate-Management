@@ -15,9 +15,11 @@ import { load5PerCore, readSamples, sampleServer } from "./sampler";
 
 const ms = (d: unknown) => (d ? new Date(d as Date).getTime() : null);
 
-async function syncSource(name: string, id: string, table: "tt_sync_state" | "ads_sync_state", runs: "tt_sync_runs" | "ads_sync_runs", labels: Map<string, string>, connected: boolean, settings: { enabled: boolean; everyMinutes: number }): Promise<{ src: SyncSource; auth: string[] }> {
-  const states = await pg.unsafe(`select dataset, last_error, last_error_at, last_success_at from ${table} where dataset <> '_all'`);
-  const running = await pg.unsafe(`select dataset, started_at from ${runs} where status = 'running' and dataset <> '_all'`);
+async function syncSource(name: string, id: string, table: "tt_sync_state" | "ads_sync_state", runs: "tt_sync_runs" | "ads_sync_runs" | null, labels: Map<string, string>, connected: boolean, settings: { enabled: boolean; everyMinutes: number }, only: "shopee" | "other" | null = null): Promise<{ src: SyncSource; auth: string[] }> {
+  // The Shopee datasets are kept in tt_sync_state too; they get their own source so a Shopee problem is not reported as a TikTok one.
+  const pick = only === "shopee" ? " and dataset like 'shopee\\_%'" : only === "other" ? " and dataset not like 'shopee\\_%'" : "";
+  const states = await pg.unsafe(`select dataset, last_error, last_error_at, last_success_at from ${table} where dataset <> '_all'${pick}`);
+  const running = runs ? await pg.unsafe(`select dataset, started_at from ${runs} where status = 'running' and dataset <> '_all'`) : [];
   const auth: string[] = [];
   const failed: SyncSource["failed"] = [];
   for (const r of states) {
@@ -33,9 +35,10 @@ async function syncSource(name: string, id: string, table: "tt_sync_state" | "ad
 /** Everything that is wrong right now, from the database and the server itself. */
 export async function collectCandidates(): Promise<Candidate[]> {
   const [tt, ads, shopee, ttSet, adsSet] = await Promise.all([connectionInfo(), adsConnectionInfo(), shopeeConnectionInfo(), getSyncSettings(), getAdsSyncSettings()]);
-  const [t, a] = await Promise.all([
-    syncSource("TikTok Shop", "tiktok", "tt_sync_state", "tt_sync_runs", new Map(DATASETS.map((d) => [d.key as string, d.label])), tt.connected, ttSet),
+  const [t, a, sh] = await Promise.all([
+    syncSource("TikTok Shop", "tiktok", "tt_sync_state", "tt_sync_runs", new Map(DATASETS.map((d) => [d.key as string, d.label])), tt.connected, ttSet, "other"),
     syncSource("TikTok Ads", "ads", "ads_sync_state", "ads_sync_runs", new Map(ADS_DATASETS.map((d) => [d.key as string, d.label])), ads.connected, adsSet),
+    syncSource("Shopee", "shopee", "tt_sync_state", null, new Map([["shopee_orders", "Shopee Orders"], ["shopee_escrow", "Shopee Payments"]]), shopee.connected, { enabled: true, everyMinutes: 30 }, "shopee"),
   ]);
   const sc = shopeeConfig();
   const out: Candidate[] = [
@@ -45,7 +48,7 @@ export async function collectCandidates(): Promise<Candidate[]> {
       ads: { configured: !!adsConfig(), connected: ads.connected, authErrors: a.auth },
       shopee: { configured: !!sc, connected: shopee.connected, savedEnv: shopee.env, configEnv: sc?.env ?? null, refreshExpiresAt: shopee.refreshExpiresAt },
     }),
-    ...syncCandidates([t.src, a.src], Date.now()),
+    ...syncCandidates([t.src, a.src, sh.src], Date.now()),
   ];
   // server
   let memPct: number | null = null;

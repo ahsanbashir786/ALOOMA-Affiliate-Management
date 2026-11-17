@@ -5,6 +5,7 @@ import { refreshPlanAfterSync } from "@/lib/execution/refresh";
 import { connectionInfo, tiktokConfig } from "./client";
 import { adsConfig, adsConnectionInfo } from "@/lib/tiktok-ads/client";
 import { adsSchedulerDue, clearAdsInterrupted, getAdsSyncSettings, runAdsAll, type AdsDeps } from "@/lib/tiktok-ads/sync";
+import { shopeeSchedulerTick } from "@/lib/shopee/sync";
 import { CYCLE, clearInterrupted, getSyncSettings, isDue, runAll, type SyncDeps } from "./sync";
 
 let busy = false;
@@ -47,6 +48,10 @@ export function startScheduler() {
   clearInterrupted().catch(() => {});
   clearAdsInterrupted().catch(() => {});
   const adsTick = () => { adsSchedulerTick().catch(() => {}); };
+  // Shopee: orders and payments every 30 minutes once it is connected.
+  const shopeeTick = () => { shopeeSchedulerTick().catch(() => {}); };
+  setTimeout(shopeeTick, 50_000);
+  setInterval(shopeeTick, 5 * 60_000).unref?.();
   setTimeout(tick, 20_000);
   setTimeout(adsTick, 35_000);
   setInterval(tick, 60_000).unref?.();

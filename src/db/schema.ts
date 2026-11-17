@@ -933,3 +933,40 @@ export const appErrorLog = pgTable("app_error_log", {
   message: text("message").notNull(),
   stack: text("stack"),
 });
+
+// Shopee orders and payments (migrations/0039_shopee_orders.sql)
+export const shopeeOrders = pgTable("shopee_orders", {
+  orderSn: text("order_sn").primaryKey(),
+  shopId: text("shop_id"),
+  status: text("status"),
+  createdAt: tz("created_at").notNull(),
+  paidAt: tz("paid_at"),
+  remoteUpdatedAt: tz("remote_updated_at"),
+  totalAmount: numeric("total_amount", { precision: 14, scale: 2 }),
+  currency: text("currency"),
+  isFbs: boolean("is_fbs").notNull().default(false),
+  items: jsonb("items").notNull().default([]),
+  pieces: integer("pieces").notNull().default(0),
+  firstSeenAt: tz("first_seen_at").notNull().defaultNow(),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+  escrowCheckedAt: tz("escrow_checked_at"),
+}, (t) => [index("shopee_orders_created").on(t.createdAt), index("shopee_orders_status").on(t.status)]);
+export const shopeeEscrow = pgTable("shopee_escrow", {
+  orderSn: text("order_sn").primaryKey(),
+  escrowAmount: numeric("escrow_amount", { precision: 14, scale: 2 }),
+  originalPrice: numeric("original_price", { precision: 14, scale: 2 }),
+  sellerDiscount: numeric("seller_discount", { precision: 14, scale: 2 }),
+  voucherSeller: numeric("voucher_seller", { precision: 14, scale: 2 }),
+  commissionFee: numeric("commission_fee", { precision: 14, scale: 2 }),
+  serviceFee: numeric("service_fee", { precision: 14, scale: 2 }),
+  transactionFee: numeric("transaction_fee", { precision: 14, scale: 2 }),
+  amsFee: numeric("ams_fee", { precision: 14, scale: 2 }),
+  actualShippingFee: numeric("actual_shipping_fee", { precision: 14, scale: 2 }),
+  buyerShippingFee: numeric("buyer_shipping_fee", { precision: 14, scale: 2 }),
+  shippingRebate: numeric("shipping_rebate", { precision: 14, scale: 2 }),
+  reverseShippingFee: numeric("reverse_shipping_fee", { precision: 14, scale: 2 }),
+  refundAmount: numeric("refund_amount", { precision: 14, scale: 2 }),
+  compensation: numeric("compensation", { precision: 14, scale: 2 }),
+  raw: jsonb("raw"),
+  syncedAt: tz("synced_at").notNull().defaultNow(),
+});
