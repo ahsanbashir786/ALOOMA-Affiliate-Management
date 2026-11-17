@@ -2,10 +2,10 @@ import "server-only";
 import { sql as pg } from "@/db";
 import type { BundleMap, Layer } from "./fifo";
 
-/** Every stock layer that has an arrival date. Layers of an order with no date yet cannot be used and are reported separately. */
+/** Every stock layer that has an arrival date (its own delivery day, else its order's). Layers with no date at all cannot be used and are reported separately. */
 export async function loadLayers(): Promise<{ layers: Layer[]; undated: string[] }> {
   const rows = await pg`
-    select l.id::int as id, l.order_no, o.sort_no, to_char(o.arrival_date, 'YYYY-MM-DD') as arrival, l.sku, (l.paid_qty + l.free_qty)::int as qty, l.total_cost_rm::float8 as total
+    select l.id::int as id, l.order_no, o.sort_no, to_char(coalesce(l.arrival_date, o.arrival_date), 'YYYY-MM-DD') as arrival, l.sku, (l.paid_qty + l.free_qty)::int as qty, l.total_cost_rm::float8 as total
     from stock_layers l join stock_orders o on o.order_no = l.order_no`;
   const undated = new Set<string>();
   const layers: Layer[] = [];

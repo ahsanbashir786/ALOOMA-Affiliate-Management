@@ -12,6 +12,7 @@ import {
   serial,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -880,8 +881,12 @@ export const stockLayers = pgTable(
     unitRm: numeric("unit_rm", { precision: 14, scale: 4 }),
     freightPerPaid: numeric("freight_per_paid", { precision: 14, scale: 6 }),
     totalCostRm: numeric("total_cost_rm", { precision: 16, scale: 4 }).notNull(),
+    /** A delivery of its own (migrations/0038): empty means the order's arrival date. */
+    arrivalDate: date("arrival_date"),
+    receipt: text("receipt"),
+    chunk: integer("chunk").notNull().default(0),
   },
-  (t) => [index("stock_layers_sku").on(t.sku)],
+  (t) => [index("stock_layers_sku").on(t.sku), unique("stock_layers_order_sku_chunk_key").on(t.orderNo, t.sku, t.chunk)],
 );
 
 // Order profit (migrations/0035_profit.sql)

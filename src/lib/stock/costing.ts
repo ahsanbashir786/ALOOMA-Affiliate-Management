@@ -1,7 +1,7 @@
 import "server-only";
 import { cached } from "@/lib/swr";
 import { sql as pg } from "@/db";
-import { addDaysISO, dayKL } from "@/lib/time";
+import { dayKL } from "@/lib/time";
 import { explode, runFifoWithReturns, type BundleMap, type Costed, type Remaining, type Return, type Sale } from "./fifo";
 import { loadBundles, loadLayers } from "./load";
 import { normSku } from "./sku";
@@ -33,9 +33,10 @@ export const loadCosting = (): Promise<Costing> => cached("costing", "all", comp
 async function computeCosting(): Promise<Costing> {
   const [{ layers }, bundles] = await Promise.all([loadLayers(), loadBundles()]);
   const orderRows = await pg`select order_id, status, is_sample, created_at, coalesce(paid_at, created_at) as at, lines from tt_orders where coalesce(upper(status), '') <> 'CANCELLED' and created_at is not null and lines is not null`;
-  const [st] = await pg`select to_char(min(arrival_date) filter (where kind = 'opening'), 'YYYY-MM-DD') as opening, to_char(min(arrival_date), 'YYYY-MM-DD') as first, to_char(min(arrival_date) filter (where kind = 'order'), 'YYYY-MM-DD') as first_order from stock_orders`;
-  const startWarning: string | null = st?.opening && st?.first_order && String(st.opening) > String(st.first_order) ? `The opening stock is dated ${st.opening}, but an order arrived earlier (${st.first_order}). The opening stock report is probably from the wrong year. Import the report for the last month before the first order arrived.` : null;
-  const costStart: string | null = st?.opening ? addDaysISO(String(st.opening), 1) : ((st?.first as string) ?? null);
+  // The inventory file has every delivery from the very first order, so costing starts the day the first stock arrived.
+  const [st] = await pg`select to_char(min(coalesce(l.arrival_date, o.arrival_date)), 'YYYY-MM-DD') as first from stock_layers l join stock_orders o on o.order_no = l.order_no`;
+  const startWarning: string | null = null;
+  const costStart: string | null = (st?.first as string) ?? null;
   const orders: SaleOrder[] = [];
   const sales: Sale[] = [];
   const unknownSkus = new Map<string, number>();

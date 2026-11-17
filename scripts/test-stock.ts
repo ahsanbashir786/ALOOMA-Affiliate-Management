@@ -5,9 +5,9 @@ if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { runFifo, explode, type BundleMap, type Layer, type Sale } from "../src/lib/stock/fifo";
-import { estimateArrival, mergeOpening, parseBundles, parseCosting, parseDates, parseInventoryReport, parseSkuList } from "../src/lib/stock/parse";
+import ExcelJS from "exceljs";
+import { orderSort, parseBundles, parseInventoryFile, parseSkuList } from "../src/lib/stock/parse";
 import { normSku } from "../src/lib/stock/sku";
-import { splitOpening } from "../src/lib/stock/save";
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, extra = "") => { ok ? pass++ : fail++; console.log((ok ? "PASS  " : "FAIL  ") + name + (ok ? "" : "  " + extra)); };
@@ -47,49 +47,54 @@ const near = (a: number, b: number, e = 0.005) => Math.abs(a - b) <= e;
   check("bundle: the Shopee FBS code gives the same parts", explode("FBS-SET-Q", 1, bundles).length === 3);
   check("bundle: a plain SKU is itself", explode("abc", 2, bundles)[0].sku === "ABC" && explode("abc", 2, bundles)[0].qty === 2);
 
-  // ── Arrival text
-  check("arrival: 'Dec 2025' is the middle of the month", estimateArrival("Dec 2025") === "2025-12-15");
-  check("arrival: 'Late Mar 2026 (in stock by 1 Apr)' is the 25th of March", estimateArrival("Late Mar 2026 (in stock by 1 Apr)") === "2026-03-25");
-  check("arrival: 'Late Jan – Feb 2026' uses February", estimateArrival("Late Jan – Feb 2026") === "2026-02-15");
-  check("arrival: nothing readable gives no date", estimateArrival("soon") === null && estimateArrival(null) === null);
-
-  // ── Bundles and FBS codes in an inventory report become single pieces
-  const sp = splitOpening([{ sku: "SET-Q", closing: 3 }, { sku: "PC", closing: 4 }, { sku: "FBS-PC", closing: 2 }, { sku: "FBS-SET-Q", closing: 1 }], new Map([["SET-Q", [{ sku: "BS-Q", qty: 1 }, { sku: "PC", qty: 2 }]]]));
-  const q = (k: string) => sp.items.find((i) => i.sku === k)?.closing;
-  check("opening: a bundle is split into parts, an FBS code is the plain SKU, all added up (BS-Q 4, PC 3×2 + 4 + 2 + 1×2 = 14)", q("BS-Q") === 4 && q("PC") === 14 && sp.items.length === 2, JSON.stringify(sp.items));
-  check("opening: every split is explained in a note", sp.notes.length === 3);
-
-  // ── Several inventory reports
-  const mo = mergeOpening([{ asOf: "2025-05-31", items: [{ sku: "A", closing: 5 }, { sku: "B", closing: 2 }], samples: 1, warnings: [] }, { asOf: "2025-05-31", items: [{ sku: "A", closing: 3 }], samples: 2, warnings: [] }]);
-  check("opening: several reports for the same day are added together", mo.items.find((i) => i.sku === "A")?.closing === 8 && mo.items.find((i) => i.sku === "B")?.closing === 2 && mo.samples === 3 && mo.asOf === "2025-05-31" && mo.warnings.length === 0);
-  check("opening: reports with different days give a warning and use the earliest", mergeOpening([{ asOf: "2025-05-31", items: [], samples: 0, warnings: [] }, { asOf: "2025-06-30", items: [], samples: 0, warnings: [] }]).warnings.length === 1);
+  // ── The inventory file (built here, so this part always runs)
+  const wb = new ExcelJS.Workbook();
+  const head = ["Product name", "Variation", "SKU", "Order", "Price source", "Unit price (RMB)", "RMB per RM", "Product RM / pc", "Freight RM / pc", "Landed RM / pc"];
+  const bought = wb.addWorksheet("Inbound Costing");
+  for (let i = 1; i <= 6; i++) bought.addRow([i === 1 ? "Flexship inbound costing" : null]);
+  bought.addRow([...Array(10).fill(null), new Date(Date.UTC(2025, 1, 8)), new Date(Date.UTC(2025, 2, 24)), null, null]);
+  bought.addRow([...head, "PDF #1", "PDF #2", "Total pieces", "Total landed RM"]);
+  bought.addRow(["Protector", "Single", "nmp-s-wh-st", "A", "Order price", 14, 1.6, 8, 2, 10, 100, 50, 150, 1500]);
+  bought.addRow(["Protector", "Queen", "NMP-Q-WH-ST", "1A", "Order price", 14, 1.6, 8, 2, 12, null, 40, 40, 480]);
+  bought.addRow(["Grand total", null, null, null, null, null, null, null, null, null, 100, 90, 190, 1980]);
+  const freeWs = wb.addWorksheet("Free Units by Date");
+  for (let i = 1; i <= 6; i++) freeWs.addRow([null]);
+  freeWs.addRow([...Array(10).fill(null), new Date(Date.UTC(2025, 1, 8)), null, null, null]);
+  freeWs.addRow([...head.slice(0, 4), "Status", ...head.slice(5), "PDF #1", "Undated", "Total pieces", "Total landed RM"]);
+  freeWs.addRow(["Protector", "Single", "NMP-S-WH-ST", "A", "Free units", 0, null, 0, 0, 0, 5, null, 5, 0]);
+  freeWs.addRow(["Protector", "Queen", "NMP-Q-WH-ST", "1A", "Free units", 0, null, 0, 0, 0, null, 3, 3, 0]);
+  freeWs.addRow(["Protector", "Queen", "NMP-Q-WH-ST", "29", "Order 29 exclusion", 0, null, 0, 0, 0, 2, null, 2, 0]);
+  freeWs.addRow(["Grand total"]);
+  const inv = await parseInventoryFile(Buffer.from(await wb.xlsx.writeBuffer()));
+  const chunk = (o: string, k: string, d: string) => inv.chunks.find((c) => c.orderNo === o && c.sku === k && c.arrival === d);
+  check("inventory: one layer per delivery (A has 100 on 8 Feb and 50 on 24 Mar)", chunk("A", "NMP-S-WH-ST", "2025-02-08")?.qty === 100 && chunk("A", "NMP-S-WH-ST", "2025-03-24")?.qty === 50, JSON.stringify(inv.chunks));
+  check("inventory: the cost is the landed RM per piece of the row", chunk("A", "NMP-S-WH-ST", "2025-02-08")?.unitRm === 10 && chunk("1A", "NMP-Q-WH-ST", "2025-03-24")?.unitRm === 12);
+  check("inventory: SKUs are matched in capitals", inv.chunks.every((c) => c.sku === c.sku.toUpperCase()));
+  check("inventory: free pieces are layers at RM 0 on their delivery date", chunk("A", "NMP-S-WH-ST", "2025-02-08") !== undefined && inv.chunks.some((c) => c.free && c.qty === 5 && c.unitRm === 0 && c.arrival === "2025-02-08"));
+  check("inventory: a free paid column and free column of the same day do not collide", new Set(inv.chunks.map((c) => `${c.orderNo}|${c.sku}|${c.chunk}`)).size === inv.chunks.length);
+  check("inventory: undated free pieces and excluded pieces are listed, not counted", inv.undatedFree.reduce((n, x) => n + x.qty, 0) === 3 && inv.excluded.reduce((n, x) => n + x.qty, 0) === 2 && inv.pieces === 195, `${inv.pieces}`);
+  check("inventory: totals (190 bought + 5 free pieces, landed RM 1,980)", inv.pieces === 195 && inv.freePieces === 5 && near(inv.landedRm, 1980), `${inv.pieces} ${inv.landedRm}`);
+  check("inventory: orders know their first and last delivery", inv.orders.find((o) => o.orderNo === "A")?.firstArrival === "2025-02-08" && inv.orders.find((o) => o.orderNo === "A")?.lastArrival === "2025-03-24" && inv.orders.find((o) => o.orderNo === "A")?.deliveries === 3);
+  check("inventory: order A sorts before order 1A", orderSort("A") < orderSort("1A") && orderSort("1A") < orderSort("1B") && orderSort("1B") < orderSort("2A"));
+  check("inventory: no warnings when every row adds up", inv.warnings.length === 0, inv.warnings.join("; "));
+  bought.getRow(9).getCell(13).value = 149;
+  const bad = await parseInventoryFile(Buffer.from(await wb.xlsx.writeBuffer()));
+  check("inventory: a row whose deliveries do not add up gets a warning", bad.warnings.length === 1 && /149/.test(bad.warnings[0]), bad.warnings.join("; "));
+  const noSheet = new ExcelJS.Workbook(); noSheet.addWorksheet("Other").addRow(["x"]);
+  check("inventory: a file without the delivery columns reads as empty with a reason", (await parseInventoryFile(Buffer.from(await noSheet.xlsx.writeBuffer()))).chunks.length === 0);
 
   // ── The owner\'s real files
   const dir = process.env.STOCK_FILES;
   if (!dir) { console.log("\n(STOCK_FILES not set: real-file checks skipped)"); }
   else {
     const find = (re: RegExp) => { const f = readdirSync(dir).find((n) => re.test(n)); if (!f) throw new Error("missing file " + re); return readFileSync(path.join(dir, f)); };
-    const costing = await parseCosting(find(/All_Order_Costing_1\.xlsx$/));
-    const paid = costing.lines.reduce((s, l) => s + l.paid, 0), free = costing.lines.reduce((s, l) => s + l.free, 0);
-    const cost = costing.lines.reduce((s, l) => s + l.totalCostRm, 0);
-    check("costing: 34 orders", costing.orders.length === 34, String(costing.orders.length));
-    check("costing: 648 SKU lines", costing.lines.length === 648, String(costing.lines.length));
-    check("costing: 235,110 paid and 369 free pieces", paid === 235110 && free === 369, `${paid}/${free}`);
-    check("costing: landed cost RM 2,734,265.07", near(cost, 2734265.07, 0.1), String(cost));
-    check("costing: no warnings (summary and lines agree)", costing.warnings.length === 0, costing.warnings.join("; "));
-
-    const dates = await parseDates(find(/Order_Inbound_and_Purchase_Dates\.xlsx$/));
-    check("dates: 34 orders", dates.rows.length === 34, String(dates.rows.length));
-    check("dates: every order has an arrival date", dates.rows.every((d) => d.arrivalDate), dates.warnings.join("; "));
-    check("dates: orders 29 and 30 are exact", dates.rows.find((d) => d.orderNo === "29")?.arrivalDate === "2026-10-06" && dates.rows.find((d) => d.orderNo === "30")?.arrivalDate === "2026-11-05" && dates.rows.find((d) => d.orderNo === "30")?.arrivalExact === true);
-    check("dates: 1B was bought on 21 May 2025", dates.rows.find((d) => d.orderNo === "1B")?.purchaseDate === "2025-05-21");
-    check("dates: 1C is estimated, not exact", dates.rows.find((d) => d.orderNo === "1C")?.arrivalExact === false && dates.rows.find((d) => d.orderNo === "1C")?.arrivalDate === "2026-03-25", JSON.stringify(dates.rows.find((d) => d.orderNo === "1C")));
-
-    const open = await parseInventoryReport(find(/Flexship_Inventory_Report_May_2025\.xlsx$/));
-    check("opening: report date is 31 May 2025", open.asOf === "2025-05-31", open.asOf);
-    const nmp = open.items.filter((i) => i.sku.startsWith("NMP-"));
-    check("opening: 926 mattress protectors", nmp.reduce((s, i) => s + i.closing, 0) === 926, JSON.stringify(nmp));
-    check("opening: 99 sample pieces are kept out", open.samples === 99);
+    const inv2 = await parseInventoryFile(find(/Total_Inventory_Data\.xlsx$/));
+    check("real inventory: 35 orders", inv2.orders.length === 35, String(inv2.orders.length));
+    check("real inventory: 242,307 pieces, 302 of them free", inv2.pieces === 242307 && inv2.freePieces === 302, `${inv2.pieces}/${inv2.freePieces}`);
+    check("real inventory: landed cost about RM 2,806,610", near(inv2.landedRm, 2806610, 5), String(inv2.landedRm));
+    check("real inventory: 52 undated free pieces and 15 excluded", inv2.undatedFree.reduce((n, x) => n + x.qty, 0) === 52 && inv2.excluded.reduce((n, x) => n + x.qty, 0) === 15);
+    check("real inventory: first delivery 8 Feb 2025, last 5 Nov 2026", inv2.chunks.map((c) => c.arrival).sort()[0] === "2025-02-08" && inv2.chunks.map((c) => c.arrival).sort().at(-1) === "2026-11-05");
+    check("real inventory: no warnings", inv2.warnings.length === 0, inv2.warnings.join("; "));
 
     const sets = [find(/Other_Products_List_of_SKU_SETS_BOM\.xlsx$/), find(/NWP_BS_List_of_SKU_SETS_BOM\.xlsx$/), find(/WP_BS_List_of_SKU_SETS_BOM\.xlsx$/)];
     const all = new Map<string, Awaited<ReturnType<typeof parseBundles>>["bundles"][number]>();
@@ -105,39 +110,43 @@ const near = (a: number, b: number, e = 0.005) => Math.abs(a - b) <= e;
 
     const skus = await parseSkuList(find(/List_of_SKU_Single_Items_Latest\.xlsx$/));
     check("skus: the single item list is read", skus.skus.length > 50 && skus.skus.some((s) => s.sku === "NMP-S-WH-ST"), String(skus.skus.length));
-    const costSkus = new Set(costing.lines.map((l) => l.sku));
-    const catalogue = new Set(skus.skus.map((s) => s.sku));
-    const missing = [...costSkus].filter((s) => !catalogue.has(s));
-    console.log(`INFO  costing SKUs not in the single item list: ${missing.length}` + (missing.length ? " (" + missing.slice(0, 12).join(", ") + ")" : ""));
+    const costSkus = new Set(inv2.chunks.map((c) => c.sku));
+    const catalogue = new Set(skus.skus.map((x) => x.sku));
+    const missing = [...costSkus].filter((x) => !catalogue.has(x));
+    console.log(`INFO  inventory SKUs not in the single item list: ${missing.length}` + (missing.length ? " (" + missing.slice(0, 12).join(", ") + ")" : ""));
     const parts = new Set([...all.values()].flatMap((b) => b.parts.map((p) => p.sku)));
     const orphan = [...parts].filter((p) => !catalogue.has(p) && !costSkus.has(p));
     console.log(`INFO  bundle parts that are in neither list: ${orphan.length}` + (orphan.length ? " (" + orphan.slice(0, 12).join(", ") + ")" : ""));
 
     // Database round trip
-    const { saveBundles, saveCosting, saveDates, saveOpening, saveSkuList } = await import("../src/lib/stock/save");
+    const { saveBundles, saveInventoryFile, saveSkuList } = await import("../src/lib/stock/save");
     const { loadLayers, loadBundles } = await import("../src/lib/stock/load");
     const { sql: pg } = await import("../src/db");
     await pg`truncate stock_layers, stock_orders, stock_bundle_parts, stock_bundles, stock_skus cascade`;
-    await saveSkuList(skus.skus); await saveBundles([...all.values()]); await saveCosting(costing);
-    const d = await saveDates(dates.rows); check("db: every order got its dates", d.saved === 34 && d.notes.length === 0, JSON.stringify(d));
-    const o = await saveOpening(open); check("db: opening stock saved (937 pieces, samples left out)", o.saved === 937, JSON.stringify(o));
+    await saveSkuList(skus.skus); await saveBundles([...all.values()]);
+    const sv = await saveInventoryFile(inv2);
+    check("db: 35 orders saved", sv.saved === 35, JSON.stringify(sv));
     const lay = await loadLayers();
     const total = lay.layers.reduce((s, l) => s + l.totalCost, 0);
-    check("db: layers hold the full landed cost plus the opening stock", total > 2734265 && total < 2734265 + 20000, String(total));
-    check("db: every layer has an arrival date", lay.undated.length === 0);
-    const opn = lay.layers.filter((l) => l.orderNo === "OPENING");
-    const k = opn.find((l) => l.sku === "NMP-K-WH-ST");
-    const b1 = lay.layers.find((l) => l.orderNo === "1B" && l.sku === "NMP-K-WH-ST")!;
-    check("db: the opening stock is costed like order 1B", !!k && near(k.totalCost / k.qty, b1.totalCost / b1.qty, 0.0001));
+    check("db: layers hold the full landed cost", near(total, 2806610, 5), String(total));
+    check("db: every layer has an arrival date and the pieces add up", lay.undated.length === 0 && lay.layers.reduce((s, l) => s + l.qty, 0) === 242307);
     const bm = await loadBundles();
     check("db: bundles load back", bm.get("NWP-BS-Q-WH-SET")?.length === 3);
-    // FIFO on the real layers: sell 300 NMP-K in June 2025 → opening stock first (269 at 1B cost), then 1B.
-    const rr = runFifo(lay.layers, [{ ref: "t", day: "2025-06-25", sku: "NMP-K-WH-ST", qty: 300 }]);
-    check("real fifo: the first 269 King pieces come from the opening stock", rr.costed[0].takes[0].orderNo === "OPENING" && rr.costed[0].takes[0].qty === 269, JSON.stringify(rr.costed[0].takes));
+    // FIFO on the real layers: the oldest delivery of a SKU is used first
+    const nmp = lay.layers.filter((l) => l.sku === "NMP-S-WH-ST").sort((a, b) => (a.arrival < b.arrival ? -1 : 1));
+    const first = nmp[0];
+    const rr = runFifo(lay.layers, [{ ref: "t", day: "2026-11-30", sku: "NMP-S-WH-ST", qty: first.qty + 1 }]);
+    check("real fifo: the first sale takes the oldest delivery, then the next one", rr.costed[0].takes[0].qty === first.qty && rr.costed[0].takes[0].orderNo === first.orderNo && rr.costed[0].takes.length === 2, JSON.stringify(rr.costed[0].takes));
     // Re-import is safe
-    await saveCosting(costing); await saveOpening(open);
+    await saveInventoryFile(inv2);
     const n = await pg`select count(*)::int as n from stock_layers`;
-    check("db: importing again does not double anything", n[0].n === costing.lines.length + open.items.length, String(n[0].n));
+    check("db: importing again does not double anything", n[0].n === inv2.chunks.length, String(n[0].n));
+    // An order added in the app (31) is kept by a re-import, and the file wins if it has the same order number
+    await pg`insert into stock_orders (order_no, sort_no, kind, arrival_date, source) values ('31', 310, 'order', '2026-11-20', 'app')`;
+    await pg`insert into stock_layers (order_no, sku, paid_qty, total_cost_rm) values ('31', 'NMP-S-WH-ST', 10, 100)`;
+    await saveInventoryFile(inv2);
+    check("db: an order added in the app survives a re-import", (await pg`select 1 from stock_layers where order_no = '31'`).length === 1);
+    await pg`delete from stock_orders where order_no = '31'`;
     await pg.end();
   }
   console.log(`\n${pass} passed, ${fail} failed`);

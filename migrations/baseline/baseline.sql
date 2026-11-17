@@ -2055,7 +2055,10 @@ create table if not exists stock_layers (
   unit_rm numeric(14,4),
   freight_per_paid numeric(14,6),
   total_cost_rm numeric(16,4) not null,
-  unique (order_no, sku)
+  arrival_date date,
+  receipt text,
+  chunk int not null default 0,
+  unique (order_no, sku, chunk)
 );
 create index if not exists stock_layers_sku on stock_layers (sku);
 

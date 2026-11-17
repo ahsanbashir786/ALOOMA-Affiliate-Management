@@ -1,14 +1,19 @@
-// Reads the stock files the owner keeps in Excel. Pure: no database, so it can be tested on its own.
+// Reads the stock files the owner keeps in Excel (SKU list, bundle lists and the inventory file). Pure: no database, so it can be tested on its own.
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { normSku } from "./sku";
 
-export type CostLine = { orderNo: string; sku: string; name: string; unitRmb: number; paid: number; free: number; rmbPerRm: number; unitRm: number; freightPerPaid: number; totalCostRm: number };
-export type CostOrder = { orderNo: string; file: string | null; paid: number; free: number; productRmb: number; productRm: number; freightRm: number };
-export type CostingFile = { orders: CostOrder[]; lines: CostLine[]; warnings: string[] };
-
-export type DatesRow = { orderNo: string; file: string | null; purchaseDate: string | null; invoiceRefs: string | null; arrivalDate: string | null; arrivalExact: boolean; arrivalNote: string | null };
-export type OpeningFile = { asOf: string; items: { sku: string; closing: number }[]; samples: number; warnings: string[] };
+/** One delivery of one SKU in one order: that many pieces arrive on that day at that landed cost (RM 0 for free pieces). */
+export type InventoryChunk = { orderNo: string; sku: string; receipt: string; chunk: number; arrival: string; qty: number; free: boolean; unitRm: number; unitRmb: number | null; rmbPerRm: number | null; productRm: number; freightRm: number };
+export type InventoryOrder = { orderNo: string; firstArrival: string; lastArrival: string; deliveries: number; paid: number; free: number; productRm: number; freightRm: number; landedRm: number };
+export type InventoryFile = {
+  chunks: InventoryChunk[]; orders: InventoryOrder[];
+  /** Free pieces the file lists without a receipt date: they cannot be used by FIFO until they have a date. */
+  undatedFree: { orderNo: string; sku: string; qty: number }[];
+  /** Pieces the file marks as excluded (for example extra pieces of order 29). */
+  excluded: { orderNo: string; sku: string; qty: number; why: string }[];
+  names: Map<string, string>; warnings: string[]; pieces: number; freePieces: number; landedRm: number;
+};
 export type BundleRow = { setSku: string; name: string | null; fbsSku: string | null; parts: { sku: string; qty: number }[] };
 export type SkuRow = { sku: string; name: string | null; family: string | null };
 
@@ -81,142 +86,88 @@ const rowVals = (ws: ExcelJS.Worksheet, r: number, n = 16): Cell[] => {
 
 /** Order labels sort 1A, 1B, 1C, 2A, 2B, 3A, 3B, 4, 5 ... (oldest first; only used to break ties). */
 export function orderSort(orderNo: string): number {
+  if (/^[A-Za-z]$/.test(orderNo.trim())) return 0; // order "A" came before order 1A
   const m = /^(\d+)([A-Za-z]?)$/.exec(orderNo.trim());
   if (!m) return 9999;
   return Number(m[1]) * 10 + (m[2] ? m[2].toUpperCase().charCodeAt(0) - 64 : 0);
 }
 
-// ───────── ALOOMA_All_Order_Costing: one sheet, an order summary then one block per order ─────────
-export async function parseCosting(buf: Buffer | ArrayBuffer | Uint8Array): Promise<CostingFile> {
+// ───────── ALOOMA Total Inventory Data: every stock-in order, every delivery date, every piece ─────────
+/**
+ * The one inventory file. Sheet "Inbound Costing" has one row per SKU and order (landed RM per piece) and one column per delivery
+ * (the date above the column, the quantity in the cell). Sheet "Free Units by Date" has the free pieces the same way, at RM 0.
+ * Every filled cell is one stock layer: that many pieces of that SKU arriving on that day at that cost. FIFO uses them as they are.
+ */
+export async function parseInventoryFile(buf: Buffer | ArrayBuffer | Uint8Array): Promise<InventoryFile> {
   const wb = await open(buf);
-  const ws = wb.worksheets[0];
   const warnings: string[] = [];
-  const orders: CostOrder[] = [];
-  const lines: CostLine[] = [];
-  const files = new Map<string, string>();
-  let section: "summary" | "detail" | "bysku" = "summary";
-  let current: string | null = null;
-  for (let r = 1; r <= ws.rowCount; r++) {
-    const v = rowVals(ws, r, 15);
-    const a = text(v[0]);
-    if (!a) continue;
-    if (/^ORDER DETAIL/i.test(a)) { section = "detail"; continue; }
-    if (/^ALL ORDERS BY SKU/i.test(a)) { section = "bysku"; continue; }
-    if (section === "bysku") continue;
-    const blk = /^ORDER\s+(\S+)\s*\|\s*(.*)$/i.exec(a);
-    if (blk) { current = blk[1]; files.set(current, blk[2].trim()); continue; }
-    if (section === "summary") {
-      if (/^GRAND TOTAL/i.test(a)) continue;
-      const paid = num(v[2]);
-      if (paid == null || !/^\d+[A-Za-z]?$/.test(a)) continue;
-      orders.push({ orderNo: a, file: null, paid, free: num(v[3]) ?? 0, productRmb: num(v[5]) ?? 0, productRm: num(v[7]) ?? 0, freightRm: num(v[11]) ?? 0 });
-    } else if (section === "detail" && current) {
-      const sku = text(v[2]);
-      const paid = num(v[4]);
-      if (!sku || paid == null || a === "Order" || /^TOTAL/i.test(a)) continue;
-      lines.push({
-        orderNo: a,
-        sku: normSku(sku),
-        name: text(v[1]) ?? sku,
-        unitRmb: num(v[3]) ?? 0,
-        paid,
-        free: num(v[5]) ?? 0,
-        rmbPerRm: num(v[8]) ?? 0,
-        unitRm: num(v[9]) ?? 0,
-        freightPerPaid: num(v[10]) ?? 0,
-        totalCostRm: num(v[12]) ?? 0,
-      });
+  const chunks: InventoryChunk[] = [];
+  const undatedFree: { orderNo: string; sku: string; qty: number }[] = [];
+  const excluded: { orderNo: string; sku: string; qty: number; why: string }[] = [];
+  const names = new Map<string, string>();
+
+  const readSheet = (ws: ExcelJS.Worksheet, free: boolean) => {
+    // The header row is the one whose third cell says SKU; the dates are in the row above it.
+    let head = 0;
+    for (let r = 1; r <= 20 && !head; r++) if ((text(ws.getRow(r).getCell(3).value) ?? "").toLowerCase() === "sku") head = r;
+    if (!head) { warnings.push(`The sheet "${ws.name}" has no SKU column header, so it was skipped.`); return; }
+    const width = Math.max(ws.columnCount, 12);
+    const hdr: (string | null)[] = [], dates: (string | null)[] = [];
+    for (let c = 1; c <= width; c++) { hdr[c] = text(ws.getRow(head).getCell(c).value); dates[c] = day(ws.getRow(head - 1).getCell(c).value); }
+    const firstQty = (hdr.findIndex((h, i) => i > 0 && /landed rm \/ pc/i.test(h ?? ""))) + 1;
+    const totalAt = hdr.findIndex((h, i) => i > 0 && /^total pieces$/i.test(h ?? ""));
+    if (firstQty <= 1 || totalAt <= 0) { warnings.push(`The sheet "${ws.name}" does not have the delivery columns (Landed RM / pc … Total pieces), so it was skipped.`); return; }
+    for (let r = head + 1; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const first = text(row.getCell(1).value) ?? "";
+      if (/^grand total/i.test(first)) break;
+      const rawSku = text(row.getCell(3).value);
+      if (!rawSku) continue;
+      const sku = normSku(rawSku);
+      const orderNo = (text(row.getCell(4).value) ?? "").toUpperCase();
+      if (!orderNo) { warnings.push(`Row ${r} (${sku}) has no order number and was skipped.`); continue; }
+      const status = text(row.getCell(5).value) ?? "";
+      const unitRmb = num(row.getCell(6).value), rate = num(row.getCell(7).value);
+      const productRm = num(row.getCell(8).value) ?? 0, freightRm = num(row.getCell(9).value) ?? 0, landed = num(row.getCell(10).value) ?? 0;
+      const label = [first, text(row.getCell(2).value)].filter(Boolean).join(" ");
+      if (!names.has(sku) && label) names.set(sku, label);
+      let rowQty = 0;
+      for (let c = firstQty; c < totalAt; c++) {
+        const q = num(row.getCell(c).value);
+        if (!q || q <= 0) continue;
+        rowQty += q;
+        if (free && /exclusion/i.test(status)) { excluded.push({ orderNo, sku, qty: q, why: status }); continue; }
+        if (/^undated$/i.test(hdr[c] ?? "")) { undatedFree.push({ orderNo, sku, qty: q }); continue; }
+        const arrival = dates[c];
+        if (!arrival) { warnings.push(`${sku} in order ${orderNo}: ${q} pieces are in the column "${hdr[c]}" which has no date, so they are not counted.`); continue; }
+        chunks.push({ orderNo, sku, receipt: hdr[c] ?? "", chunk: (free ? 1000 : 0) + c, arrival, qty: q, free, unitRm: free ? 0 : landed, unitRmb: free ? null : unitRmb, rmbPerRm: free ? null : rate, productRm: free ? 0 : productRm, freightRm: free ? 0 : freightRm });
+      }
+      const total = num(row.getCell(totalAt).value);
+      if (total != null && Math.abs(total - rowQty) > 0.5) warnings.push(`${sku} in order ${orderNo}: the deliveries add up to ${rowQty} but the file says ${total} pieces.`);
     }
+  };
+
+  const bought = wb.worksheets.find((w) => /inbound costing/i.test(w.name)) ?? wb.worksheets[0];
+  const freeWs = wb.worksheets.find((w) => /free units/i.test(w.name));
+  if (!bought) return { chunks, orders: [], undatedFree, excluded, names, warnings: ["The file has no sheets."], pieces: 0, freePieces: 0, landedRm: 0 };
+  readSheet(bought, false);
+  if (freeWs && freeWs !== bought) readSheet(freeWs, true);
+  else if (!freeWs) warnings.push("The sheet \"Free Units by Date\" is not in the file, so no free pieces were counted.");
+
+  const by = new Map<string, InventoryOrder>();
+  for (const c of chunks) {
+    const o = by.get(c.orderNo) ?? { orderNo: c.orderNo, firstArrival: c.arrival, lastArrival: c.arrival, deliveries: 0, paid: 0, free: 0, productRm: 0, freightRm: 0, landedRm: 0 };
+    if (c.arrival < o.firstArrival) o.firstArrival = c.arrival;
+    if (c.arrival > o.lastArrival) o.lastArrival = c.arrival;
+    o.deliveries++;
+    if (c.free) o.free += c.qty; else { o.paid += c.qty; o.productRm += c.qty * c.productRm; o.freightRm += c.qty * c.freightRm; o.landedRm += c.qty * c.unitRm; }
+    by.set(c.orderNo, o);
   }
-  for (const o of orders) o.file = files.get(o.orderNo) ?? null;
-  // The order summary and its lines must agree.
-  for (const o of orders) {
-    const ls = lines.filter((l) => l.orderNo === o.orderNo);
-    if (!ls.length) { warnings.push(`Order ${o.orderNo} has no SKU lines.`); continue; }
-    const paid = ls.reduce((s, l) => s + l.paid, 0);
-    if (paid !== o.paid) warnings.push(`Order ${o.orderNo}: summary says ${o.paid} paid pieces, SKU lines add up to ${paid}.`);
-  }
-  if (!orders.length) warnings.push("No orders were found. Is this the Order Costing file?");
-  return { orders, lines, warnings };
-}
-
-// ───────── ALOOMA_Order_Inbound_and_Purchase_Dates ─────────
-const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-
-/** "Late Mar 2026 (in stock by 1 Apr)" → 2026-03-25; "Jan 2026" → 2026-01-15. Returns null when no month can be read. */
-export function estimateArrival(t: string | null): string | null {
-  if (!t) return null;
-  const clean = t.replace(/\([^)]*\)/g, " ");
-  const found: { m: number; y: number | null }[] = [];
-  for (const m of clean.matchAll(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s+(\d{4}))?/gi)) found.push({ m: MONTHS[m[1].toLowerCase()], y: m[2] ? Number(m[2]) : null });
-  if (!found.length) return null;
-  // A month with no year takes the year of the next month named after it ("Late Jan – Feb 2026").
-  for (let i = found.length - 1; i >= 0; i--) if (found[i].y == null) found[i].y = found[i + 1]?.y ?? found[i - 1]?.y ?? null;
-  const last = found[found.length - 1];
-  if (last.y == null) return null;
-  const dayOfMonth = found.length === 1 && /\blate\b/i.test(clean) ? 25 : 15;
-  return `${last.y}-${String(last.m).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
-}
-
-export async function parseDates(buf: Buffer | ArrayBuffer | Uint8Array): Promise<{ rows: DatesRow[]; warnings: string[] }> {
-  const wb = await open(buf);
-  const ws = wb.getWorksheet("Order Inbound Summary") ?? wb.worksheets[0];
-  const warnings: string[] = [];
-  let head = 0;
-  for (let r = 1; r <= Math.min(ws.rowCount, 15); r++) if (text(ws.getRow(r).getCell(1).value) === "Order") { head = r; break; }
-  if (!head) return { rows: [], warnings: ["No 'Order' header row was found. Is this the Order Inbound and Purchase Dates file?"] };
-  const rows: DatesRow[] = [];
-  for (let r = head + 1; r <= ws.rowCount; r++) {
-    const v = rowVals(ws, r, 12);
-    const o = text(v[0]);
-    if (!o || !/^\d+[A-Za-z]?$/.test(o)) continue;
-    const exact = day(v[7]);
-    const bestText = text(v[10]);
-    const est = exact ?? estimateArrival(bestText) ?? estimateArrival(text(v[8]));
-    if (!est) warnings.push(`Order ${o}: no arrival date or month could be read.`);
-    rows.push({
-      orderNo: o,
-      file: text(v[1]),
-      purchaseDate: day(v[3]),
-      invoiceRefs: text(v[5]),
-      arrivalDate: est,
-      arrivalExact: !!exact,
-      arrivalNote: exact ? "Exact day from the warehouse document" : (bestText ?? text(v[8])),
-    });
-  }
-  return { rows, warnings };
-}
-
-// ───────── Flexship inventory report (monthly closing stock) ─────────
-export async function parseInventoryReport(buf: Buffer | ArrayBuffer | Uint8Array): Promise<OpeningFile> {
-  const wb = await open(buf);
-  const ws = wb.worksheets[0];
-  const warnings: string[] = [];
-  let asOf = "";
-  const items: { sku: string; closing: number }[] = [];
-  let samples = 0;
-  for (let r = 2; r <= ws.rowCount; r++) {
-    const v = rowVals(ws, r, 11);
-    const sku = text(v[0]);
-    if (!sku) continue;
-    const closing = num(v[7]);
-    if (!asOf) asOf = text(v[8]) ?? "";
-    if (closing == null || closing <= 0) continue;
-    if (/SAMPLE/i.test(sku)) { samples += closing; continue; }
-    items.push({ sku: normSku(sku), closing });
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { warnings.push("The report's closing date could not be read."); asOf = ""; }
-  return { asOf, items, samples, warnings };
-}
-
-/** Several inventory reports for the same day (for example one per warehouse) added together. If the days differ, the earliest is used and a warning is added. */
-export function mergeOpening(files: OpeningFile[]): OpeningFile {
-  const warnings = files.flatMap((f) => f.warnings);
-  const days = [...new Set(files.map((f) => f.asOf).filter(Boolean))].sort();
-  if (days.length > 1) warnings.push(`The reports have different closing days (${days.join(", ")}). They were added together and ${days[0]} is used.`);
-  const by = new Map<string, number>();
-  for (const f of files) for (const i of f.items) by.set(i.sku, (by.get(i.sku) ?? 0) + i.closing);
-  return { asOf: days[0] ?? "", items: [...by.entries()].map(([sku, closing]) => ({ sku, closing })), samples: files.reduce((s, f) => s + f.samples, 0), warnings };
+  const orders = [...by.values()].sort((a, b) => orderSort(a.orderNo) - orderSort(b.orderNo));
+  return {
+    chunks, orders, undatedFree, excluded, names, warnings,
+    pieces: chunks.reduce((s, c) => s + c.qty, 0), freePieces: chunks.filter((c) => c.free).reduce((s, c) => s + c.qty, 0), landedRm: chunks.reduce((s, c) => s + c.qty * c.unitRm, 0),
+  };
 }
 
 // ───────── Bundle (set) lists ─────────

@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
-import { parseBundles, parseCosting, parseDates, mergeOpening, parseInventoryReport, parseSkuList } from "@/lib/stock/parse";
-import { removeAppOrder, saveBundles, saveCosting, saveDates, saveNewOrder, saveOpening, saveSkuList } from "@/lib/stock/save";
+import { parseBundles, parseInventoryFile, parseSkuList } from "@/lib/stock/parse";
+import { removeAppOrder, saveBundles, saveInventoryFile, saveNewOrder, saveSkuList } from "@/lib/stock/save";
 import { parseOrderLines, priceOrder } from "@/lib/stock/neworder";
 import { clearCosting } from "@/lib/stock/costing";
 import { clearProfit } from "@/lib/profit/data";
@@ -33,22 +33,15 @@ export async function importStockFile(_prev: ImportState, form: FormData): Promi
       const bundles = all.flatMap((a) => a.bundles);
       const r = await saveBundles(bundles);
       out = { kind, ok: bundles.length > 0, title: bundles.length ? "Bundles saved" : "No bundles found", lines: [`${r.saved} bundles, ${bundles.reduce((s, b) => s + b.parts.length, 0)} parts in total`], notes: all.flatMap((a) => a.warnings) };
-    } else if (kind === "costing") {
-      const file = await parseCosting(bufs[0]);
-      if (!file.orders.length) { out = { kind, ok: false, title: "No orders found", lines: [], notes: file.warnings }; }
+    } else if (kind === "inventory") {
+      const file = await parseInventoryFile(bufs[0]);
+      if (!file.chunks.length) { out = { kind, ok: false, title: "No stock found in this file", lines: [], notes: file.warnings.length ? file.warnings : ["The file needs the sheet \"Inbound Costing\" with the SKU, Order and delivery columns."] }; }
       else {
-        const r = await saveCosting(file);
-        const paid = file.lines.reduce((s, l) => s + l.paid, 0), free = file.lines.reduce((s, l) => s + l.free, 0), cost = file.lines.reduce((s, l) => s + l.totalCostRm, 0);
-        out = { kind, ok: true, title: "Order costing saved", lines: [`${r.saved} orders, ${file.lines.length} SKU lines`, `${paid.toLocaleString("en-MY")} paid pieces and ${free.toLocaleString("en-MY")} free pieces`, `Landed cost RM ${cost.toLocaleString("en-MY", { maximumFractionDigits: 2 })}`], notes: r.notes };
+        const r = await saveInventoryFile(file);
+        const n = (x: number) => x.toLocaleString("en-MY", { maximumFractionDigits: 0 });
+        const days = file.chunks.map((c) => c.arrival).sort();
+        out = { kind, ok: true, title: "Inventory file saved", lines: [`${r.saved} orders, ${n(file.pieces)} pieces (${n(file.freePieces)} of them free)`, `Deliveries from ${days[0]} to ${days[days.length - 1]}`, `Landed cost RM ${n(file.landedRm)}`], notes: r.notes };
       }
-    } else if (kind === "dates") {
-      const file = await parseDates(bufs[0]);
-      const r = await saveDates(file.rows);
-      out = { kind, ok: r.saved > 0, title: r.saved ? "Dates saved" : "No orders matched", lines: [`${r.saved} orders updated`, `${file.rows.filter((x) => !x.arrivalExact).length} arrival dates are estimates (only the month is known)`], notes: [...file.warnings, ...r.notes] };
-    } else if (kind === "opening") {
-      const file = mergeOpening(await Promise.all(bufs.map(parseInventoryReport)));
-      const r = await saveOpening(file);
-      out = { kind, ok: r.saved > 0, title: r.saved ? (r.notes[0]?.startsWith("Check the year") ? "Opening stock saved, but check the year" : "Opening stock saved") : "Nothing saved", lines: [`${r.saved} pieces in stock on ${file.asOf || "an unknown day"}`, `${file.samples} sample pieces are not counted`], notes: r.notes };
     } else {
       out = { kind, ok: false, title: "Unknown file type", lines: [], notes: [] };
     }

@@ -54,7 +54,7 @@ export default async function StockPage({ searchParams }: PageProps<"/stock">) {
 function Empty() {
   return (
     <Card>
-      <EmptyState icon={<Upload className="size-5" />} title="No stock imported yet" description="Import your SKU list, bundles, order costing, dates and opening stock. It takes a minute." action={<Link href="/stock?tab=import" className={buttonClasses({ variant: "primary" })}>Import Files</Link>} />
+      <EmptyState icon={<Upload className="size-5" />} title="No stock imported yet" description="Import your SKU list, bundle lists and the inventory file. It takes a minute." action={<Link href="/stock?tab=import" className={buttonClasses({ variant: "primary" })}>Import Files</Link>} />
     </Card>
   );
 }
@@ -182,8 +182,6 @@ function importCards(ov: Overview): ImportCardInfo[] {
   return [
     { kind: "skus", step: 1, title: "SKU List", help: "The list of single items (A. List of SKU Single Items). Gives every SKU its name. You can choose several files at once.", accept: xlsx, multiple: true, status: c.skus ? `${c.skus} ${c.skus === 1 ? "SKU" : "SKUs"}` : null },
     { kind: "bundles", step: 2, title: "Bundle Lists", help: "The three Set SKU / BOM files together (Other Products, NWP Bedsheets, WP Bedsheets). Choose all of them at once.", accept: xlsx, multiple: true, status: c.bundles ? `${c.bundles} ${c.bundles === 1 ? "bundle" : "bundles"}` : null },
-    { kind: "costing", step: 3, title: "Order Costing", help: "ALOOMA All Order Costing. Gives every order's pieces and landed cost per piece.", accept: xlsx, status: c.orders ? `${c.orders} ${c.orders === 1 ? "order" : "orders"}` : null },
-    { kind: "dates", step: 4, title: "Order Dates", help: "Order Inbound and Purchase Dates. Gives the purchase date and the arrival date of every order.", accept: xlsx, status: ov.orders.some((o) => o.arrival) ? "Dates added" : null },
-    { kind: "opening", step: 5, title: "Opening Stock", help: "The warehouse inventory report for the last month before the first costed order arrived (May 2025). Costed like order 1B. You can choose several files at once; they are added together.", accept: xlsx, multiple: true, status: c.opening ? `${fmtInt(c.opening)} pieces` : null },
+    { kind: "inventory", step: 3, title: "Inventory File", help: "ALOOMA Total Inventory Data. Every stock-in order with every delivery date, the pieces and the landed cost per piece, free pieces included. Stock is used oldest first (FIFO) from the very first order, so no opening stock or closing date is needed. Import it again whenever the file is updated: it replaces the earlier version.", accept: xlsx, status: c.orders ? `${c.orders} ${c.orders === 1 ? "order" : "orders"}, ${fmtInt(ov.skus.reduce((n, x) => n + x.received, 0))} pieces` : null },
   ];
 }

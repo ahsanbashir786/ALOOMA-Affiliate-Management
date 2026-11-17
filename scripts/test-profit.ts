@@ -106,12 +106,7 @@ async function xlsx(rows: (string | number | null)[][]): Promise<Buffer> {
   check("monthly: newest month first, total adds the months", m[0].month === "2026-02" && near(sumMonths(m).net, 80.3), String(sumMonths(m).net));
 
   check("ads: spend before the first costed day is left out (RM 99 on 20 Dec 2025)", !d.adSpend.has("2025-12") && near([...d.adSpendDays.values()].reduce((a, b) => a + b, 0), 50), JSON.stringify([...d.adSpend]));
-  check("costing: the first costed day is the first arrival when there is no opening stock", d.costStart === "2026-01-01" && d.startWarning === null);
-  await pg`insert into stock_orders (order_no, sort_no, kind, arrival_date, arrival_exact) values ('OPENING', 0, 'opening', '2026-05-31', true)`;
-  clearCosting(); clearProfit();
-  const w = await loadProfit();
-  check("costing: an opening stock dated after the first order is flagged as the wrong year", !!w.startWarning && /2026-05-31/.test(w.startWarning) && w.costStart === "2026-06-01", String(w.startWarning));
-  await pg`delete from stock_orders where order_no = 'OPENING'`; clearCosting(); clearProfit();
+  check("costing: the first costed day is the day the first stock arrived", d.costStart === "2026-01-01" && d.startWarning === null);
 
   // fulfilment: a real invoice replaces the per-piece rate for its month
   await pg`insert into profit_fulfilment_months (month, amount) values ('2026-01-01', 100)`;

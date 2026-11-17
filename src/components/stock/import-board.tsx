@@ -81,7 +81,7 @@ export function ImportBoard({ cards, nextOrder }: { cards: ImportCardInfo[]; nex
   return (
     <div className="space-y-3">
       <NewOrderCard suggest={nextOrder} />
-      <p className="flex items-center gap-1.5 pt-2 text-[13.5px] font-medium text-ink">First-Time Files (Orders 1 To 30)<InfoTip>Import these in order. Each file can be imported again later; nothing is counted twice.</InfoTip></p>
+      <p className="flex items-center gap-1.5 pt-2 text-[13.5px] font-medium text-ink">Files<InfoTip>Import these in order. Each file can be imported again later; nothing is counted twice. The inventory file covers every order up to the date it was made; new orders after that are added above.</InfoTip></p>
       {cards.map((c) => <ImportCard key={c.kind} info={c} />)}
     </div>
   );

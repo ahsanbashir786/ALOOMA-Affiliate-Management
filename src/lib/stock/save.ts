@@ -1,11 +1,8 @@
 import "server-only";
 import { sql as pg } from "@/db";
-import type { BundleRow, CostingFile, DatesRow, OpeningFile, SkuRow } from "./parse";
+import type { BundleRow, InventoryFile, SkuRow } from "./parse";
 import { orderSort } from "./parse";
 import { normSku } from "./sku";
-import { explode, type BundleMap } from "./fifo";
-
-export const OPENING_ORDER = "OPENING";
 
 export type SaveResult = { saved: number; notes: string[] };
 
@@ -32,82 +29,34 @@ export async function saveBundles(bundles: BundleRow[]): Promise<SaveResult> {
   return { saved: bundles.length, notes: [] };
 }
 
-/** The costing file: one row per order, one layer per SKU. Dates already saved for an order are kept. */
-export async function saveCosting(file: CostingFile): Promise<SaveResult> {
-  await pg.begin(async (tx) => {
-    for (const o of file.orders) {
-      await tx`insert into stock_orders (order_no, sort_no, kind, supplier_file, product_rmb, product_rm, freight_rm)
-        values (${o.orderNo}, ${orderSort(o.orderNo)}, 'order', ${o.file}, ${o.productRmb}, ${o.productRm}, ${o.freightRm})
-        on conflict (order_no) do update set sort_no = excluded.sort_no, supplier_file = excluded.supplier_file, product_rmb = excluded.product_rmb, product_rm = excluded.product_rm, freight_rm = excluded.freight_rm`;
-      await tx`delete from stock_layers where order_no = ${o.orderNo}`;
-    }
-    for (const l of file.lines) {
-      await tx`insert into stock_layers (order_no, sku, paid_qty, free_qty, unit_rmb, rmb_per_rm, unit_rm, freight_per_paid, total_cost_rm)
-        values (${l.orderNo}, ${l.sku}, ${l.paid}, ${l.free}, ${l.unitRmb}, ${l.rmbPerRm}, ${l.unitRm}, ${l.freightPerPaid}, ${l.totalCostRm})
-        on conflict (order_no, sku) do update set paid_qty = excluded.paid_qty, free_qty = excluded.free_qty, unit_rmb = excluded.unit_rmb, rmb_per_rm = excluded.rmb_per_rm, unit_rm = excluded.unit_rm, freight_per_paid = excluded.freight_per_paid, total_cost_rm = excluded.total_cost_rm`;
-      await tx`insert into stock_skus (sku, name) values (${l.sku}, ${l.name}) on conflict (sku) do update set name = coalesce(stock_skus.name, excluded.name)`;
-    }
-  });
-  return { saved: file.orders.length, notes: file.warnings };
-}
-
-/** Purchase and arrival dates. Orders that are not in the costing file yet are reported, not created. */
-export async function saveDates(rows: DatesRow[]): Promise<SaveResult> {
-  const notes: string[] = [];
-  let saved = 0;
-  await pg.begin(async (tx) => {
-    for (const r of rows) {
-      const res = await tx`update stock_orders set purchase_date = ${r.purchaseDate}, invoice_refs = ${r.invoiceRefs}, arrival_date = ${r.arrivalDate}, arrival_exact = ${r.arrivalExact}, arrival_note = ${r.arrivalNote}
-        where order_no = ${r.orderNo} returning order_no`;
-      if (res.length) saved++; else notes.push(`Order ${r.orderNo} is in the dates file but not in the costing file yet (import the costing file first).`);
-    }
-  });
-  return { saved, notes };
-}
-
 /**
- * A report can list a bundle (a set, a "2PCS" pack) or the Shopee FBS copy of a SKU. Stock is kept as single pieces:
- * a bundle becomes its parts (times the quantity) and an FBS code becomes the plain SKU. Everything is added up per SKU.
+ * The inventory file is the whole stock history, so importing it again replaces everything that came from a file
+ * (orders added in the app, 31 onward, are kept unless the file has the same order number).
+ * One layer is saved per delivery: pieces of one SKU arriving on one day at one cost.
  */
-export function splitOpening(items: { sku: string; closing: number }[], bundles: BundleMap): { items: { sku: string; closing: number }[]; notes: string[] } {
-  const by = new Map<string, number>();
-  const notes: string[] = [];
-  for (const i of items) {
-    const parts = explode(i.sku, i.closing, bundles);
-    if (bundles.has(i.sku) || bundles.has(i.sku.replace(/^FBS-/, ""))) notes.push(`${i.sku} (${i.closing}) is a bundle: split into ${parts.map((p) => `${p.qty} × ${p.sku}`).join(", ")}.`);
-    else if (parts[0].sku !== i.sku) notes.push(`${i.sku} (${i.closing}) is the Shopee FBS copy of ${parts[0].sku}: counted as that SKU.`);
-    for (const p of parts) by.set(p.sku, (by.get(p.sku) ?? 0) + p.qty);
-  }
-  return { items: [...by.entries()].map(([sku, closing]) => ({ sku, closing })), notes };
-}
-
-/** Stock on hand before the first costed order arrived. It is costed like the same SKU in order 1B (the nearest known cost). */
-export async function saveOpening(file: OpeningFile, costFromOrder = "1B"): Promise<SaveResult> {
+export async function saveInventoryFile(file: InventoryFile): Promise<SaveResult> {
   const notes: string[] = [...file.warnings];
-  if (!file.asOf) return { saved: 0, notes };
-  const costs = new Map<string, number>();
-  for (const r of await pg`select sku, total_cost_rm::float8 as total, (paid_qty + free_qty)::int as qty from stock_layers where order_no = ${costFromOrder}`) costs.set(String(r.sku), Number(r.total) / Number(r.qty));
-  if (!costs.size) notes.push(`Order ${costFromOrder} is not imported yet, so the opening stock has no cost. Import the costing file, then this report again.`);
-  const bundles: BundleMap = new Map();
-  for (const r of await pg`select set_sku, part_sku, qty::int as qty from stock_bundle_parts`) { const a = bundles.get(String(r.set_sku)) ?? []; a.push({ sku: String(r.part_sku), qty: Number(r.qty) }); bundles.set(String(r.set_sku), a); }
-  const split = splitOpening(file.items, bundles);
-  notes.push(...split.notes);
-  if (!bundles.size && file.items.some((i) => /SET|\dPCS/.test(i.sku))) notes.push("Some SKUs look like bundles but no bundle list is imported yet. Import the Bundle Lists first, then this report again.");
-  let total = 0;
+  const nos = file.orders.map((o) => o.orderNo);
   await pg.begin(async (tx) => {
-    await tx`insert into stock_orders (order_no, sort_no, kind, supplier_file, arrival_date, arrival_exact, arrival_note, note)
-      values (${OPENING_ORDER}, 0, 'opening', ${"Warehouse inventory report"}, ${file.asOf}, true, ${"Closing stock on " + file.asOf}, ${`Costed like order ${costFromOrder}. ${file.samples} sample pieces are not counted.`})
-      on conflict (order_no) do update set arrival_date = excluded.arrival_date, arrival_note = excluded.arrival_note, note = excluded.note`;
-    await tx`delete from stock_layers where order_no = ${OPENING_ORDER}`;
-    for (const i of split.items) {
-      const unit = costs.get(i.sku) ?? 0;
-      if (!costs.has(i.sku)) notes.push(`${i.sku}: ${i.closing} pieces have no cost in order ${costFromOrder}, so they are counted at RM 0.`);
-      await tx`insert into stock_layers (order_no, sku, paid_qty, free_qty, unit_rm, total_cost_rm) values (${OPENING_ORDER}, ${i.sku}, ${i.closing}, 0, ${unit}, ${unit * i.closing})`;
-      await tx`insert into stock_skus (sku) values (${i.sku}) on conflict do nothing`;
-      total += i.closing;
+    const clash = await tx`select order_no from stock_orders where source = 'app' and order_no = any(${nos})`;
+    if (clash.length) notes.push(`Orders ${clash.map((r) => r.order_no).join(", ")} were added in the app and are also in the file: the file's version is used.`);
+    await tx`delete from stock_orders where source = 'file' or kind = 'opening' or order_no = any(${nos})`; // layers go with them
+    for (const o of file.orders) {
+      const parts = o.deliveries === 1 ? "One delivery" : `${o.deliveries} deliveries, ${o.firstArrival} to ${o.lastArrival}`;
+      await tx`insert into stock_orders (order_no, sort_no, kind, supplier_file, arrival_date, arrival_exact, arrival_note, product_rm, freight_rm, source, note)
+        values (${o.orderNo}, ${orderSort(o.orderNo)}, 'order', ${"Total inventory file"}, ${o.firstArrival}, true, ${parts}, ${o.productRm}, ${o.freightRm}, 'file', ${o.free ? `${o.free} free pieces at RM 0` : null})`;
     }
+    for (const c of file.chunks) {
+      await tx`insert into stock_layers (order_no, sku, paid_qty, free_qty, unit_rmb, rmb_per_rm, unit_rm, freight_per_paid, total_cost_rm, arrival_date, receipt, chunk)
+        values (${c.orderNo}, ${c.sku}, ${c.free ? 0 : c.qty}, ${c.free ? c.qty : 0}, ${c.unitRmb}, ${c.rmbPerRm}, ${c.unitRm}, ${c.freightRm}, ${c.qty * c.unitRm}, ${c.arrival}, ${c.receipt}, ${c.chunk})`;
+    }
+    for (const [sku, name] of file.names) await tx`insert into stock_skus (sku, name) values (${sku}, ${name}) on conflict (sku) do update set name = coalesce(stock_skus.name, excluded.name)`;
   });
-  return { saved: total, notes };
+  const undated = file.undatedFree.reduce((n, x) => n + x.qty, 0);
+  if (undated) notes.push(`${undated} free pieces in the file have no receipt date yet (${[...new Set(file.undatedFree.map((x) => x.orderNo))].join(", ")}). They are not counted until they get a date.`);
+  const out = file.excluded.reduce((n, x) => n + x.qty, 0);
+  if (out) notes.push(`${out} pieces are marked as excluded in the file (${[...new Set(file.excluded.map((x) => x.orderNo))].map((x) => `order ${x}`).join(", ")}) and are not counted.`);
+  return { saved: file.orders.length, notes };
 }
 
 export { normSku };
@@ -125,7 +74,7 @@ export async function saveNewOrder(o: { orderNo: string; purchaseDate: string | 
     for (const l of o.priced.lines) {
       await tx`insert into stock_layers (order_no, sku, paid_qty, free_qty, unit_rmb, rmb_per_rm, unit_rm, freight_per_paid, total_cost_rm)
         values (${o.orderNo}, ${l.sku}, ${l.paid}, ${l.free}, ${l.unitRmb}, ${l.rmbPerRm}, ${l.unitRm}, ${l.freightPerPaid}, ${l.totalCostRm})
-        on conflict (order_no, sku) do update set paid_qty = stock_layers.paid_qty + excluded.paid_qty, free_qty = stock_layers.free_qty + excluded.free_qty, total_cost_rm = stock_layers.total_cost_rm + excluded.total_cost_rm`;
+        on conflict (order_no, sku, chunk) do update set paid_qty = stock_layers.paid_qty + excluded.paid_qty, free_qty = stock_layers.free_qty + excluded.free_qty, total_cost_rm = stock_layers.total_cost_rm + excluded.total_cost_rm`;
       await tx`insert into stock_skus (sku) values (${l.sku}) on conflict do nothing`;
       if (!known.has(l.sku)) notes.push(`${l.sku} is a new SKU (it was not in the SKU list).`);
     }
