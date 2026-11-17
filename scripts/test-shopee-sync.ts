@@ -6,7 +6,7 @@ import { createHmac } from "node:crypto";
 import { sql as pg } from "../src/db";
 import { shopeeConnectWithCode, shopeeDisconnect, type ShopeeConfig } from "../src/lib/shopee/client";
 import { mapShopeeAdsDay, mapShopeeEscrow, mapShopeeOrder, mapShopeeRelease, mapShopeeReturn, mapShopeeStock, mapShopeeWallet } from "../src/lib/shopee/map";
-import { runShopeeSync, shopeeSyncStatus } from "../src/lib/shopee/sync";
+import { getShopeeSyncSettings, runShopeeSync, setShopeeSyncSettings, shopeeOverview, shopeeSchedulerTick, shopeeSyncStatus } from "../src/lib/shopee/sync";
 import { clearProfit, forChannel, loadProfit, totalsOf } from "../src/lib/profit/data";
 import { channelLines } from "../src/lib/profit/monthly";
 import { clearCosting } from "../src/lib/stock/costing";
@@ -129,6 +129,19 @@ function fake(orders: O[], o: { noEscrow?: Set<string>; rateLimitOnce?: boolean;
   check("again: only the newest days are read, the changed order is updated", r2.ok && r2.orders >= 1 && r2.orders < 20 && (await pg`select status from shopee_orders where order_sn = 'SN0902'`)[0].status === "COMPLETED", JSON.stringify(r2));
   check("again: the changed order now has its payment", (await pg`select 1 from shopee_escrow where order_sn = 'SN0902'`).length === 1);
   check("again: nothing is doubled", (await pg`select count(*)::int as n from shopee_orders`)[0].n === 134);
+
+  // ── history of runs, live counts, settings
+  const runsOk = await pg`select dataset, status, trigger from shopee_sync_runs where status = 'ok' order by id limit 7`;
+  check("history: each part leaves a line (7 parts), marked manual unless it was the schedule", runsOk.length === 7 && new Set(runsOk.map((x) => x.dataset)).size === 7 && runsOk.every((x) => x.trigger === "manual"), JSON.stringify(runsOk));
+  const ov = await shopeeOverview();
+  check("overview: counts are the live rows (134 orders, 132 payments), with the dates read", ov.datasets[0].records === 134 && ov.datasets[1].records === 132 && !!ov.datasets[0].oldest && !ov.running && ov.runs.length >= 7, JSON.stringify(ov.datasets.map((x) => x.records)));
+  check("overview: a Shopee problem shows on its own card, not as a TikTok one", ov.datasets.every((x) => x.lastError === null));
+  check("settings: auto-sync starts on, every 30 minutes", JSON.stringify(await getShopeeSyncSettings()) === JSON.stringify({ enabled: true, everyMinutes: 30 }));
+  await setShopeeSyncSettings(0);
+  check("settings: switched off, the scheduler does nothing", (await getShopeeSyncSettings()).enabled === false && (await shopeeSchedulerTick()) === "off");
+  await setShopeeSyncSettings(180);
+  check("settings: every 3 hours; with a run just done the scheduler waits", (await getShopeeSyncSettings()).everyMinutes === 180 && (await shopeeSchedulerTick(Date.now())) !== "ran");
+  await setShopeeSyncSettings(30);
 
   // ── a part Shopee has not opened to this app is reported plainly and does not stop the others
   const denied = fake(orders, { adsDenied: true });

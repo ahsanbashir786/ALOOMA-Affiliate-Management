@@ -23,6 +23,12 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
   const lines = costing.byOrder.get(id)?.lines ?? [];
   const tx = await pg`select t.type, t.adjustment_id, coalesce(t.settlement_amount, 0)::float8 as amount, s.payment_status, to_char(s.statement_time, 'YYYY-MM-DD') as day
     from tt_fin_transactions t left join tt_fin_statements s on s.id = t.statement_id where t.order_id = ${id} order by s.statement_time`;
+  const isShopee = r.platform === "shopee";
+  const sx = isShopee ? (await pg`select raw, to_char(released_at at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as released, payout_amount::float8 as payout from shopee_escrow where order_sn = ${id}`)[0] : undefined;
+  const rets = isShopee ? await pg`select return_sn, status, reason, refund_amount::float8 as refund, pieces, to_char(created_at at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as day from shopee_returns where order_sn = ${id} order by created_at` : [];
+  // Everything Shopee itemised for this order's payment (vouchers, coins, tax, protection fees ...), as it sent it: a number that is not zero gets a line.
+  const income = (typeof sx?.raw === "string" ? JSON.parse(sx.raw) : sx?.raw)?.order_income as Record<string, unknown> | undefined;
+  const itemised = Object.entries(income ?? {}).filter(([, v]) => typeof v === "number" && v !== 0).map(([k, v]) => ({ label: titleCase(k.replace(/_/g, " ")), v: v as number }));
   const ms = MONEY_STATE[r.money];
   const plat = r.platform === "shopee" ? "Shopee" : "TikTok";
   const steps: { label: string; note?: string; v: number; strong?: boolean }[] = r.money === "none" && !r.isSample ? [] : [
@@ -68,6 +74,25 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
               </tbody>
             </table>
           </Card>
+          {isShopee ? (
+            <>
+              <Card>
+                <CardHeader title="Shopee Payment Breakdown" description={sx ? `Every amount Shopee itemised for this order${sx.released ? `. Money released on ${sx.released}${sx.payout != null ? ` (${rm(sx.payout)})` : ""}.` : ". Shopee has not released the money yet."}` : "Shopee has not given payment figures for this order yet."} />
+                <table className="w-full border-collapse" data-testid="shopee-breakdown"><tbody>
+                  {itemised.map((x) => <tr key={x.label}><Td>{x.label}</Td><Td align="right" className={x.v < 0 ? "text-critical" : ""}>{rm(x.v)}</Td></tr>)}
+                  {!itemised.length && <tr><Td colSpan={2} className="text-ink-3">No payment lines yet.</Td></tr>}
+                </tbody></table>
+              </Card>
+              {rets.length > 0 && (
+                <Card>
+                  <CardHeader title="Returns" description="Accepted returns put the pieces back into stock." />
+                  <table className="w-full border-collapse" data-testid="shopee-returns"><thead><tr><Th>Day</Th><Th>Return</Th><Th>Status</Th><Th align="right">Pieces</Th><Th align="right">Refund</Th></tr></thead>
+                    <tbody>{rets.map((t) => <tr key={String(t.return_sn)}><Td>{(t.day as string) ?? "–"}</Td><Td>{String(t.return_sn)}</Td><Td>{titleCase(String(t.status ?? ""))}</Td><Td align="right">{Number(t.pieces)}</Td><Td align="right">{rm(Number(t.refund ?? 0))}</Td></tr>)}</tbody>
+                  </table>
+                </Card>
+              )}
+            </>
+          ) : (
           <Card>
             <CardHeader title="TikTok Finance Records" description="Every settlement line and adjustment TikTok made on this order." />
             <table className="w-full border-collapse"><thead><tr><Th>Day</Th><Th>What</Th><Th align="right">Amount</Th></tr></thead>
@@ -77,6 +102,7 @@ export default async function OrderPage({ params }: PageProps<"/profit/order/[id
               </tbody>
             </table>
           </Card>
+          )}
         </div>
       </div>
     </div>

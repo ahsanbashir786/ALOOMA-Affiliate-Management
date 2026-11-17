@@ -5,7 +5,7 @@ import { refreshPlanAfterSync } from "@/lib/execution/refresh";
 import { connectionInfo, tiktokConfig } from "./client";
 import { adsConfig, adsConnectionInfo } from "@/lib/tiktok-ads/client";
 import { adsSchedulerDue, clearAdsInterrupted, getAdsSyncSettings, runAdsAll, type AdsDeps } from "@/lib/tiktok-ads/sync";
-import { shopeeSchedulerTick } from "@/lib/shopee/sync";
+import { clearShopeeInterrupted, shopeeSchedulerTick } from "@/lib/shopee/sync";
 import { CYCLE, clearInterrupted, getSyncSettings, isDue, runAll, type SyncDeps } from "./sync";
 
 let busy = false;
@@ -47,6 +47,7 @@ export function startScheduler() {
   // A restart kills any sync in progress; clear its "running" marks first so the screen never waits for work that no longer exists.
   clearInterrupted().catch(() => {});
   clearAdsInterrupted().catch(() => {});
+  clearShopeeInterrupted().catch(() => {});
   const adsTick = () => { adsSchedulerTick().catch(() => {}); };
   // Shopee: orders and payments every 30 minutes once it is connected.
   const shopeeTick = () => { shopeeSchedulerTick().catch(() => {}); };

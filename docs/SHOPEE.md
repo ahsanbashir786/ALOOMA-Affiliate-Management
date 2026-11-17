@@ -33,7 +33,7 @@ Settings → Connection → **Shopee**. Connects the shop, reads its **orders** 
 
 ## What is read (Data Sync → Shopee)
 
-The connection (Settings) and the reading (Data Sync) are separate: Settings only connects; **Data Sync → Shopee** shows every part, when it last ran, and any error, with **Sync Now**, **Load History** and **Check What Shopee Allows**.
+The connection (Settings) and the reading (Data Sync) are separate: Settings only connects. **Data Sync → Shopee** looks like the TikTok and Ads tabs: a status banner with **Sync Now** and an auto-sync choice (off, 30 min, hourly, 3 h, 12 h, daily), one card per part (a sync button on each, live progress while it runs), the **history of runs**, and **Data Health** with **Check What Shopee Allows**. **Load History** reads further back (670 days goes back to February 2025). Several date ranges are read at the same time, and a sync can run for up to 25 minutes; if it stops early, press Sync Now again and it carries on. Runs are saved in `shopee_sync_runs` (migration 0041).
 
 | Part | Shopee call | Used for |
 |---|---|---|
@@ -74,4 +74,4 @@ The connection (Settings) and the reading (Data Sync) are separate: Settings onl
 2. In Settings → Connection → Shopee press **Connect Shopee** (the sandbox login is not used for live) and sign in with the real seller account.
 3. Press **Sync Now**. The first sync reads 180 days; use **Load History** for more.
 
-`src/lib/shopee/{map,sync,checks}.ts` · `src/components/sync/shopee-sync-board.tsx` · `migrations/0039_shopee_orders.sql`, `0040_shopee_more.sql` · `scripts/test-shopee-sync.ts` (43 checks) · `scripts/e2e-shopee.js` (33, with `scripts/fake-shopee-api.js`)
+`src/lib/shopee/{map,sync,checks}.ts` · `src/components/sync/shopee-sync-board.tsx` · `migrations/0039_shopee_orders.sql`, `0040_shopee_more.sql`, `0041_shopee_sync_runs.sql` · `scripts/test-shopee-sync.ts` (49 checks) · `scripts/e2e-shopee.js` (38, with `scripts/fake-shopee-api.js`)

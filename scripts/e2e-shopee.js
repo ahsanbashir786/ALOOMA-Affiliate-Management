@@ -47,7 +47,7 @@ async function login(p, email) {
   await sql`insert into stock_layers (order_no, sku, paid_qty, total_cost_rm, arrival_date, chunk) values ('E2E', 'NMP-S-WH-ST', 5000, 50000, '2026-01-01', 1)`;
   await sql`truncate shopee_orders, shopee_escrow, shopee_returns, shopee_ads_daily, shopee_wallet_tx, shopee_stock`; await sql`delete from tt_sync_state where dataset like 'shopee\\_%'`;
   await p.goto(BASE + "/sync?tab=shopee"); await p.waitForSelector("[data-testid=shopee-sync]");
-  ok((await p.locator("[data-testid^=shopee-ds-][data-testid$=orders], [data-testid=shopee-ds-orders]").count()) >= 1 && (await p.locator("section[aria-label='Shopee data'] > div").count()) === 7, "sync: Data Sync has a Shopee tab with 7 parts (orders, payments, release dates, returns, ads, wallet, stock)");
+  ok((await p.locator("section[aria-label='Shopee data'] > article").count()) === 7 && (await p.getByTestId("shopee-hero").count()) === 1 && (await p.getByTestId("shopee-health").count()) === 1, "sync: Data Sync has a Shopee tab in the same layout as TikTok and Ads: status banner, 7 cards, history and data health");
   ok((await p.getByTestId("shopee-ds-orders-count").innerText()).trim() === "0", "sync: starts with no orders read");
   await p.getByTestId("shopee-sync-now").click();
   await p.waitForFunction(() => document.querySelector("[data-testid=shopee-ds-stock-count]")?.textContent?.trim() === "1", null, { timeout: 90000 });
@@ -55,10 +55,16 @@ async function login(p, email) {
   ok((await cnt("orders")) === "3" && (await cnt("escrow")) === "3", "sync: 3 orders and their 3 payments");
   ok((await cnt("release")) === "1" && (await cnt("returns")) === "1" && (await cnt("ads")) === "2" && (await cnt("wallet")) === "2" && (await cnt("stock")) === "1", "sync: release date, return, 2 ad days, 2 wallet lines and the stock are read");
   ok((await p.locator("[data-testid^=shopee-ds-] [role=alert]").count()) === 0, "sync: no part shows an error");
-  ok(/in RM 160/.test(await p.getByTestId("shopee-wallet-summary").innerText()) && /out RM 100/.test(await p.getByTestId("shopee-wallet-summary").innerText()), "sync: the wallet card sums money in (RM 160) and out (RM 100)");
+  const hl = (await p.getByTestId("shopee-health").innerText()).replace(/\s+/g, " ");
+  ok(/In RM 160/.test(hl) && /out RM 100/.test(hl) && /balance RM 60/.test(hl), "sync: data health sums the wallet: in RM 160, out RM 100, balance RM 60 (" + hl.slice(0, 160) + ")");
+  ok((await p.locator("[data-testid=shopee-runs] li").count()) >= 7, "sync: the history lists a line for every part that ran");
+  await p.getByTestId("shopee-ds-returns").hover(); await p.getByRole("button", { name: "Sync Returns" }).click();
+  await p.waitForFunction(() => /Returns/.test(document.querySelector("[data-testid=shopee-runs] li")?.textContent ?? ""), null, { timeout: 30000 });
+  ok(true, "sync: one part can be synced on its own (Returns)");
+  await p.getByTestId("shopee-history").click(); ok((await p.getByTestId("shopee-history-days").inputValue()) === "670", "sync: Load History offers 670 days (back to February 2025)");
   await p.getByTestId("shopee-access").click(); await p.getByTestId("shopee-access-result").waitFor({ timeout: 60000 });
-  const acc = (await p.getByTestId("shopee-access-result").innerText()).replace(/\s+/g, " ");
-  ok(/Every part answered/.test(acc) && /Wallet/.test(acc) && /Shopee Ads/.test(acc) && /Returns/.test(acc) && !/Affiliate/.test(acc), "sync: Check What Shopee Allows says every part answered (" + acc.slice(0, 80) + ")");
+  const acc = (await p.getByTestId("shopee-health").innerText()).replace(/\s+/g, " ");
+  ok(/Shopee Allows Everything We Read/.test(acc) && !/Affiliate/.test(acc), "sync: Check What Shopee Allows says every part answered");
   const noBuyer = await sql`select count(*)::int as n from shopee_wallet_tx where description ilike '%secret-buyer%'`;
   ok(noBuyer[0].n === 0, "privacy: no buyer name is kept");
   await p.goto(BASE + "/profit?range=lifetime"); await p.waitForSelector("[data-testid=profit-table]");
@@ -76,6 +82,9 @@ async function login(p, email) {
   await p.goto(BASE + "/profit/order/2611BBBB"); await p.waitForSelector("[data-testid=order-waterfall]");
   const wf = (await p.getByTestId("order-waterfall").innerText()).replace(/\s+/g, " ");
   ok(/Shopee Commission/.test(wf) && /Settlement From Shopee/.test(wf) && !/Ads Top-Up/.test(wf), "profit: the order page speaks of Shopee");
+  const bd = (await p.getByTestId("shopee-breakdown").innerText()).replace(/\s+/g, " ");
+  ok(/Commission Fee/.test(bd) && /Escrow Amount/.test(bd) && /Seller Transaction Fee/.test(bd), "profit: the order page lists every amount Shopee itemised (" + bd.slice(0, 80) + ")");
+  ok(/RET1/.test((await p.getByTestId("shopee-returns").innerText())), "profit: the order page lists its return");
   const vs = await (await b.newContext()).newPage(); await login(vs, "viewer@test.local");
   const sr = await vs.request.get(BASE + "/settings?tab=connection&src=shopee"); ok(sr.status() === 200 || sr.status() === 403 || sr.status() === 307, "permissions: the viewer does not get the sync panel");
   await sql.end();

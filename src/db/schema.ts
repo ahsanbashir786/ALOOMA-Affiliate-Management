@@ -1020,3 +1020,17 @@ export const shopeeStock = pgTable("shopee_stock", {
   reserved: integer("reserved").notNull().default(0),
   syncedAt: tz("synced_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.itemId, t.modelId] }), index("shopee_stock_sku").on(t.sku)]);
+
+// Shopee sync history (migrations/0041_shopee_sync_runs.sql)
+export const shopeeSyncRuns = pgTable("shopee_sync_runs", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  dataset: text("dataset").notNull(),
+  startedAt: tz("started_at").notNull().defaultNow(),
+  finishedAt: tz("finished_at"),
+  status: text("status").notNull().default("running"),
+  trigger: text("trigger").notNull().default("manual"),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  rowsSeen: integer("rows_seen").notNull().default(0),
+  rowsChanged: integer("rows_changed").notNull().default(0),
+  error: text("error"),
+}, (t) => [index("shopee_sync_runs_started").on(t.startedAt)]);

@@ -25,7 +25,7 @@ export const DEFAULT_HISTORY_DAYS = 180;
 /** An order that was still moving is read again for this many days back, so late changes are never missed. */
 const OVERLAP = 2 * DAY;
 
-export type ShopeeSyncDeps = { f?: Fetch; cfg?: ShopeeConfig | null; nowSec?: number; sleep?: (ms: number) => Promise<void>; budgetMs?: number };
+export type ShopeeSyncDeps = { f?: Fetch; cfg?: ShopeeConfig | null; nowSec?: number; sleep?: (ms: number) => Promise<void>; budgetMs?: number; trigger?: "manual" | "schedule"; userId?: string | null; concurrency?: number };
 export type ShopeeDatasetResult = { key: ShopeeDatasetKey; label: string; ok: boolean; rows: number; error: string | null };
 export type ShopeeSyncResult = { ok: boolean; orders: number; escrow: number; windows: number; error: string | null; note: string | null; datasets: ShopeeDatasetResult[] };
 
@@ -33,6 +33,14 @@ let running = false;
 export const isShopeeSyncRunning = () => running;
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Runs `fn` over `items` with at most `n` at the same time, and gives the results in order. */
+async function mapLimit<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } }));
+  return out;
+}
 
 /** Shopee limits how fast it can be asked: wait a little and try again a few times before giving up. */
 async function call<T>(path: string, deps: ShopeeSyncDeps, o: { query?: Record<string, unknown>; body?: unknown; method?: "GET" | "POST" }): Promise<T> {
@@ -73,9 +81,9 @@ async function listOrderSns(from: number, to: number, deps: ShopeeSyncDeps): Pro
 const DETAIL_FIELDS = "item_list,pay_time,total_amount,fulfillment_flag,payment_method";
 
 async function saveOrders(sns: string[], deps: ShopeeSyncDeps, shopId: string | null): Promise<number> {
-  let saved = 0;
-  for (let i = 0; i < sns.length; i += 50) {
-    const chunk = sns.slice(i, i + 50);
+  const chunks: string[][] = [];
+  for (let i = 0; i < sns.length; i += 50) chunks.push(sns.slice(i, i + 50));
+  const counts = await mapLimit(chunks, deps.concurrency ?? 3, async (chunk) => {
     const r = await call<{ order_list?: Record<string, unknown>[] }>("/api/v2/order/get_order_detail", deps, { query: { order_sn_list: chunk.join(","), response_optional_fields: DETAIL_FIELDS } });
     const rows = (r.order_list ?? []).map(mapShopeeOrder).filter((x): x is NonNullable<typeof x> => !!x);
     await pg.begin(async (tx) => {
@@ -88,9 +96,9 @@ async function saveOrders(sns: string[], deps: ShopeeSyncDeps, shopId: string | 
             synced_at = case when shopee_orders.remote_updated_at is distinct from excluded.remote_updated_at or shopee_orders.status is distinct from excluded.status then now() else shopee_orders.synced_at end`;
       }
     });
-    saved += rows.length;
-  }
-  return saved;
+    return rows.length;
+  });
+  return counts.reduce((x, y) => x + y, 0);
 }
 
 /** Orders whose payment figures are missing, or that changed after the figures were read. Newest first. */
@@ -104,9 +112,9 @@ async function escrowCandidates(limit: number): Promise<string[]> {
 }
 
 async function saveEscrow(sns: string[], deps: ShopeeSyncDeps): Promise<number> {
-  let saved = 0;
-  for (let i = 0; i < sns.length; i += 50) {
-    const chunk = sns.slice(i, i + 50);
+  const chunks: string[][] = [];
+  for (let i = 0; i < sns.length; i += 50) chunks.push(sns.slice(i, i + 50));
+  const counts = await mapLimit(chunks, deps.concurrency ?? 3, async (chunk) => {
     const r = await call<unknown>("/api/v2/payment/get_escrow_detail_batch", deps, { method: "POST", body: { order_sn_list: chunk } });
     const list = (Array.isArray(r) ? r : Array.isArray((r as { response?: unknown }).response) ? (r as { response: unknown[] }).response : []) as Record<string, unknown>[];
     const rows = list.map(mapShopeeEscrow).filter((x): x is NonNullable<typeof x> => !!x);
@@ -123,9 +131,9 @@ async function saveEscrow(sns: string[], deps: ShopeeSyncDeps): Promise<number> 
       // An order Shopee has no figures for yet is not asked again for a few hours: remember we looked.
       for (const sn of chunk) if (!got.has(sn)) await tx`update shopee_orders set escrow_checked_at = now() where order_sn = ${sn}`;
     });
-    saved += rows.length;
-  }
-  return saved;
+    return rows.length;
+  });
+  return counts.reduce((x, y) => x + y, 0);
 }
 
 // ───────── The other datasets ─────────
@@ -138,20 +146,31 @@ async function windowed(key: ShopeeDatasetKey, ctx: Ctx, step: number, fetchWind
   const history = (ctx.historyDays ?? DEFAULT_HISTORY_DAYS) * DAY;
   let from = wm ? wm - OVERLAP : ctx.now - history;
   if (ctx.historyDays && wm) from = Math.min(from, ctx.now - history); // asked to read further back
+  // Several windows are read at the same time (Shopee allows it), a batch at a time; the progress is saved after each batch.
+  const per = ctx.deps.concurrency ?? 3;
   let rows = 0, stopped = false;
   while (from < ctx.now) {
     if (Date.now() - ctx.started > ctx.budget) { ctx.res.note = "Stopped early to stay within the time limit; the next sync carries on."; stopped = true; break; }
-    const to = Math.min(from + step, ctx.now);
-    rows += await fetchWindow(from, to);
-    if (key === "orders") ctx.res.windows++;
-    await saveState(dataset, { ok: true, watermark: new Date(to * 1000), records: 0 });
-    from = to;
+    const wins: [number, number][] = [];
+    for (let f = from; f < ctx.now && wins.length < per; f += step) wins.push([f, Math.min(f + step, ctx.now)]);
+    const got = await Promise.all(wins.map(([a, b]) => fetchWindow(a, b)));
+    const n = got.reduce((x, y) => x + y, 0);
+    rows += n;
+    if (key === "orders") ctx.res.windows += wins.length;
+    await progress(ctx, n);
+    from = wins[wins.length - 1][1];
+    await saveState(dataset, { ok: true, watermark: new Date(from * 1000), records: 0 });
   }
   await saveState(dataset, { ok: true, watermark: stopped ? undefined : new Date(ctx.now * 1000), records: await countSql() });
   return rows;
 }
 
-type Ctx = { deps: ShopeeSyncDeps; now: number; started: number; budget: number; historyDays?: number; res: ShopeeSyncResult; shopId: string | null; force: boolean };
+/** Adds to the "records so far" of the part that is running, so the screen can show live progress. */
+async function progress(ctx: Ctx, n: number) {
+  if (ctx.runId && n) await pg`update shopee_sync_runs set rows_seen = rows_seen + ${n} where id = ${ctx.runId}`;
+}
+
+type Ctx = { runId: number | null; deps: ShopeeSyncDeps; now: number; started: number; budget: number; historyDays?: number; res: ShopeeSyncResult; shopId: string | null; force: boolean };
 const arr = (r: unknown, ...keys: string[]): Record<string, unknown>[] => {
   if (Array.isArray(r)) return r as Record<string, unknown>[];
   const o = (r ?? {}) as Record<string, unknown>;
@@ -184,7 +203,8 @@ async function runEscrow(ctx: Ctx): Promise<number> {
     if (Date.now() - ctx.started > ctx.budget) { ctx.res.note = "Stopped early to stay within the time limit; the next sync carries on."; break; }
     const sns = await escrowCandidates(200);
     if (!sns.length) break;
-    n += await saveEscrow(sns, ctx.deps); // orders Shopee has no figures for are marked as asked, so the next round moves on
+    const got = await saveEscrow(sns, ctx.deps); // orders Shopee has no figures for are marked as asked, so the next round moves on
+    n += got; await progress(ctx, got);
   }
   ctx.res.escrow += n;
   await saveState(SHOPEE_DATASETS.escrow, { ok: true, watermark: new Date(ctx.now * 1000), records: await count("shopee_escrow") });
@@ -267,6 +287,7 @@ async function runStock(ctx: Ctx): Promise<number> {
     for (const x of rows) await tx`insert into shopee_stock (item_id, model_id, sku, name, seller_stock, shopee_stock, reserved, synced_at) values (${x.itemId}, ${x.modelId}, ${x.sku}, ${x.name}, ${x.sellerStock}, ${x.shopeeStock}, ${x.reserved}, now())
       on conflict (item_id, model_id) do update set sku = excluded.sku, name = excluded.name, seller_stock = excluded.seller_stock, shopee_stock = excluded.shopee_stock, reserved = excluded.reserved, synced_at = now()`;
   });
+  await progress(ctx, rows.length);
   await saveState(SHOPEE_DATASETS.stock, { ok: true, watermark: new Date(ctx.now * 1000), records: await count("shopee_stock") });
   return rows.length;
 }
@@ -284,7 +305,7 @@ function friendly(e: unknown, label: string): string {
 /**
  * One sync of everything: orders, payments, release dates, returns, ads, wallet and stock. Each part is separate: a part that fails
  * (for example a permission Shopee has not given) is reported and the others still run. `only` runs just some of them.
- * `historyDays` only matters the first time (or when asked to read further back).
+ * `historyDays` only matters the first time (or when asked to read further back). Every part leaves one line in the history.
  */
 export async function runShopeeSync(deps: ShopeeSyncDeps & { historyDays?: number; only?: ShopeeDatasetKey[]; force?: boolean } = {}): Promise<ShopeeSyncResult> {
   const fail = (error: string): ShopeeSyncResult => ({ ok: false, orders: 0, escrow: 0, windows: 0, error, note: null, datasets: [] });
@@ -295,45 +316,120 @@ export async function runShopeeSync(deps: ShopeeSyncDeps & { historyDays?: numbe
   if (!info.connected) return fail("Shopee is not connected yet.");
   running = true;
   const res: ShopeeSyncResult = { ok: true, orders: 0, escrow: 0, windows: 0, error: null, note: null, datasets: [] };
-  const ctx: Ctx = { deps: { ...deps, cfg }, now: deps.nowSec ?? Math.floor(Date.now() / 1000), started: Date.now(), budget: deps.budgetMs ?? 8 * 60_000, historyDays: deps.historyDays, res, shopId: info.shopIds[0] ?? null, force: !!deps.force };
+  const ctx: Ctx = { runId: null, deps: { ...deps, cfg }, now: deps.nowSec ?? Math.floor(Date.now() / 1000), started: Date.now(), budget: deps.budgetMs ?? 25 * 60_000, historyDays: deps.historyDays, res, shopId: info.shopIds[0] ?? null, force: !!deps.force };
   try {
     for (const d of SHOPEE_DATASET_LIST) {
       if (deps.only && !deps.only.includes(d.key)) continue;
+      const [run] = await pg`insert into shopee_sync_runs (dataset, trigger, user_id) values (${SHOPEE_DATASETS[d.key]}, ${deps.trigger ?? "manual"}, ${deps.userId ?? null}) returning id`;
+      ctx.runId = Number(run.id);
+      res.note = null;
       try {
         const rows = await RUNNERS[d.key](ctx);
         res.datasets.push({ key: d.key, label: d.label, ok: true, rows, error: null });
+        await pg`update shopee_sync_runs set status = 'ok', finished_at = now(), rows_changed = ${rows}, error = ${res.note} where id = ${ctx.runId}`;
       } catch (e) {
         const msg = friendly(e, d.label);
         res.datasets.push({ key: d.key, label: d.label, ok: false, rows: 0, error: msg });
+        await pg`update shopee_sync_runs set status = 'failed', finished_at = now(), error = ${msg} where id = ${ctx.runId}`;
         await saveState(SHOPEE_DATASETS[d.key], { error: msg });
         if (!res.error) res.error = msg;
         res.ok = false;
         if (e instanceof ShopeeApiError && e.isAuth) break; // the login itself is refused: the rest would fail the same way
-        if (d.key === "orders") continue; // payments still work on what we have
       }
     }
     return res;
   } finally { running = false; }
 }
 
+/** A restart kills a sync in progress; its "running" lines would wait forever. */
+export async function clearShopeeInterrupted(): Promise<void> {
+  await pg`update shopee_sync_runs set status = 'failed', finished_at = now(), error = 'Stopped (the server restarted). The next sync carries on.' where status = 'running'`;
+}
+
+// ───────── What the screen shows ─────────
+export type ShopeeSyncSettings = { enabled: boolean; everyMinutes: number };
+export async function getShopeeSyncSettings(): Promise<ShopeeSyncSettings> {
+  const [r] = await pg`select value from settings where key = 'shopee_sync_settings'`;
+  const v = (r?.value ?? {}) as Partial<ShopeeSyncSettings>;
+  return { enabled: v.enabled !== false, everyMinutes: [30, 60, 180, 720, 1440].includes(Number(v.everyMinutes)) ? Number(v.everyMinutes) : 30 };
+}
+export async function setShopeeSyncSettings(minutes: number): Promise<ShopeeSyncSettings> {
+  const v: ShopeeSyncSettings = minutes > 0 ? { enabled: true, everyMinutes: [30, 60, 180, 720, 1440].includes(minutes) ? minutes : 30 } : { enabled: false, everyMinutes: 30 };
+  await pg`insert into settings (key, value) values ('shopee_sync_settings', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value`;
+  return v;
+}
+
+export type ShopeeDatasetView = { key: ShopeeDatasetKey; label: string; what: string; icon: string; records: number; lastSuccessAt: string | null; lastError: string | null; running: boolean; progress: number | null; oldest: string | null; newest: string | null; note: string | null };
+export type ShopeeRunView = { id: number; label: string; startedAt: string; durationSec: number | null; status: string; trigger: string; by: string | null; changed: number; error: string | null };
+export type ShopeeOverview = {
+  now: number; datasets: ShopeeDatasetView[]; runs: ShopeeRunView[]; running: boolean; lastFullAt: string | null; nextAt: string | null; settings: ShopeeSyncSettings;
+  shop: { id: string | null; name: string | null; region: string | null; env: string | null }; walletSummary: { moneyIn: number; moneyOut: number; balance: number | null } | null;
+  needsReconnect: boolean;
+};
+
+const ICONS: Record<ShopeeDatasetKey, string> = { orders: "bag", escrow: "wallet", release: "calendar", returns: "undo", ads: "rocket", wallet: "bank", stock: "package" };
+
+export async function shopeeOverview(): Promise<ShopeeOverview> {
+  const [states, runs, active, settings, info, counts, w, lastCycle] = await Promise.all([
+    pg`select dataset, last_success_at, last_error from tt_sync_state where dataset like 'shopee\\_%'`,
+    pg`select r.id, r.dataset, r.started_at, r.finished_at, r.status, r.trigger, r.rows_changed, r.error, u.name as by from shopee_sync_runs r left join users u on u.id = r.user_id order by r.started_at desc, r.id desc limit 40`,
+    pg`select dataset, max(rows_seen)::int as seen from shopee_sync_runs where status = 'running' and started_at > now() - interval '40 minutes' group by dataset`,
+    getShopeeSyncSettings(),
+    shopeeConnectionInfo(),
+    pg`select
+      (select count(*)::int from shopee_orders) as orders, (select count(*)::int from shopee_escrow) as escrow, (select count(*)::int from shopee_escrow where released_at is not null) as release,
+      (select count(*)::int from shopee_returns) as returns, (select count(*)::int from shopee_ads_daily) as ads, (select count(*)::int from shopee_wallet_tx) as wallet, (select count(*)::int from shopee_stock) as stock,
+      (select to_char(min(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_orders) as o_min, (select to_char(max(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_orders) as o_max,
+      (select to_char(min(day), 'YYYY-MM-DD') from shopee_ads_daily) as a_min, (select to_char(max(day), 'YYYY-MM-DD') from shopee_ads_daily) as a_max,
+      (select to_char(min(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_wallet_tx) as w_min, (select to_char(max(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_wallet_tx) as w_max,
+      (select to_char(min(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_returns) as r_min, (select to_char(max(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_returns) as r_max,
+      (select to_char(min(released_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_escrow) as e_min, (select to_char(max(released_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') from shopee_escrow) as e_max`,
+    pg`select coalesce(sum(amount) filter (where amount > 0), 0)::float8 as money_in, coalesce(-sum(amount) filter (where amount < 0), 0)::float8 as money_out, count(*)::int as n,
+      (select balance::float8 from shopee_wallet_tx where balance is not null order by created_at desc limit 1) as balance from shopee_wallet_tx where created_at > now() - interval '30 days'`,
+    pg`select max(started_at) as t from shopee_sync_runs where dataset = ${SHOPEE_DATASETS.orders}`,
+  ]);
+  const c = counts[0], st = new Map(states.map((x) => [String(x.dataset), x]));
+  const lastRun = new Map<string, (typeof runs)[number]>();
+  for (const r of runs) if (!lastRun.has(String(r.dataset))) lastRun.set(String(r.dataset), r); // newest first
+  const seen = new Map(active.map((x) => [String(x.dataset), Number(x.seen)]));
+  const range: Record<ShopeeDatasetKey, [string | null, string | null]> = { orders: [c.o_min, c.o_max], escrow: [c.o_min, c.o_max], release: [c.e_min, c.e_max], returns: [c.r_min, c.r_max], ads: [c.a_min, c.a_max], wallet: [c.w_min, c.w_max], stock: [null, null] };
+  const datasets = SHOPEE_DATASET_LIST.map((d): ShopeeDatasetView => {
+    const key = SHOPEE_DATASETS[d.key], s2 = st.get(key), lr = lastRun.get(key);
+    const isRunning = lr?.status === "running" && seen.has(key);
+    return {
+      ...d, icon: ICONS[d.key], records: Number(c[d.key === "escrow" ? "escrow" : d.key]), lastSuccessAt: s2?.last_success_at ? new Date(s2.last_success_at as Date).toISOString() : null,
+      lastError: (s2?.last_error as string) ?? null, running: isRunning, progress: isRunning ? seen.get(key) ?? 0 : null, oldest: range[d.key][0] as string | null, newest: range[d.key][1] as string | null, note: lr?.status === "ok" ? ((lr.error as string) ?? null) : null,
+    };
+  });
+  const lastAt = lastCycle[0]?.t ? new Date(lastCycle[0].t as Date).getTime() : null;
+  return {
+    now: Date.now(), datasets, running: running || datasets.some((d) => d.running), settings,
+    runs: runs.map((r): ShopeeRunView => ({ id: Number(r.id), label: SHOPEE_DATASET_LIST.find((d) => SHOPEE_DATASETS[d.key] === r.dataset)?.label ?? String(r.dataset), startedAt: new Date(r.started_at as Date).toISOString(), durationSec: r.finished_at ? Math.round((new Date(r.finished_at as Date).getTime() - new Date(r.started_at as Date).getTime()) / 1000) : null, status: String(r.status), trigger: String(r.trigger), by: (r.by as string) ?? null, changed: Number(r.rows_changed), error: (r.error as string) ?? null })),
+    lastFullAt: lastAt ? new Date(lastAt).toISOString() : null, nextAt: settings.enabled && lastAt ? new Date(lastAt + settings.everyMinutes * 60_000).toISOString() : null,
+    shop: { id: info.shopIds[0] ?? null, name: info.shopName, region: info.region, env: info.env },
+    walletSummary: w[0] && Number(w[0].n) > 0 ? { moneyIn: Number(w[0].money_in), moneyOut: Number(w[0].money_out), balance: w[0].balance == null ? null : Number(w[0].balance) } : null,
+    needsReconnect: datasets.some((d) => d.lastError && /error_auth|invalid_access_token|login|connect again/i.test(d.lastError)),
+  };
+}
+
 export type ShopeeDatasetStatus = { key: ShopeeDatasetKey; label: string; what: string; at: Date | null; records: number; error: string | null };
 export type ShopeeSyncStatus = { datasets: ShopeeDatasetStatus[]; orders: { at: Date | null; records: number; error: string | null }; escrow: { at: Date | null; records: number; error: string | null }; awaiting: number; firstOrder: string | null; lastOrder: string | null };
 
 export async function shopeeSyncStatus(): Promise<ShopeeSyncStatus> {
-  const st = await pg`select dataset, last_success_at, records, last_error from tt_sync_state where dataset like 'shopee\\_%'`;
-  const datasets = SHOPEE_DATASET_LIST.map((d): ShopeeDatasetStatus => { const r = st.find((x) => x.dataset === SHOPEE_DATASETS[d.key]); return { ...d, at: (r?.last_success_at as Date) ?? null, records: Number(r?.records ?? 0), error: (r?.last_error as string) ?? null }; });
-  const [a] = await pg`select count(*)::int as n, to_char(min(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') as first, to_char(max(created_at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') as last,
-    (select count(*)::int from shopee_orders o left join shopee_escrow e on e.order_sn = o.order_sn where e.order_sn is null and o.status in ('COMPLETED', 'SHIPPED', 'TO_CONFIRM_RECEIVE')) as awaiting from shopee_orders`;
+  const ov = await shopeeOverview();
+  const datasets = ov.datasets.map((d): ShopeeDatasetStatus => ({ key: d.key, label: d.label, what: d.what, at: d.lastSuccessAt ? new Date(d.lastSuccessAt) : null, records: d.records, error: d.lastError }));
+  const [a] = await pg`select (select count(*)::int from shopee_orders o left join shopee_escrow e on e.order_sn = o.order_sn where e.order_sn is null and o.status in ('COMPLETED', 'SHIPPED', 'TO_CONFIRM_RECEIVE')) as awaiting`;
   const o = datasets[0], e = datasets[1];
-  return { datasets, orders: { at: o.at, records: o.records, error: o.error }, escrow: { at: e.at, records: e.records, error: e.error }, awaiting: Number(a?.awaiting ?? 0), firstOrder: (a?.first as string) ?? null, lastOrder: (a?.last as string) ?? null };
+  return { datasets, orders: { at: o.at, records: o.records, error: o.error }, escrow: { at: e.at, records: e.records, error: e.error }, awaiting: Number(a?.awaiting ?? 0), firstOrder: ov.datasets[0].oldest, lastOrder: ov.datasets[0].newest };
 }
 
-/** The same check as the TikTok scheduler: run when connected and at least `minutes` have passed since the last good run. */
-export async function shopeeSchedulerTick(minutes = 30, nowMs = Date.now()): Promise<"ran" | "idle" | "off"> {
+/** The same check as the TikTok scheduler: when auto-sync is on and the set time has passed since the last run started, sync. */
+export async function shopeeSchedulerTick(nowMs = Date.now()): Promise<"ran" | "idle" | "off"> {
   if (running || !shopeeConfig()) return "off";
-  if (!(await shopeeConnectionInfo()).connected) return "off";
-  const [r] = await pg`select max(coalesce(last_success_at, last_error_at)) as t from tt_sync_state where dataset = ${SHOPEE_DATASETS.orders}`;
-  if (r?.t && nowMs - new Date(r.t as Date).getTime() < minutes * 60_000) return "idle";
-  await runShopeeSync();
+  const settings = await getShopeeSyncSettings();
+  if (!settings.enabled || !(await shopeeConnectionInfo()).connected) return "off";
+  const [r] = await pg`select max(started_at) as t from shopee_sync_runs where dataset = ${SHOPEE_DATASETS.orders}`;
+  if (r?.t && nowMs - new Date(r.t as Date).getTime() < settings.everyMinutes * 60_000) return "idle";
+  await runShopeeSync({ trigger: "schedule" });
   return "ran";
 }
