@@ -29,8 +29,8 @@ function Card1({ s, enabled, canReview }: { s: SampleCard; enabled: boolean; can
         <div className="min-w-0">
           <OpenPanelButton username={s.creator} className="truncate text-left text-[14.5px] font-semibold text-brand hover:underline" />
           <p className="text-[12px] text-ink-3">{s.followers != null ? `${fmtCompact(s.followers)} followers` : "followers not known"}</p>
-          <p className="mt-1 text-[13px] text-ink">{s.product}{s.quantity != null ? ` · ${s.quantity} left` : ""}</p>
-          <p className="text-[12px] text-ink-3">{s.stage === "requested" ? `asked ${s.requestedOn ? fmtDayLabel(s.requestedOn) : ""}` : s.stage === "delivered" || s.stage === "posted" ? `delivered ${s.deliveredOn ? fmtDayLabel(s.deliveredOn) : ""}` : s.shippedOn ? `shipped ${fmtDayLabel(s.shippedOn)}` : ""}{s.commission != null ? ` · commission ${Math.round(s.commission * 100) / 100}%` : ""}</p>
+          <p className="mt-1 text-[13px] text-ink">{s.product}{s.quantity != null && s.quantity < 99999 ? ` · ${s.quantity} left` : ""}</p>
+          <p className="text-[12px] text-ink-3">{s.stage === "requested" ? `asked ${s.requestedOn ? fmtDayLabel(s.requestedOn) : ""}` : s.stage === "delivered" || s.stage === "posted" ? `delivered ${s.deliveredOn ? fmtDayLabel(s.deliveredOn) : ""}` : s.shippedOn ? `shipped ${fmtDayLabel(s.shippedOn)}` : ""}{s.commission != null ? ` · commission ${Math.round((s.commission <= 1 ? s.commission * 100 : s.commission > 100 ? s.commission / 100 : s.commission) * 100) / 100}%` : ""}</p>
         </div>
       </div>
       <div>
@@ -103,36 +103,32 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
       </Card>
 
       {stage === "suggested" ? (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
-          <div className="space-y-6">
-            <Card data-testid="more-samples">
-              <CardHeader title="Give More Samples" description="Your own creators who sell now and have nothing outstanding (no sample still unposted or on the way), best sellers first. The last column lists products you have never offered them." />
-              {o.more.length === 0 ? <p className="px-5 pb-6 text-[13.5px] text-ink-3">Nobody qualifies right now.</p> : (
-                <ul>
-                  {o.more.slice(0, 15).map((m) => (
-                    <li key={m.username} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 border-t border-line px-5 py-3 text-[13.5px] sm:grid-cols-[minmax(150px,1fr)_110px_minmax(180px,1.3fr)]">
-                      <div className="min-w-0"><OpenPanelButton username={m.username} className="truncate text-left font-semibold text-brand hover:underline" /><p className="text-[12px] text-ink-3">{m.followers != null ? `${fmtCompact(m.followers)} followers` : ""}</p></div>
-                      <p className="tnum font-semibold text-ink">{fmtRM(m.sales28)}<span className="block text-[12px] font-normal text-ink-3">28 days</span></p>
-                      <p className="col-span-2 text-[12.5px] leading-snug text-ink-3 sm:col-span-1">{m.neverSampled.length ? `Not offered yet: ${m.neverSampled.join(", ")}` : "Offered everything"}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {o.more.length > 15 && <p className="border-t border-line px-5 py-3 text-[12.5px] text-ink-3">Showing 15 of {o.more.length}. Open Actions for the full ranked list.</p>}
-            </Card>
-            <Card data-testid="tiktok-card">
-              <CardHeader title="New Creators From TikTok" description="TikTok's own Creator Marketplace, with data for the last 30 days. We do not make this list: it is what TikTok returns. Search by keyword or sales range." action={<a href="https://seller-my.tiktok.com/" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open TikTok Seller Center</a>} />
-              {o.tiktok.ok ? <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} /> : (
-                <>
-                  <p className="px-5 pb-3 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">TikTok&apos;s creator list is not available right now: {o.tiktok.error} You can also use TikTok&apos;s own recommended creators in Seller Center with the link above.</p>
-                  {o.flags.market && <FindCreators initial={[]} fieldsSeen={[]} />}
-                </>
-              )}
-            </Card>
-          </div>
-          <Card data-testid="side-requests">
-            <CardHeader title="Sample Requests Waiting" description="Requests that need your decision. The ones about to expire come first." action={<Link href="/affiliate/outreach?stage=requested" className="text-[13px] font-semibold text-brand hover:underline">See all {o.counts.requested}</Link>} />
-            {o.samples.requested.length === 0 ? <p className="px-5 pb-6 text-[13.5px] text-ink-3">Nothing waiting for you.</p> : <ul>{o.samples.requested.slice(0, 4).map((s) => <Card1 key={s.id} s={s} enabled={o.flags.reviewOn && o.flags.write} canReview={canReview} />)}</ul>}
+        <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
+          <Card data-testid="more-samples">
+            <CardHeader title="Your Own Affiliates" description="Creators already in your system who sell now and have nothing outstanding (no sample still unposted or on the way), best sellers first. Good candidates for another sample. The right-hand text lists products you have never offered them." />
+            <p className="px-5 pb-2 text-[12.5px] text-ink-3">From your own data · {o.more.length.toLocaleString("en-MY")} creators</p>
+            {o.more.length === 0 ? <p className="px-5 pb-6 text-[13.5px] text-ink-3">Nobody qualifies right now.</p> : (
+              <ul>
+                {o.more.slice(0, 20).map((m) => (
+                  <li key={m.username} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 border-t border-line px-5 py-3 text-[13.5px] sm:grid-cols-[minmax(150px,1fr)_100px_minmax(180px,1.3fr)]">
+                    <div className="min-w-0"><OpenPanelButton username={m.username} className="truncate text-left font-semibold text-brand hover:underline" /><p className="text-[12px] text-ink-3">{m.followers != null ? `${fmtCompact(m.followers)} followers` : ""}</p></div>
+                    <p className="tnum font-semibold text-ink">{fmtRM(m.sales28)}<span className="block text-[12px] font-normal text-ink-3">28 days</span></p>
+                    <p className="col-span-2 text-[12.5px] leading-snug text-ink-3 sm:col-span-1">{m.neverSampled.length ? `Not offered yet: ${m.neverSampled.join(", ")}` : "Offered everything"}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {o.more.length > 20 && <p className="border-t border-line px-5 py-3 text-[12.5px] text-ink-3">Showing 20 of {o.more.length}. Open Actions for the full ranked list.</p>}
+          </Card>
+          <Card data-testid="tiktok-card">
+            <CardHeader title="From TikTok Affiliate Portal" description="TikTok's own Creator Marketplace, with data for the last 30 days. We do not make this list: it is what TikTok returns. Search by keyword or sales range." action={<a href="https://seller-my.tiktok.com/" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open TikTok Seller Center</a>} />
+            <p className="px-5 pb-2 text-[12.5px] text-ink-3">From TikTok · new creators, not yet in your system</p>
+            {o.tiktok.ok ? <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} /> : (
+              <>
+                <p className="px-5 pb-3 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">TikTok&apos;s creator list is not available right now: {o.tiktok.error} You can also use TikTok&apos;s own recommended creators in Seller Center with the link above.</p>
+                {o.flags.market && <FindCreators initial={[]} fieldsSeen={[]} />}
+              </>
+            )}
           </Card>
         </div>
       ) : (

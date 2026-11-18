@@ -75,7 +75,7 @@ export function giveMoreSamples(rows: DirRow[], limit = 60): MoreSample[] {
 }
 
 // ───────── TikTok's Creator Marketplace answer ─────────
-export type MarketCreator = { id: string | null; username: string | null; nickname: string | null; followers: number | null; gmv: number | null; units: number | null; category: string | null };
+export type MarketCreator = { id: string | null; username: string | null; nickname: string | null; followers: number | null; gmv: number | null; units: number | null; category: string | null; avgVideoViews: number | null; avgLiveViewers: number | null; region: string | null; avatar: string | null };
 const first = (o: Record<string, unknown>, keys: string[]) => { for (const k of keys) if (o[k] != null && o[k] !== "") return o[k]; return null; };
 const str = (v: unknown) => (v == null ? null : typeof v === "object" ? null : String(v));
 const num = (v: unknown): number | null => {
@@ -99,7 +99,11 @@ export function readMarketCreators(data: unknown): { creators: MarketCreator[]; 
       followers: num(first(base, ["follower_count", "followers", "fans_count"]) ?? first(c, ["follower_count", "followers"])),
       gmv: num(first(sales, ["gmv", "gmv_30d", "total_gmv", "gmv_amount"])),
       units: num(first(sales, ["units_sold", "units_sold_30d", "items_sold", "sold_count"])),
-      category: str(first(base, ["category", "main_category", "category_name"])),
+      category: str(first(base, ["category", "main_category", "category_name"])) ?? (Array.isArray(c.category_ids) && c.category_ids.length ? `category ${c.category_ids.slice(0, 2).join(", ")}` : null),
+      avgVideoViews: num(first(c, ["avg_ec_video_view_count", "avg_video_views"])),
+      avgLiveViewers: num(first(c, ["avg_ec_live_uv", "avg_live_viewers"])),
+      region: str(first(c, ["selection_region", "region"])),
+      avatar: (() => { const a = c.avatar as { url?: unknown } | string | undefined; const u = typeof a === "string" ? a : typeof a?.url === "string" ? a.url : null; return u && /^https:\/\//.test(u) ? u : null; })(),
     };
   });
   const fieldsSeen = list.length ? Object.keys(list[0]).slice(0, 30) : [];

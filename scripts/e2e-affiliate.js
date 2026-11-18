@@ -122,7 +122,7 @@ async function login(p, email) {
   const pl = await p.getByTestId("pipeline").innerText();
   ok(["Suggested", "Sample Requested", "Approved", "Shipped", "Delivered", "Posted"].every((x) => pl.includes(x)), "outreach: the six pipeline stages are shown");
   ok(/Off/.test(await p.getByTestId("review-status").innerText()) || /not granted|not connected/i.test(await p.getByTestId("review-status").innerText()), "outreach: approving and rejecting start switched off (or blocked)");
-  ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 1, "outreach: both suggestion sources and the side list of waiting requests are there");
+  ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 0 && /Your Own Affiliates/.test(await p.getByTestId("more-samples").innerText()) && /From TikTok Affiliate Portal/.test(await p.getByTestId("tiktok-card").innerText()), "outreach: own affiliates and TikTok are two separate sections, and waiting requests are not on the Suggested page");
   ok((await p.getByTestId("tiktok-unavailable").count()) === 1 || (await p.getByTestId("tiktok-creators").count()) === 1, "outreach: TikTok's list is shown, or says plainly why it is not available");
   ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
   for (const st of ["requested", "approved", "shipped", "delivered", "posted"]) {

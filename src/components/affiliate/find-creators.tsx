@@ -5,20 +5,30 @@ import { findCreators } from "@/app/actions/outreach";
 import { Button } from "@/components/ui/primitives";
 import { fmtCompact } from "@/lib/utils";
 
-export type Found = { id: string | null; username: string | null; nickname: string | null; followers: number | null; gmv: number | null; units: number | null; category: string | null };
+export type Found = { id: string | null; username: string | null; nickname: string | null; followers: number | null; gmv: number | null; units: number | null; category: string | null; avgVideoViews: number | null; avgLiveViewers: number | null; region: string | null; avatar: string | null };
 const GMV = [{ key: "GMV_RANGE_100_1000", label: "RM 100 – 1,000" }, { key: "GMV_RANGE_1000_10000", label: "RM 1,000 – 10,000" }, { key: "GMV_RANGE_10000_AND_ABOVE", label: "RM 10,000+" }];
+
+/** TikTok's picture, shown as it is (it comes from TikTok's own picture server, so Next's image optimiser is not used). */
+function Avatar({ url }: { url: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" className="size-10 shrink-0 rounded-full bg-surface-2 object-cover" referrerPolicy="no-referrer" />;
+}
 
 function List({ rows }: { rows: Found[] }) {
   if (!rows.length) return <p className="px-5 py-8 text-center text-[13.5px] text-ink-3">TikTok returned no creators for this search.</p>;
   return (
     <ul data-testid="tiktok-creators">
       {rows.map((c, i) => (
-        <li key={c.id ?? `${c.username}-${i}`} className="grid grid-cols-[1fr_auto] items-center gap-x-4 border-t border-line px-5 py-3 text-[13.5px] sm:grid-cols-[minmax(160px,1.2fr)_100px_120px_90px_auto]">
-          <div className="min-w-0"><p className="truncate font-semibold text-ink">{c.username ? `@${c.username}` : c.nickname ?? "Creator"}</p>{c.nickname && c.username && <p className="truncate text-[12px] text-ink-3">{c.nickname}</p>}</div>
-          <p className="tnum hidden text-ink-2 sm:block">{c.followers != null ? `${fmtCompact(c.followers)} followers` : "–"}</p>
-          <p className="tnum hidden text-ink-2 sm:block">{c.gmv != null ? `RM ${fmtCompact(c.gmv)} (30 days)` : "–"}</p>
-          <p className="tnum hidden text-ink-2 sm:block">{c.units != null ? `${fmtCompact(c.units)} sold` : "–"}</p>
-          {c.username ? <a href={`https://www.tiktok.com/@${c.username}`} target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open On TikTok</a> : <span />}
+        <li key={c.id ?? `${c.username}-${i}`} className="flex items-start gap-3 border-t border-line px-5 py-3 text-[13.5px]">
+          {c.avatar ? <Avatar url={c.avatar} /> : <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-[12px] text-ink-3">{(c.username ?? c.nickname ?? "?").slice(0, 2).toUpperCase()}</span>}
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold text-ink">{c.username ? `@${c.username}` : c.nickname ?? "Name not given by TikTok"}{c.username && c.nickname ? <span className="ml-2 font-normal text-ink-3">{c.nickname}</span> : null}</p>
+            <p className="tnum mt-0.5 text-[12.5px] text-ink-2">
+              {[c.followers != null ? `${fmtCompact(c.followers)} followers` : null, c.gmv != null ? `RM ${fmtCompact(c.gmv)} sales (30 days)` : null, c.units != null ? `${fmtCompact(c.units)} sold` : null, c.avgVideoViews != null ? `${fmtCompact(c.avgVideoViews)} average video views` : null, c.avgLiveViewers != null ? `${fmtCompact(c.avgLiveViewers)} average LIVE viewers` : null].filter(Boolean).join(" · ") || "No figures given"}
+            </p>
+            {(c.category || c.region) && <p className="text-[12px] text-ink-3">{[c.category, c.region].filter(Boolean).join(" · ")}</p>}
+          </div>
+          {c.username && <a href={`https://www.tiktok.com/@${c.username}`} target="_blank" rel="noreferrer" className="shrink-0 text-[13px] font-semibold text-brand hover:underline">Open On TikTok</a>}
         </li>
       ))}
     </ul>
@@ -42,8 +52,8 @@ export function FindCreators({ initial, fieldsSeen }: { initial: Found[]; fields
         <Button type="submit" size="sm" disabled={pending}>{pending ? "Searching…" : "Search TikTok"}</Button>
       </form>
       {err && <p className="px-5 pb-3 text-[13px] text-critical" data-testid="tiktok-error">{err}</p>}
+      {noNames && <p className="mx-5 mb-3 rounded-lg bg-surface-2 px-3 py-2 text-[12px] text-ink-2" data-testid="fields-seen">TikTok did not send a username or name for these creators. Fields it did send: <b>{fieldsSeen.join(", ") || "none"}</b>. Send me this line if names should be there.</p>}
       <List rows={rows} />
-      {noNames && <p className="px-5 py-3 text-[12px] text-ink-3">TikTok answered, but its field names differ from what we expected. Fields seen: {fieldsSeen.join(", ")}. Send this to me and I will match them.</p>}
     </div>
   );
 }

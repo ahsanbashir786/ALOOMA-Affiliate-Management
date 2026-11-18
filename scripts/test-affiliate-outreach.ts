@@ -28,7 +28,10 @@ assert.deepEqual(more.map((m) => m.username), ["better", "good"], "best seller f
 assert.ok(more[0].neverSampled.length > 0 && !more[0].neverSampled.includes("Mattress Protector · Waterproof"), "lists the products never offered");
 
 const m = readMarketCreators({ creators: [{ creator_user_open_id: "oid1", username: "abc", nickname: "ABC", follower_count: "12000", gmv: { amount: "3400.5" }, units_sold: 80 }], next_page_token: "t2" });
-assert.deepEqual(m.creators[0], { id: "oid1", username: "abc", nickname: "ABC", followers: 12000, gmv: 3400.5, units: 80, category: null });
+assert.deepEqual(m.creators[0], { id: "oid1", username: "abc", nickname: "ABC", followers: 12000, gmv: 3400.5, units: 80, category: null, avgVideoViews: null, avgLiveViewers: null, region: null, avatar: null });
+const docEx = readMarketCreators({ creators: [{ username: "abc", nickname: "cde", avatar: { url: "https://p16.example/x.webp" }, selection_region: "MY", category_ids: ["60001"], avg_ec_live_uv: 1331, avg_ec_video_view_count: 112, follower_count: 23241, gmv: { currency: "MYR", amount: "1232.90" } }] }).creators[0];
+assert.equal(docEx.username, "abc"); assert.equal(docEx.avgVideoViews, 112); assert.equal(docEx.avgLiveViewers, 1331); assert.equal(docEx.region, "MY"); assert.equal(docEx.gmv, 1232.9); assert.equal(docEx.followers, 23241); assert.equal(docEx.category, "category 60001"); assert.equal(docEx.avatar, "https://p16.example/x.webp");
+assert.equal(readMarketCreators({ creators: [{ avatar: { url: "javascript:alert(1)" } }] }).creators[0].avatar, null, "only https pictures");
 assert.equal(m.next, "t2");
 const nested = readMarketCreators({ marketplace_creators: [{ basic_creator_information: {}, creator_profile: { username: "zz", user_id: "u9", follower_count: 5 }, sales_and_gmv: { gmv: 10 } }] });
 assert.equal(nested.creators[0].username, "zz"); assert.equal(nested.creators[0].gmv, 10);
