@@ -1,7 +1,7 @@
 // A role can be allowed to open each of the screens. That is the only permission. Pure (safe in client components).
 // The Admin role always has every screen, including ones added later.
 
-export type PermissionKey = "execution" | "creators" | "products" | "ads" | "stock" | "profit" | "sync" | "users" | "settings";
+export type PermissionKey = "execution" | "creators" | "products" | "ads" | "stock" | "profit" | "sync" | "users" | "settings" | "approve_samples";
 
 export type Permission = { key: PermissionKey; group: string; label: string; help: string };
 
@@ -13,6 +13,7 @@ export const PERMISSIONS: Permission[] = [
   { key: "stock", group: "Stock", label: "Stock And Costing", help: "See stock-in orders, cost per piece and FIFO stock; import stock files" },
   { key: "profit", group: "Profit", label: "Profit And Loss", help: "See order profit, monthly profit and loss, and what can be claimed back" },
   { key: "sync", group: "Data Sync", label: "Data Sync", help: "See what is synced and run a sync" },
+  { key: "approve_samples", group: "Affiliate Data", label: "Outreach: Approve Samples", help: "Approve or reject creators' sample requests on TikTok from the Outreach screen. An approval cannot be undone." },
   { key: "users", group: "Settings", label: "Settings: User Management", help: "Add people, create roles, choose what each role can open" },
   { key: "settings", group: "Settings", label: "Settings: Connection", help: "Connect, check and disconnect TikTok Shop and TikTok Ads" },
 ];
@@ -36,6 +37,7 @@ export const SCREEN_PERMISSION: Record<string, PermissionKey> = {
   "/creators": "creators",
   "/affiliate": "creators",
   "/affiliate/lifecycle": "creators",
+  "/affiliate/outreach": "creators",
   "/affiliate/products": "creators",
   "/affiliate/content": "creators",
   "/affiliate/actions": "creators",

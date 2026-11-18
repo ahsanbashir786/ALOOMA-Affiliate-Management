@@ -1,7 +1,7 @@
 import type { PermissionKey } from "@/lib/permissions";
 
 /** A read-only role can never manage users or settings, whatever is ticked for it. */
-const NEVER_READ_ONLY: PermissionKey[] = ["users", "settings"];
+const NEVER_READ_ONLY: PermissionKey[] = ["users", "settings", "approve_samples"];
 
 /** The same check as `can` in auth, for client components (no server code). */
 export const can = (user: { isAdmin: boolean; permissions: PermissionKey[]; readOnly?: boolean }, permission: PermissionKey) => {

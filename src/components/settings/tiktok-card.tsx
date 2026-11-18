@@ -58,7 +58,7 @@ export function TikTokActions({ v }: { v: TikTokView }) {
               <span className={cn("size-1.5 rounded-full", v.connected ? "bg-good" : v.configured ? "bg-warn" : "bg-critical")} />{v.connected ? "Connected" : v.configured ? "Not connected" : "Setup needed"}
             </span>
           </p>
-          <p className="mt-0.5 text-[13.5px] text-ink-3">{v.connected ? "The system reads your shop's data. It can never change anything in your shop." : "Connect once; orders, products, videos and samples then sync by themselves."}</p>
+          <p className="mt-0.5 text-[13.5px] text-ink-3">{v.connected ? "The system reads your shop's data. It changes something on TikTok only when the owner switches on approving samples (Outreach) and a person presses Approve or Reject." : "Connect once; orders, products, videos and samples then sync by themselves."}</p>
         </div>
       </div>
 

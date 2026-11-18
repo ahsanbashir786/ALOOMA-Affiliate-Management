@@ -115,6 +115,23 @@ async function login(p, email) {
   for (const srt of ["sales", "drop", "growth"]) { await p.goto(BASE + "/affiliate/products?sort=" + srt, { waitUntil: "networkidle" }); ok((await p.locator("[data-testid=prod-row]").count()) === prodRows, `products: sort "${srt}" keeps every product`); }
   const pa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(pa.length === 1 && /^Products$/.test(pa[0].trim()), `menu: only Products is lit there (${pa.join("|")})`);
+
+  // outreach: the pipeline, the safety switch (off by default), the two suggestion sources, every stage opens
+  await p.goto(BASE + "/affiliate/outreach", { waitUntil: "networkidle" });
+  ok(/Outreach/.test(await p.locator("h1").first().innerText()), "outreach: page opens");
+  const pl = await p.getByTestId("pipeline").innerText();
+  ok(["Suggested", "Sample Requested", "Approved", "Shipped", "Delivered", "Posted"].every((x) => pl.includes(x)), "outreach: the six pipeline stages are shown");
+  ok(/Off/.test(await p.getByTestId("review-status").innerText()) || /not granted|not connected/i.test(await p.getByTestId("review-status").innerText()), "outreach: approving and rejecting start switched off (or blocked)");
+  ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 1, "outreach: both suggestion sources and the side list of waiting requests are there");
+  ok((await p.getByTestId("tiktok-unavailable").count()) === 1 || (await p.getByTestId("tiktok-creators").count()) === 1, "outreach: TikTok's list is shown, or says plainly why it is not available");
+  ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
+  for (const st of ["requested", "approved", "shipped", "delivered", "posted"]) {
+    await p.goto(BASE + "/affiliate/outreach?stage=" + st, { waitUntil: "networkidle" });
+    const body = await p.locator("main").innerText();
+    ok(!/Application error|Internal Server Error/.test(body) && (/Nobody is in this stage/.test(body) || (await p.locator("[data-testid=sample-card]").count()) > 0), `outreach: stage "${st}" opens`);
+  }
+  const oa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
+  ok(oa.length === 1 && /^Outreach$/.test(oa[0].trim()), `menu: only Outreach is lit there (${oa.join("|")})`);
   ok(errs.length === 0, `no browser errors (${errs.slice(0, 2).join(" | ")})`);
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" }); await p.screenshot({ path: process.env.SHOT || "/tmp/claude-0/command.png", fullPage: true });
   await b.close(); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

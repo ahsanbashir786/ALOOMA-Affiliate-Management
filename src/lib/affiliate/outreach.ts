@@ -1,0 +1,107 @@
+// Creator Outreach logic that needs no database: pipeline stages, a creator's sample history, who can get more samples, and reading TikTok's marketplace answer.
+import type { DirRow } from "@/lib/creators/workflow/directory";
+import { PRODUCTS } from "@/lib/products/catalog";
+
+export const PIPELINE = [
+  { key: "suggested", label: "Suggested", help: "Creators worth bringing in or giving another sample: new ones from TikTok and your own good performers." },
+  { key: "requested", label: "Sample Requested", help: "A creator asked for a sample and is waiting for your decision." },
+  { key: "approved", label: "Approved", help: "You approved it. The sample has not been shipped yet." },
+  { key: "shipped", label: "Shipped", help: "On the way to the creator." },
+  { key: "delivered", label: "Delivered", help: "The creator has it. Nothing posted yet." },
+  { key: "posted", label: "Posted", help: "The creator posted. From here they continue in Creator Lifecycle." },
+] as const;
+export type PipelineKey = (typeof PIPELINE)[number]["key"];
+
+export type RequestFacts = { status: string | null; hasOrder: boolean; approvable: boolean | null; delivered: boolean; shipped: boolean; hasPost: boolean; orderCancelled: boolean };
+
+/** Where one sample request is in the pipeline, or null when it is finished without a sample (declined, expired, cancelled). */
+export function requestStage(f: RequestFacts): Exclude<PipelineKey, "suggested"> | null {
+  const s = (f.status ?? "").toUpperCase();
+  if (f.orderCancelled || /REJECT|EXPIRE/.test(s) || (/CANCEL/.test(s) && !/UNFULFILL/.test(s))) return null;
+  if (!f.hasOrder) {
+    if (/APPROV/.test(s) && f.approvable !== true) return "approved";
+    return f.approvable === true ? "requested" : null;
+  }
+  if (f.delivered) return f.hasPost ? "posted" : "delivered";
+  return "shipped";
+}
+
+export type History = { sales: number; sales28: number; samples: number; notPosted: number; noSale: number; selling: number; verdict: string; tone: "good" | "warn" | "bad" | "neutral" };
+
+/** What the creator did with the samples we already sent: the facts to decide on a new request. */
+export function historyOf(r: DirRow | undefined): History {
+  if (!r) return { sales: 0, sales28: 0, samples: 0, notPosted: 0, noSale: 0, selling: 0, verdict: "New to you: no sales or samples yet.", tone: "neutral" };
+  const sampled = r.allLines.filter((l) => l.sampled);
+  const notPosted = sampled.filter((l) => l.status === "Silent").length;
+  const noSale = sampled.filter((l) => l.status === "Posted").length;
+  const selling = sampled.filter((l) => ["Winner", "Rising", "Steady", "Slipping"].includes(l.status) || l.gmv28 > 0).length;
+  const sales = r.gmvAll, sales28 = r.extra?.gmv28 ?? 0;
+  let verdict: string, tone: History["tone"];
+  if (notPosted > 0) { verdict = `${notPosted} earlier sample${notPosted === 1 ? "" : "s"} not posted yet. Fix that first.`; tone = "bad"; }
+  else if (sales28 > 0) { verdict = `Selling now (RM ${Math.round(sales28).toLocaleString("en-MY")} in 28 days).`; tone = "good"; }
+  else if (sales > 0) { verdict = `Sold RM ${Math.round(sales).toLocaleString("en-MY")} before, nothing lately.`; tone = "warn"; }
+  else if (sampled.length > 0) { verdict = `${sampled.length} sample${sampled.length === 1 ? "" : "s"} sent, no sales yet.`; tone = "warn"; }
+  else { verdict = "New to you: no sales or samples yet."; tone = "neutral"; }
+  return { sales, sales28, samples: sampled.length, notPosted, noSale, selling, verdict, tone };
+}
+
+export type MoreSample = { username: string; sales28: number; sales: number; score: number | null; followers: number | null; sampledProducts: string[]; sellingProducts: string[]; neverSampled: string[]; why: string };
+
+/**
+ * Your own good performers who could take another sample: selling now, nothing outstanding (no sample still unposted or on the way),
+ * ranked by what they sell. Also lists the products they have never been sampled for, as the next thing to offer.
+ */
+export function giveMoreSamples(rows: DirRow[], limit = 60): MoreSample[] {
+  const names = new Map(PRODUCTS.map((p) => [p.key as string, p.name]));
+  const out: MoreSample[] = [];
+  for (const r of rows) {
+    if (r.paused) continue;
+    const e = r.extra;
+    if (!e || e.gmv28 <= 0) continue;
+    const lines = r.allLines;
+    if (lines.some((l) => l.sampled && (l.status === "Silent" || l.status === "Waiting"))) continue; // a sample is still outstanding
+    if (!lines.some((l) => l.sampled)) continue; // not yet part of the sample programme: new-creator logic covers them
+    const sampled = lines.filter((l) => l.sampled && l.pid).map((l) => l.pid!);
+    const selling = lines.filter((l) => l.gmv28 > 0 && l.pid).map((l) => l.pid!);
+    const have = new Set(lines.filter((l) => l.pid).map((l) => l.pid!));
+    const never = PRODUCTS.map((p) => p.key as string).filter((k) => !have.has(k));
+    out.push({
+      username: r.username, sales28: e.gmv28, sales: r.gmvAll, score: e.score ?? null, followers: e.followers,
+      sampledProducts: sampled.map((k) => names.get(k) ?? k), sellingProducts: selling.map((k) => names.get(k) ?? k), neverSampled: never.map((k) => names.get(k) ?? k).slice(0, 4),
+      why: `Sells RM ${Math.round(e.gmv28).toLocaleString("en-MY")} in 28 days${never.length ? `, never offered ${never.length} of your products` : ""}.`,
+    });
+  }
+  return out.sort((a, b) => b.sales28 - a.sales28 || b.sales - a.sales).slice(0, limit);
+}
+
+// ───────── TikTok's Creator Marketplace answer ─────────
+export type MarketCreator = { id: string | null; username: string | null; nickname: string | null; followers: number | null; gmv: number | null; units: number | null; category: string | null };
+const first = (o: Record<string, unknown>, keys: string[]) => { for (const k of keys) if (o[k] != null && o[k] !== "") return o[k]; return null; };
+const str = (v: unknown) => (v == null ? null : typeof v === "object" ? null : String(v));
+const num = (v: unknown): number | null => {
+  if (v == null) return null;
+  if (typeof v === "object") { const o = v as Record<string, unknown>; return num(first(o, ["amount", "value", "total", "gmv"])); }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Reads whatever list of creators TikTok sent back, tolerating different field names; the field names seen are returned so a mismatch can be diagnosed. */
+export function readMarketCreators(data: unknown): { creators: MarketCreator[]; next: string | null; fieldsSeen: string[] } {
+  const d = (data ?? {}) as Record<string, unknown>;
+  const list = (Object.values(d).find((v) => Array.isArray(v) && v.length && typeof v[0] === "object") ?? []) as Record<string, unknown>[];
+  const creators = list.map((c) => {
+    const base = ((c.creator_profile ?? c.basic_info ?? c.profile ?? c) as Record<string, unknown>) ?? c;
+    const sales = ((c.sales_and_gmv ?? c.sales ?? c) as Record<string, unknown>) ?? c;
+    return {
+      id: str(first(c, ["creator_user_open_id", "user_open_id", "open_id", "user_id", "creator_id", "id"]) ?? first(base, ["creator_user_open_id", "user_open_id", "open_id", "user_id", "creator_id", "id"])),
+      username: str(first(base, ["username", "user_name", "unique_id", "handle", "tiktok_username"])),
+      nickname: str(first(base, ["nickname", "display_name", "name"])),
+      followers: num(first(base, ["follower_count", "followers", "fans_count"]) ?? first(c, ["follower_count", "followers"])),
+      gmv: num(first(sales, ["gmv", "gmv_30d", "total_gmv", "gmv_amount"])),
+      units: num(first(sales, ["units_sold", "units_sold_30d", "items_sold", "sold_count"])),
+      category: str(first(base, ["category", "main_category", "category_name"])),
+    };
+  });
+  const fieldsSeen = list.length ? Object.keys(list[0]).slice(0, 30) : [];
+  return { creators, next: str(first(d, ["next_page_token", "next_token", "search_key"])), fieldsSeen };
+}
