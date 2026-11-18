@@ -64,7 +64,7 @@ export async function setTaskAssignees(taskId: string, userIds: string[]): Promi
   if (!p.success) return { error: "Choose team members." };
   const ids = [...new Set(p.data.u)];
   if (ids.length) {
-    const ok = await q(sql`select id::text from users where active and id in (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})`);
+    const ok = await q(sql`select id::text from users where active and not exists (select 1 from roles rr where rr.id = users.role_id and rr.read_only) and id in (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})`);
     if (ok.length !== ids.length) return { error: "One of those team members is not active." };
   }
   await q(sql`delete from ep_task_assignees where task_id = ${p.data.id}::uuid`);
@@ -169,7 +169,7 @@ export async function bulkUpdateTasks(ids: string[], patch: { status?: string; a
     for (const t of targets) await log(t, user.id, "status", `${LABEL[s as keyof typeof LABEL]} (changed for several tasks)`);
   }
   if (p.data.patch.addAssignees?.length) {
-    const ok = await q(sql`select id::text from users where active and id in (${sql.join(p.data.patch.addAssignees.map((i) => sql`${i}::uuid`), sql`, `)})`);
+    const ok = await q(sql`select id::text from users where active and not exists (select 1 from roles rr where rr.id = users.role_id and rr.read_only) and id in (${sql.join(p.data.patch.addAssignees.map((i) => sql`${i}::uuid`), sql`, `)})`);
     for (const t of targets) for (const u of ok) await q(sql`insert into ep_task_assignees (task_id, user_id, assigned_by) values (${t}::uuid, ${u.id as string}::uuid, ${user.id}::uuid) on conflict do nothing`);
     const names = (await q(sql`select name from users where id in (${sql.join(ok.map((u) => sql`${u.id as string}::uuid`), sql`, `)}) order by name`)).map((r) => r.name as string).join(", ");
     for (const t of targets) { await q(sql`update ep_tasks set updated_at = now() where id = ${t}::uuid`); await log(t, user.id, "assigned", `Added ${names}`); }
@@ -194,7 +194,7 @@ export async function restoreTasks(items: { id: string; status: string; due: str
     await q(sql`update ep_tasks set status = ${it.status}, due_on = ${it.due}::date, updated_at = now(),
       completed_at = ${it.status === "done" ? sql`coalesce(completed_at, now())` : sql`null`}, closed_reason = ${it.status === "skipped" ? sql`closed_reason` : sql`null`} where id = ${it.id}::uuid`);
     await q(sql`delete from ep_task_assignees where task_id = ${it.id}::uuid`);
-    const ok = it.assignees.length ? await q(sql`select id::text from users where active and id in (${sql.join(it.assignees.map((i) => sql`${i}::uuid`), sql`, `)})`) : [];
+    const ok = it.assignees.length ? await q(sql`select id::text from users where active and not exists (select 1 from roles rr where rr.id = users.role_id and rr.read_only) and id in (${sql.join(it.assignees.map((i) => sql`${i}::uuid`), sql`, `)})`) : [];
     for (const u of ok) await q(sql`insert into ep_task_assignees (task_id, user_id, assigned_by) values (${it.id}::uuid, ${u.id as string}::uuid, ${user.id}::uuid)`);
     await log(it.id, user.id, "undo", "Change undone");
     count++;

@@ -20,7 +20,7 @@ const Id = z.string().uuid().nullable();
 
 async function activeStaff(id: string | null): Promise<string | null> {
   if (id === null) return null;
-  const [ok] = await q(sql`select 1 as x from users where id = ${id} and active`);
+  const [ok] = await q(sql`select 1 as x from users where id = ${id} and active and not exists (select 1 from roles rr where rr.id = users.role_id and rr.read_only)`);
   return ok ? null : "That team member is not active.";
 }
 
