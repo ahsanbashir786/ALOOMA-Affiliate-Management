@@ -16,7 +16,7 @@ async function login(p, email) {
   await login(p, "owner@test.local");
   ok(/\/execution$/.test(p.url()), "landing: everyone opens on the Execution Plan");
   const links = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(links) === JSON.stringify(["Affiliate Command", "Creator Lifecycle", "Content", "Actions", "Team", "Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Profit And Loss", "Stock And Costing", "Data Sync", "Settings"]), `menu: the thirteen items (${links.join(", ")})`);
+  ok(JSON.stringify(links) === JSON.stringify(["Affiliate Command", "Creator Lifecycle", "Products", "Content", "Actions", "Team", "Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Profit And Loss", "Stock And Costing", "Data Sync", "Settings"]), `menu: the fourteen items (${links.join(", ")})`);
   ok(!/Synced/.test(await p.locator("aside").innerText()), "menu: no sync status line at the bottom");
   { // a short screen: no scroll bar in the menu, and a loading bar the moment a menu item is clicked
     const sp = await (await b.newContext({ viewport: { width: 1280, height: 620 } })).newPage(); await login(sp, "owner@test.local");
@@ -58,7 +58,7 @@ async function login(p, email) {
   p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   await login(p, "viewer@test.local");
   const vl = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(vl.length === 8, `viewer: sees only the screens the role allows (${vl.length} items)`);
+  ok(vl.length === 9, `viewer: sees only the screens the role allows (${vl.length} items)`);
   // mobile
   p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await login(p, "manager@test.local");

@@ -65,7 +65,8 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
   const { queue, guard } = data;
   const view = (VIEWS.find((v) => v.key === one(sp.view))?.key ?? "todo") as (typeof VIEWS)[number]["key"];
   const lever = (["creators", "content", "quality"].includes(one(sp.lever) ?? "") ? one(sp.lever) : "") as Lever | "";
-  const base = queue[view].filter((i) => !lever || i.lever === lever);
+  const prod = one(sp.product) ?? "";
+  const base = queue[view].filter((i) => (!lever || i.lever === lever) && (!prod || i.pid === prod));
   const page = Math.max(1, Number(one(sp.page)) || 1);
   const pages = Math.max(1, Math.ceil(base.length / SIZE));
   const rows = base.slice((page - 1) * SIZE, page * SIZE);
@@ -73,7 +74,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
   const doneToday = queue.waiting.filter((i) => i.doneOn === today).length;
   const upside = queue.todo.reduce((n, i) => n + i.expected, 0);
   const count = (l: Lever) => queue[view].filter((i) => i.lever === l).length;
-  const q = (extra: Record<string, string | number | undefined>) => href("/affiliate/actions", { view: view === "todo" ? undefined : view, lever: lever || undefined, ...extra });
+  const q = (extra: Record<string, string | number | undefined>) => href("/affiliate/actions", { view: view === "todo" ? undefined : view, lever: lever || undefined, product: prod || undefined, ...extra });
   const period = `Last 28 days to ${fmtDayLabel(data.ref)}`;
 
   return (
@@ -102,11 +103,13 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
         </div>
       )}
 
+      {prod && <p className="text-[13.5px] text-ink-2" data-testid="product-filter">Showing one product only. <Link href={href("/affiliate/actions", { view: view === "todo" ? undefined : view })} className="font-semibold text-brand hover:underline">Show all products</Link></p>}
+
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
           <nav aria-label="Views" className="flex flex-wrap gap-2">
             {VIEWS.filter((v) => v.key !== "held" || guard.high || queue.held.length > 0).map((v) => (
-              <Link key={v.key} href={href("/affiliate/actions", { view: v.key === "todo" ? undefined : v.key })} scroll={false} aria-current={v.key === view ? "page" : undefined}
+              <Link key={v.key} href={href("/affiliate/actions", { view: v.key === "todo" ? undefined : v.key, product: prod || undefined })} scroll={false} aria-current={v.key === view ? "page" : undefined}
                 className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium", v.key === view ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
                 {v.label}<span className="tnum text-[12.5px] text-ink-3">{queue[v.key].length.toLocaleString("en-MY")}</span>
               </Link>
@@ -115,7 +118,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
           <div className="flex flex-wrap items-center gap-2" aria-label="What it is for">
             <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3">Goal<InfoTip label="About goals">Each action pulls one lever: more creators selling, more content, or better content.</InfoTip></span>
             {(["", "creators", "content", "quality"] as const).map((l) => (
-              <Link key={l || "all"} href={href("/affiliate/actions", { view: view === "todo" ? undefined : view, lever: l || undefined })} scroll={false} aria-current={l === lever ? "page" : undefined}
+              <Link key={l || "all"} href={href("/affiliate/actions", { view: view === "todo" ? undefined : view, lever: l || undefined, product: prod || undefined })} scroll={false} aria-current={l === lever ? "page" : undefined}
                 className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", l === lever ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>
                 {l ? LEVER_LABEL[l] : "All"}{l ? <span className="tnum text-[12px] text-ink-3">{count(l)}</span> : null}
               </Link>

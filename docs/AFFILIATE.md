@@ -41,3 +41,8 @@ Each video is judged on its own affiliate sales (valid order lines, by video id)
 - **Ready For GMV Max**: GMV Max's own groups (Proven Left Alone, Hidden Gem, Selling Low Spend, Worth Exploring) that are not boosted now, and that still sell (RM 50 or more in 28 days) or are proven (RM 300 or more in life). The video ids are the same in both systems (`ads_creative_daily.creative_id` = `tt_videos.video_id`), so the two screens always agree.
 The age mix shows sales (28 days) by how old the video is; a high share from videos over 30 days means sales will fall as they fade.
 Test: `scripts/test-affiliate-content.ts`.
+
+## Products (`/affiliate/products`)
+Each of the 13 products with the same three levers, from the Product Analysis numbers: **creators who sold it**, **videos posted that link it**, **sales per video**. `judgeProduct` (src/lib/affiliate/product-levers.ts) splits the change in the product's sales between them (the three effects add up to the change) and writes one plain sentence: what moved and what to do. Flat sales that hide two big moves in opposite directions are flagged ("two levers cancelled out"). "Short Of Creators" marks a product with fewer than half the median number of sellers; this is where new-creator outreach will start (Slice 5).
+Each row links to Actions and Content filtered to that product (`?product=`), and to the full Product Analysis page. Execution Plan, Affiliate Data and Product Analysis are unchanged and stay until you approve their removal.
+Test: `scripts/test-affiliate-products.ts`.

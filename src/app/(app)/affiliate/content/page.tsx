@@ -50,7 +50,8 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
   if (!c) return null;
   const sp = await searchParams;
   const tab = (TABS.find((t) => t.key === one(sp.tab))?.key ?? "heating") as Tab;
-  const list = c.lists[tab];
+  const prod = one(sp.product) ?? "";
+  const list = prod ? c.lists[tab].filter((v) => v.pk === prod) : c.lists[tab];
   const old30 = c.mix.filter((m) => m.key === "d60" || m.key === "d90" || m.key === "old").reduce((n, m) => n + m.share, 0);
   const kpis = [
     { label: "Sales From Videos And LIVE", value: `RM ${fmtCompact(c.sales.now)}`, sub: "last 28 days", change: <Change now={c.sales.now} before={c.sales.before} /> },
@@ -90,13 +91,13 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
           <nav aria-label="Video lists" className="flex flex-wrap gap-2" data-testid="content-tabs">
             {TABS.map((t) => (
-              <Link key={t.key} href={href("/affiliate/content", { tab: t.key === "heating" ? undefined : t.key })} scroll={false} title={t.help} aria-current={t.key === tab ? "page" : undefined}
+              <Link key={t.key} href={href("/affiliate/content", { tab: t.key === "heating" ? undefined : t.key, product: prod || undefined })} scroll={false} title={t.help} aria-current={t.key === tab ? "page" : undefined}
                 className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium", t.key === tab ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
                 {t.label}<span className="tnum text-[12.5px] text-ink-3">{c.counts[t.key].toLocaleString("en-MY")}</span>
               </Link>
             ))}
           </nav>
-          <p className="text-[12.5px] text-ink-3">{TABS.find((t) => t.key === tab)!.help}</p>
+          <p className="text-[12.5px] text-ink-3">{prod ? <>Showing one product. <Link href={href("/affiliate/content", { tab: tab === "heating" ? undefined : tab })} className="font-semibold text-brand hover:underline">Show all products</Link>. </> : null}{TABS.find((t) => t.key === tab)!.help}</p>
         </div>
         {list.length === 0 ? <p className="px-5 py-12 text-center text-[14px] text-ink-3">No videos here right now.</p> : (
           <ul data-testid="content-rows">

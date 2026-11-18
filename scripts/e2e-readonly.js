@@ -37,7 +37,7 @@ async function login(p, email, password = "Passw0rd!test") {
   await login(r, "ai-e2e@alooma.my", pw);
   ok(!/login/.test(r.url()), "read-only: can sign in with the password");
   const items = (await r.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(items) === JSON.stringify(["Affiliate Command", "Creator Lifecycle", "Content", "Actions", "Team", "Affiliate Data", "Profit And Loss"]), `read-only: the menu shows only the two screens chosen (${items.join(", ")})`);
+  ok(JSON.stringify(items) === JSON.stringify(["Affiliate Command", "Creator Lifecycle", "Products", "Content", "Actions", "Team", "Affiliate Data", "Profit And Loss"]), `read-only: the menu shows only the two screens chosen (${items.join(", ")})`);
   ok((await r.getByTestId("read-only-banner").count()) === 1, "read-only: a banner says the login is read-only");
   const [{ creator }] = await sql`select creator from tt_affiliate_order_lines where creator is not null group by creator order by sum(price) desc limit 1`;
   const cr = { username: creator };

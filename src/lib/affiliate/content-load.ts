@@ -11,7 +11,7 @@ import { BOOST_GROUPS, GROUP, type GroupKey } from "@/lib/ads/groups";
 import { ageMix, classifyVideo, type VideoClass } from "./content";
 
 export type VideoRow = {
-  id: string; creator: string | null; title: string | null; product: string; postedOn: string | null; ageDays: number | null;
+  id: string; creator: string | null; title: string | null; pk: string | null; product: string; postedOn: string | null; ageDays: number | null;
   total: number; s14: number; p14: number; s28: number; lastSale: string | null; views: number | null;
   cls: VideoClass;
   /** How GMV Max sees this video (its own group), and whether that group is one worth boosting. */
@@ -70,7 +70,7 @@ async function compute(ref: string): Promise<Content> {
   const all: VideoRow[] = vids.map((r) => {
     const posted = r.posted ?? r.first_sale;
     return {
-      id: r.vid, creator: r.creator, title: r.title, product: r.pk ? productName(r.pk) : "", postedOn: posted, ageDays: posted ? Math.max(0, daysBetweenISO(posted, ref)) : null,
+      id: r.vid, creator: r.creator, title: r.title, pk: r.pk, product: r.pk ? productName(r.pk) : "", postedOn: posted, ageDays: posted ? Math.max(0, daysBetweenISO(posted, ref)) : null,
       total: r.total, s14: r.s14, p14: r.p14, s28: r.s14 + r.p14, lastSale: r.last_sale, views: r.views,
       cls: classifyVideo({ total: r.total, s14: r.s14, p14: r.p14, daysSinceLastSale: r.last_sale ? daysBetweenISO(r.last_sale, ref) : null }),
       ads: ads.get(r.vid) ?? null,

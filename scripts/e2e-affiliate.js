@@ -96,6 +96,25 @@ async function login(p, email) {
   }
   const ca = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(ca.length === 1 && /Content/.test(ca[0]), `menu: only Content is lit there (${ca.join("|")})`);
+
+  // products: the three levers per product, a reason, and links into Actions and Content for that product
+  await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
+  ok(/Products/.test(await p.locator("h1").first().innerText()), "products: page opens");
+  ok(/Affiliate Sales/.test(await p.getByTestId("prod-kpis").innerText()), "products: headline numbers");
+  const prodRows = await p.locator("[data-testid=prod-row]").count();
+  ok(prodRows >= 5, `products: one row per product (${prodRows})`);
+  const heads = await p.locator("[data-testid=prod-headline]").allInnerTexts();
+  ok(heads.length === prodRows && heads.every((h) => h.trim().length > 10), "products: every product has a plain reason");
+  const firstKey = (await p.locator("[data-testid=prod-row] a", { hasText: "Actions For This Product" }).first().getAttribute("href")).match(/product=([^&]+)/)[1];
+  await p.locator("[data-testid=prod-row] a", { hasText: "Actions For This Product" }).first().click(); await p.waitForURL(/affiliate\/actions/); await p.waitForSelector("[data-testid=product-filter]", { timeout: 20000 }).catch(() => {});
+  ok(/product=/.test(p.url()) && (await p.getByTestId("product-filter").count()) === 1, "products: opens Actions for that product only");
+  const prodNames = await p.locator("[data-testid=action-row] p.text-\\[13\\.5px\\]").allInnerTexts();
+  ok(prodNames.length === 0 || new Set(prodNames.map((x) => x.trim())).size === 1, `products: Actions shows only that product (${[...new Set(prodNames.map((x) => x.trim()))].join(", ")})`);
+  await p.goto(BASE + "/affiliate/content?product=" + firstKey, { waitUntil: "networkidle" });
+  ok(!/Application error|Internal Server Error/.test(await p.locator("main").innerText()) && /Showing one product/.test(await p.locator("main").innerText()), "products: Content filters to that product");
+  for (const srt of ["sales", "drop", "growth"]) { await p.goto(BASE + "/affiliate/products?sort=" + srt, { waitUntil: "networkidle" }); ok((await p.locator("[data-testid=prod-row]").count()) === prodRows, `products: sort "${srt}" keeps every product`); }
+  const pa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
+  ok(pa.length === 1 && /^Products$/.test(pa[0].trim()), `menu: only Products is lit there (${pa.join("|")})`);
   ok(errs.length === 0, `no browser errors (${errs.slice(0, 2).join(" | ")})`);
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" }); await p.screenshot({ path: process.env.SHOT || "/tmp/claude-0/command.png", fullPage: true });
   await b.close(); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
