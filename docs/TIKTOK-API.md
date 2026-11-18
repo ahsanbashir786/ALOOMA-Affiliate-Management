@@ -69,3 +69,18 @@ The Finance screen was removed. The settlement data behind it is still synced fr
 ## API versions that changed
 
 TikTok moves some calls to a newer version and stops serving the old one ("Invalid API version", code 36009004). Current versions used: Search Sample Applications `/affiliate_seller/202508/sample_applications/search` and Search Open Collaborations `/affiliate_seller/202412/open_collaborations/search` (both found in TikTok's own API reference). Sample applications now allow at most 50 per page; the sync already steps down from 100 to 50 by itself.
+
+## Affiliate Seller APIs for Creator Outreach (read from TikTok's own API reference)
+Checked in TikTok's Partner Center docs (API Reference → Affiliate seller). Paths are on `open-api.tiktokglobalshop.com`; the app's current connection asks for read scopes only.
+
+| What we want | TikTok API | Method and path | Scope the app needs |
+|---|---|---|---|
+| See sample requests (already synced) | Search Sample Applications | `POST /affiliate_seller/202508/sample_applications/search` | `seller.affiliate_collaboration.read` (already used) |
+| **Approve or reject a sample request** | Review a Sample Application | `POST /affiliate_seller/202507/sample_applications/{application_id}/review` with `review_result` APPROVE or REJECT, and `reject_reason` (NOT_MATCH, OFFLINE, OUT_OF_STOCK, OTHER) when rejecting | `seller.affiliate_collaboration.write` (**new, write**) |
+| Follow delivery of approved samples | Search Sample Application Fulfillments | `POST /affiliate_seller/202409/sample_application_fulfillments/search` (version per the docs page) | read |
+| **Find new creators** | Search Creators in Creator Marketplace | `POST /affiliate_seller/202608/marketplace_creators/search` (keyword, GMV range, units sold range, category, follower demographics, content performance; data is for the last 30 days) | `seller.creator_marketplace.read` (**new, read only**) |
+| Invite a creator to sell a product | Create Target Collaboration | `POST /affiliate_seller/202508/target_collaborations` (name, message, end time, up to 100 products with commission rate, up to 50 creators by open ID, seller contact, free sample rule) | `seller.affiliate_collaboration.write` (**new, write**) |
+| Check the weekly invitation allowance | Get Weekly Creator Outreach Quota / Check Creator Outreach Eligibility | `GET /affiliate_seller/202607/creator_outreach/quota`, `POST /affiliate_seller/202610/creator_outreach/eligibility/check` | read |
+| Message a creator | Get or Create Creator Conversation, Send IM Message | `POST /affiliate_seller/202508/conversations`, `POST /affiliate_seller/202412/conversations/{conversation_id}/messages` | `seller.affiliate_messages.write` (**new, write**) |
+
+Notes: a sample request can only be approved or rejected while it is PENDING, and the API says "in an open collaboration". An approval cannot be undone through the API. The docs pages do not show per-country availability without choosing a region, so **Malaysia support must be confirmed by calling the read-only search once the scope is on**.
