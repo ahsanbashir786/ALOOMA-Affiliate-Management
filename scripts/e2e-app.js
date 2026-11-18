@@ -17,6 +17,15 @@ async function login(p, email) {
   ok(/\/execution$/.test(p.url()), "landing: everyone opens on the Execution Plan");
   const links = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
   ok(JSON.stringify(links) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Profit And Loss", "Stock And Costing", "Data Sync", "Settings"]), `menu: the eight items (${links.join(", ")})`);
+  ok(!/Synced/.test(await p.locator("aside").innerText()), "menu: no sync status line at the bottom");
+  { // a short screen: no scroll bar in the menu, and a loading bar the moment a menu item is clicked
+    const sp = await (await b.newContext({ viewport: { width: 1280, height: 620 } })).newPage(); await login(sp, "owner@test.local");
+    const nav = await sp.locator("aside nav").evaluate((n) => ({ bar: n.offsetWidth - n.clientWidth, sw: getComputedStyle(n).scrollbarWidth }));
+    ok(nav.bar === 0 || nav.sw === "none", `menu: no scroll bar on a short screen (${JSON.stringify(nav)})`);
+    await sp.locator("aside nav a", { hasText: "Stock And Costing" }).click();
+    ok((await sp.getByTestId("nav-progress").count()) === 1 || /\/stock/.test(sp.url()), "navigation: a loading bar shows as soon as a menu item is clicked");
+    await sp.close();
+  }
   ok(JSON.stringify((await p.locator("[data-testid^=submenu-]").allInnerTexts()).map((t) => t.trim())) === JSON.stringify(["All", "TikTok", "Shopee"]), "menu: Profit And Loss has All, TikTok and Shopee under it");
   for (const gone of ["/today", "/command", "/data", "/samples", "/affiliates", "/progress", "/orders", "/content", "/demand", "/order-health", "/opportunities"]) {
     const r = await p.goto(BASE + gone); ok(r.status() === 404, `old screen ${gone} is gone`);

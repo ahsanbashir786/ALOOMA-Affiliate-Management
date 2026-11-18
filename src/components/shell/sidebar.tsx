@@ -10,7 +10,7 @@ import { NAV, navAllowed, type NavChild, type NavItem } from "./nav";
 
 type Props = {
   user: { name: string; email: string; roleName: string; isAdmin: boolean; permissions: PermissionKey[] };
-  sync: { label: string; ok: boolean };
+  sync?: { label: string; ok: boolean };
   open: boolean;
   onClose: () => void;
   collapsed: boolean;
@@ -38,7 +38,7 @@ function SubMenu({ children, open, onClose }: { children: NavChild[]; open: bool
   );
 }
 
-export function Sidebar({ user, sync, open, onClose, collapsed }: Props) {
+export function Sidebar({ user, open, onClose, collapsed }: Props) {
   const pathname = usePathname();
   const isActive = (item: NavItem) => pathname === item.href || pathname.startsWith(item.href + "/");
   // On phones the menu is always the full one.
@@ -109,17 +109,6 @@ export function Sidebar({ user, sync, open, onClose, collapsed }: Props) {
           })}
         </nav>
 
-        <div className="shrink-0 border-t border-line p-3">
-          <Link
-            href="/sync"
-            onClick={onClose}
-            title={rail ? sync.label : undefined}
-            className={cn("flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] text-ink-3 hover:bg-surface-2 hover:text-ink", rail && "lg:justify-center lg:px-0")}
-          >
-            <span className={cn("size-2 shrink-0 rounded-full", sync.ok ? "bg-good" : "bg-warn")} />
-            <span className={cn("truncate", rail && "lg:hidden")}>{sync.label}</span>
-          </Link>
-        </div>
       </aside>
     </>
   );

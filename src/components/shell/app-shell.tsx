@@ -3,6 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { Menu } from "lucide-react";
 import { AlertBell } from "./alert-bell";
+import { NavProgress } from "./nav-progress";
 import { ErrorReporter } from "./error-reporter";
 import type { PermissionKey } from "@/lib/permissions";
 import { Sidebar } from "./sidebar";
@@ -36,6 +37,7 @@ export function AppShell({
   return (
     <CreatorPanelProvider>
     <ErrorReporter />
+    <NavProgress />
     <div className="min-h-screen">
       <Sidebar user={user} sync={sync} open={open} onClose={() => setOpen(false)} collapsed={collapsed} onToggleCollapsed={toggle} />
       <div className={collapsed ? "transition-[padding] duration-200 lg:pl-[76px]" : "transition-[padding] duration-200 lg:pl-[256px]"}>
