@@ -6,8 +6,9 @@ import { rows } from "@/lib/sql";
 import { loadCreatorRows } from "@/lib/creators/load";
 import type { DirRow } from "@/lib/creators/workflow/directory";
 import { kd, TL } from "@/lib/creators/sql";
-import { addDaysISO } from "@/lib/time";
-import { explainChange, stageOf, daysInStage, UNPRODUCTIVE, STAGES, type Levers, type StageKey } from "./stages";
+import { addDaysISO, todayKL } from "@/lib/time";
+import { baselineOf, buildQueue, splitQueue } from "./actions";
+import { explainChange, stageOf, daysInStage, STAGES, type Levers, type StageKey } from "./stages";
 
 const TARGET_KEY = "affiliate_target";
 export const getAffiliateTarget = async (): Promise<number | null> => {
@@ -38,6 +39,25 @@ export type Command = {
 
 /** Creators who have to be at least this share of sample-holders for the guard to say "fix the old samples first". */
 const GUARD_HIGH = 25;
+
+
+/** The sample guard counts product lines (creator + product), because one creator can hold several samples. */
+export function sampleGuard(all: DirRow[]): SampleGuard {
+  let notPosted = 0, noSale = 0, soldThenQuiet = 0, sampled = 0, requestsWaiting = 0;
+  const holders = new Set<string>();
+  for (const r of all) {
+    requestsWaiting += r.extra?.requestsOpen ?? 0;
+    for (const l of r.lines) {
+      if (!l.sampled) continue;
+      sampled++;
+      if (l.status === "Silent") { notPosted++; holders.add(r.username); }
+      else if (l.status === "Posted") { noSale++; holders.add(r.username); }
+      else if (l.status === "Quiet") { soldThenQuiet++; holders.add(r.username); }
+    }
+  }
+  const stuckShare = sampled ? ((notPosted + noSale) / sampled) * 100 : 0;
+  return { notPosted, noSale, soldThenQuiet, creators: holders.size, requestsWaiting, high: stuckShare >= GUARD_HIGH };
+}
 
 function rowFor(r: DirRow, stage: StageKey, ref: string): StageRow {
   return {
@@ -94,25 +114,20 @@ export async function loadCommand(): Promise<Command | null> {
     return { key: s.key, creators: list.length, sales28: list.reduce((n, x) => n + (x.r.extra?.gmv28 ?? 0), 0), avgDays: ds.length ? Math.round(ds.reduce((n, d) => n + d, 0) / ds.length) : null, top };
   });
 
-  // The sample guard counts product lines (creator + product), because one creator can hold several samples.
-  let notPosted = 0, noSale = 0, soldThenQuiet = 0, sampled = 0, requestsWaiting = 0;
-  const holders = new Set<string>();
-  for (const r of all) {
-    requestsWaiting += r.extra?.requestsOpen ?? 0;
-    for (const l of r.lines) {
-      if (!l.sampled) continue;
-      sampled++;
-      if (l.status === "Silent") { notPosted++; holders.add(r.username); }
-      else if (l.status === "Posted") { noSale++; holders.add(r.username); }
-      else if (l.status === "Quiet") { soldThenQuiet++; holders.add(r.username); }
-    }
-  }
-  const stuckShare = sampled ? ((notPosted + noSale) / sampled) * 100 : 0;
-  void UNPRODUCTIVE;
+  const guard = sampleGuard(all);
 
   return {
     ref, from, prevFrom, prevTo, levers: { now, before }, change: explainChange(now, before), target, stages,
-    guard: { notPosted, noSale, soldThenQuiet, creators: holders.size, requestsWaiting, high: stuckShare >= GUARD_HIGH },
+    guard,
     creators: all.length,
   };
+}
+
+export async function loadQueue() {
+  const { all, ref } = await loadCreatorRows();
+  if (!ref) return null;
+  const baseline = baselineOf(all);
+  const guard = sampleGuard(all);
+  const queue = splitQueue(buildQueue(all, ref, baseline), todayKL(), guard.high);
+  return { ref, guard, queue, baseline };
 }

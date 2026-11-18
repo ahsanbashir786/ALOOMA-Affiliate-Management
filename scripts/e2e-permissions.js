@@ -15,7 +15,7 @@ const run = Date.now().toString(36);
   // ── a viewer: full menu, locks, Permission Denied
   let v = await mk(); await login(v, "viewer@test.local");
   const items = (await v.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(items) === JSON.stringify(["Affiliate Command", "Creator Lifecycle", "Execution Plan", "Affiliate Data", "Product Analysis"]), `viewer: the menu shows only what the role may open (${items.join(", ")})`);
+  ok(JSON.stringify(items) === JSON.stringify(["Affiliate Command", "Creator Lifecycle", "Actions", "Team", "Execution Plan", "Affiliate Data", "Product Analysis"]), `viewer: the menu shows only what the role may open (${items.join(", ")})`);
   ok((await v.getByTestId("nav-lock").count()) === 0 && (await v.locator("aside a", { hasText: "Data Sync" }).count()) === 0 && (await v.locator("aside a", { hasText: "Settings" }).count()) === 0, "viewer: screens the role cannot open are not in the menu at all (no lock, no grey)");
   await v.goto(BASE + "/sync"); await v.waitForSelector("[data-testid=permission-denied]");
   const t = await v.getByTestId("permission-denied").innerText();

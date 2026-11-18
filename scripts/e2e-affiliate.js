@@ -56,6 +56,31 @@ async function login(p, email) {
   }
   const lcActive = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(lcActive.length === 1 && /Creator Lifecycle/.test(lcActive[0]), `menu: only Creator Lifecycle is lit there (${lcActive.join("|")})`);
+
+  // actions: one next action per creator; contacting one moves it to "waiting", and the Team screen shows it at once
+  const num = async (label) => Number((await p.locator("[data-testid=action-kpis] > div", { hasText: label }).first().locator("p").nth(1).innerText()).replace(/\D/g, "") || 0);
+  await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
+  ok(/Actions/.test(await p.locator("h1").first().innerText()), "actions: page opens");
+  const names = await p.locator("[data-testid=action-row] button[title='Open details']").allInnerTexts();
+  ok(names.length > 0 && new Set(names).size === names.length, `actions: each creator appears once (${names.length} rows)`);
+  const todo0 = await num("To Do"), wait0 = await num("Waiting For Result");
+  ok(todo0 > 0, `actions: there is something to do (${todo0})`);
+  const first = p.locator("[data-testid^=act-]").first(); const who = (await p.locator("[data-testid=action-row]").first().locator("button[title='Open details']").innerText()).replace("@", "");
+  await first.click(); await p.getByRole("button", { name: "I contacted them" }).click();
+  await p.getByText(/Saved as contacted/).waitFor({ timeout: 15000 }); ok(true, "actions: recording a contact works from the list");
+  await p.keyboard.press("Escape"); await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
+  ok((await num("To Do")) === todo0 - 1 && (await num("Waiting For Result")) === wait0 + 1, "actions: the creator moved from To Do to Waiting For Result");
+  await p.goto(BASE + "/affiliate/actions?view=waiting", { waitUntil: "networkidle" });
+  ok((await p.locator("[data-testid=action-rows]").innerText()).includes(who), "actions: and shows in Waiting For Result");
+  await p.goto(BASE + "/affiliate/team", { waitUntil: "networkidle" });
+  ok(/Contacted Today/.test(await p.getByTestId("team-kpis").innerText()), "team: the screen opens");
+  ok((await p.getByTestId("team-log").innerText()).includes(who) && /Contacted/.test(await p.getByTestId("team-log").innerText()), "team: the contact is in the activity log at once");
+  ok(/Test Owner/.test(await p.getByTestId("team-people").innerText()), "team: the person appears with their count");
+  ok(/day \d+ of 14|Not yet|waiting/i.test(await p.getByTestId("team-log").innerText() + await p.getByTestId("team-kpis").innerText()), "team: the result is shown as still filling in");
+  // undo: back to how it was
+  await p.goto(BASE + "/affiliate/actions?view=waiting", { waitUntil: "networkidle" });
+  await p.locator("[data-testid^=act-]").first().click(); await p.getByRole("button", { name: "Undo" }).first().click({ timeout: 8000 }).catch(() => {});
+  await p.waitForTimeout(800); await p.keyboard.press("Escape");
   ok(errs.length === 0, `no browser errors (${errs.slice(0, 2).join(" | ")})`);
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" }); await p.screenshot({ path: process.env.SHOT || "/tmp/claude-0/command.png", fullPage: true });
   await b.close(); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
