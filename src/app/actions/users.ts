@@ -1,13 +1,14 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, count, eq, ne } from "drizzle-orm";
 import * as z from "zod";
 import { db } from "@/db";
 import { rolePermissions, roles, sessions, users } from "@/db/schema";
 import { requirePermission } from "@/lib/auth";
-import { PERMISSIONS, withDependencies, type PermissionKey } from "@/lib/permissions";
+import { PERMISSIONS, READ_ONLY_SCREENS, withDependencies, type PermissionKey } from "@/lib/permissions";
 
 export type Result = { ok?: string; error?: string } | undefined;
 const refresh = () => { revalidatePath("/users"); revalidatePath("/", "layout"); };
@@ -135,4 +136,66 @@ export async function setRolePermission(roleId: string, permission: string, on: 
   if (add.length) await db.insert(rolePermissions).values(add.map((permission) => ({ roleId: r.id, permission }))).onConflictDoNothing();
   refresh();
   return { ok: "Saved.", permissions: next };
+}
+
+
+// ───────── read-only access (for example, a login given to ChatGPT or Claude to look at the system) ─────────
+const NewReadOnly = z.object({
+  name: z.string().trim().min(2, "Give the login a name, for example ChatGPT Review.").max(60),
+  email: z.email("Enter an email address for the login (it does not need to be a real mailbox).").trim().toLowerCase(),
+  days: z.coerce.number().int().min(0).max(365),
+});
+
+export type ReadOnlyResult = { ok?: string; error?: string; credentials?: { name: string; email: string; password: string; expiresAt: string | null; screens: string[] } } | undefined;
+
+/**
+ * Makes a read-only login: its own role (the chosen screens, read-only), a long random password, and an end date.
+ * The password is shown once, here, and never again.
+ */
+export async function createReadOnlyAccess(_: ReadOnlyResult, fd: FormData): Promise<ReadOnlyResult> {
+  await requirePermission("users");
+  const p = NewReadOnly.safeParse({ name: fd.get("name"), email: fd.get("email"), days: fd.get("days") });
+  if (!p.success) return { error: p.error.issues[0].message };
+  const screens = fd.getAll("screens").map(String).filter((k): k is PermissionKey => READ_ONLY_SCREENS.includes(k as PermissionKey));
+  if (!screens.length) return { error: "Choose at least one screen." };
+  if ((await db.select({ id: users.id }).from(users).where(eq(users.email, p.data.email)).limit(1)).length) return { error: "A login with that email already exists." };
+  const keys = new Set((await db.select({ k: roles.key }).from(roles)).map((r) => r.k));
+  let key = `read-only-${slug(p.data.name)}`, i = 2;
+  while (keys.has(key)) key = `read-only-${slug(p.data.name)}-${i++}`;
+  const [role] = await db.insert(roles).values({ key, name: `Read-Only: ${p.data.name}`, description: "A login that can look but not change anything.", readOnly: true }).returning({ id: roles.id });
+  await db.insert(rolePermissions).values(screens.map((permission) => ({ roleId: role.id, permission })));
+  // 24 letters and digits without look-alikes (no 0/O, 1/l/I): about 120 bits.
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(24);
+  const password = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+  const expiresAt = p.data.days > 0 ? new Date(Date.now() + p.data.days * 86_400_000) : null;
+  await db.insert(users).values({ name: p.data.name, email: p.data.email, roleId: role.id, passwordHash: await bcrypt.hash(password, 12), expiresAt });
+  revalidatePath("/settings");
+  return { ok: "Created. Copy the details now: the password is not shown again.", credentials: { name: p.data.name, email: p.data.email, password, expiresAt: expiresAt ? expiresAt.toISOString() : null, screens: screens.map((k) => PERMISSIONS.find((x) => x.key === k)?.label ?? k) } };
+}
+
+/** Switches a read-only login off for good (the login, its role and any open sessions are deleted). */
+export async function removeReadOnlyAccess(userId: string): Promise<Result> {
+  await requirePermission("users");
+  const [row] = await db.select({ id: users.id, roleId: users.roleId, readOnly: roles.readOnly }).from(users).innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.id, z.string().uuid().parse(userId))).limit(1);
+  if (!row) return { error: "Login not found." };
+  if (!row.readOnly) return { error: "That is not a read-only login." };
+  await db.delete(sessions).where(eq(sessions.userId, row.id));
+  await db.delete(users).where(eq(users.id, row.id));
+  const [{ n }] = await db.select({ n: count() }).from(users).where(eq(users.roleId, row.roleId));
+  if (n === 0) await db.delete(roles).where(eq(roles.id, row.roleId));
+  revalidatePath("/settings");
+  return { ok: "Switched off." };
+}
+
+/** Moves the end date of a read-only login (days from now; 0 = never ends). */
+export async function setReadOnlyExpiry(userId: string, days: number): Promise<Result> {
+  await requirePermission("users");
+  const d = z.number().int().min(0).max(365).safeParse(days);
+  if (!d.success) return { error: "Choose how long." };
+  const [row] = await db.select({ id: users.id, readOnly: roles.readOnly }).from(users).innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.id, z.string().uuid().parse(userId))).limit(1);
+  if (!row?.readOnly) return { error: "That is not a read-only login." };
+  await db.update(users).set({ expiresAt: d.data > 0 ? new Date(Date.now() + d.data * 86_400_000) : null }).where(eq(users.id, row.id));
+  revalidatePath("/settings");
+  return { ok: "Saved." };
 }

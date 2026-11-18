@@ -17,13 +17,14 @@ const HELP: Record<string, string> = {
   "/settings": "TikTok connections, people and roles",
 };
 
-/** Quick search: pages (all shown, locked ones marked), products and creators the person is allowed to see. Read-only. */
+/** Quick search: pages they may open, products and creators the person is allowed to see. Read-only. */
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const raw = (new URL(req.url).searchParams.get("q") ?? "").trim().slice(0, 40);
   const q = raw.toLowerCase().replace(/^@/, "");
   const pages = NAV.flatMap((g) => g.items)
+    .filter((i) => navAllowed(user, i)) // a screen the person cannot open is not offered at all
     .filter((i) => !q || i.label.toLowerCase().includes(q) || (HELP[i.href] ?? "").toLowerCase().includes(q))
     .map((i) => ({ label: i.label, href: i.href, help: HELP[i.href] ?? "", locked: !navAllowed(user, i) }));
   const products = q && can(user, "products")

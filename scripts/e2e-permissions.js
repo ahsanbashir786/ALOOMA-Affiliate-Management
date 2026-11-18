@@ -15,11 +15,11 @@ const run = Date.now().toString(36);
   // ── a viewer: full menu, locks, Permission Denied
   let v = await mk(); await login(v, "viewer@test.local");
   const items = (await v.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(items) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Profit And Loss", "Stock And Costing", "Data Sync", "Settings"]), `viewer: sees the full menu (${items.join(", ")})`);
-  ok((await v.getByTestId("nav-lock").count()) === 5, "viewer: GMV Max, Profit And Loss, Stock And Costing, Data Sync and Settings show a lock");
-  await v.locator("aside a", { hasText: "Data Sync" }).click(); await v.waitForSelector("[data-testid=permission-denied]");
+  ok(JSON.stringify(items) === JSON.stringify(["Execution Plan", "Affiliate Data", "Product Analysis"]), `viewer: the menu shows only what the role may open (${items.join(", ")})`);
+  ok((await v.getByTestId("nav-lock").count()) === 0 && (await v.locator("aside a", { hasText: "Data Sync" }).count()) === 0 && (await v.locator("aside a", { hasText: "Settings" }).count()) === 0, "viewer: screens the role cannot open are not in the menu at all (no lock, no grey)");
+  await v.goto(BASE + "/sync"); await v.waitForSelector("[data-testid=permission-denied]");
   const t = await v.getByTestId("permission-denied").innerText();
-  ok(/Permission Denied/.test(t) && /Viewer/.test(t) && /Data Sync/.test(t) && /Needs:\s*Data Sync/i.test(t), "viewer: Data Sync shows Permission Denied with the role, the screen and what is needed");
+  ok(/Permission Denied/.test(t) && /Viewer/.test(t) && /Data Sync/.test(t) && /Needs:\s*Data Sync/i.test(t), "viewer: typing the Data Sync address shows Permission Denied with the role, the screen and what is needed");
   ok(await v.getByRole("link", { name: /Go to Execution Plan/ }).isVisible(), "viewer: the denied page offers a way back");
   ok((await v.getByRole("link", { name: "Manage roles" }).count()) === 0, "viewer: no Manage roles button");
   for (const path of ["/users", "/settings", "/settings?tab=users"]) { await v.goto(BASE + path); await v.waitForSelector("[data-testid=permission-denied]"); ok(true, `viewer: ${path} is denied`); }

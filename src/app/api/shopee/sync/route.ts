@@ -17,7 +17,7 @@ export async function GET() {
 /** Starts a sync in the background and answers at once: { dataset? } for one part, { historyDays? } to read further back. */
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  if (!user || !can(user, "sync")) return NextResponse.json({ error: "Your role cannot run a sync." }, { status: 403 });
+  if (!user || !can(user, "sync") || user.readOnly) return NextResponse.json({ error: "Your role cannot run a sync." }, { status: 403 });
   if (isShopeeSyncRunning()) return NextResponse.json({ error: "A Shopee sync is already running." }, { status: 409 });
   const b = (await req.json().catch(() => ({}))) as { dataset?: string; historyDays?: number };
   const only = SHOPEE_DATASET_LIST.some((d) => d.key === b.dataset) ? [b.dataset as ShopeeDatasetKey] : undefined;

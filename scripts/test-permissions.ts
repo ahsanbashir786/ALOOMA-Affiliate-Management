@@ -2,8 +2,8 @@
 // Run: DATABASE_URL=postgres://postgres@localhost:5433/affiliate_test npx tsx --conditions=react-server scripts/test-permissions.ts
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { can } from "@/lib/can";
-import { PERMISSIONS, SCREEN_PERMISSION, withDependencies, type PermissionKey } from "@/lib/permissions";
+import { can, mayWrite } from "@/lib/can";
+import { PERMISSIONS, READ_ONLY_SCREENS, SCREEN_PERMISSION, withDependencies, type PermissionKey } from "@/lib/permissions";
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, extra = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${ok ? "" : "  " + extra}`); };
@@ -38,6 +38,13 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   // The migration keeps who was who: an admin user is still on the Admin role.
   const owners = await q(sql`select u.email from users u join roles r on r.id = u.role_id where r.is_admin`);
   check("users: at least one active person is on the Admin role", owners.length >= 1);
+  // Read-only logins
+  const ro = { isAdmin: false, readOnly: true, permissions: ["profit", "stock", "settings", "users"] as PermissionKey[] };
+  check("read-only: can open its screens", can(ro, "profit") && can(ro, "stock"));
+  check("read-only: never Users or Settings, even if ticked", !can(ro, "users") && !can(ro, "settings"));
+  check("read-only: cannot write; a normal role can", !mayWrite(ro) && mayWrite({ readOnly: false }) && mayWrite({}));
+  check("read-only: the screens it may be given never include Users or Settings", !READ_ONLY_SCREENS.includes("users") && !READ_ONLY_SCREENS.includes("settings") && READ_ONLY_SCREENS.length === 7);
+  check("read-only: the Admin role is never read-only and old roles are not", (await q(sql`select count(*)::int as n from roles where read_only and (is_admin or key in ('admin', 'viewer'))`))[0].n === 0);
   await q(sql`delete from users where email like 'e2e-%'`);
   await q(sql`delete from roles where key like 'e2e-%'`);
   console.log(`\n${pass} passed, ${fail} failed`);

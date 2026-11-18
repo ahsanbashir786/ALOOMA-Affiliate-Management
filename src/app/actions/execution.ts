@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import * as z from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { can, requirePermission, requireUser, type SessionUser } from "@/lib/auth";
+import { can, requirePermission, requireView, requireWriter, type SessionUser } from "@/lib/auth";
+import { maskPhone } from "@/lib/whatsapp";
 import { listCreatorAsks, listTaskCreators, syncPlan, type CreatorCard, type CreatorItem } from "@/lib/execution/plan";
 
 type R = { ok?: true; error?: string };
@@ -27,7 +28,7 @@ const refresh = () => revalidatePath("/execution");
 const LABEL = { not_started: "Not Started", pending: "Pending", done: "Done", skipped: "Not Needed" } as const;
 
 export async function setTaskStatus(taskId: string, status: string, note?: string): Promise<R> {
-  const user = await requireUser();
+  const user = await requireWriter();
   const p = z.object({ id: Id, s: STATUS, n: z.string().trim().max(500).optional() }).safeParse({ id: taskId, s: status, n: note });
   if (!p.success) return { error: "That status is not valid." };
   if (!(await mayEdit(user, p.data.id))) return { error: "Only the assigned person or a manager can change this task." };
@@ -76,7 +77,7 @@ export async function setTaskAssignees(taskId: string, userIds: string[]): Promi
 }
 
 export async function toggleTaskStep(taskId: string, index: number): Promise<R> {
-  const user = await requireUser();
+  const user = await requireWriter();
   const p = z.object({ id: Id, i: z.number().int().min(0).max(30) }).safeParse({ id: taskId, i: index });
   if (!p.success) return { error: "That step does not exist." };
   if (!(await mayEdit(user, p.data.id))) return { error: "Only the assigned person or a manager can change this task." };
@@ -90,7 +91,7 @@ export async function toggleTaskStep(taskId: string, index: number): Promise<R> 
 }
 
 export async function addTaskComment(taskId: string, text: string): Promise<R> {
-  const user = await requireUser();
+  const user = await requireWriter();
   const p = z.object({ id: Id, t: z.string().trim().min(1).max(1000) }).safeParse({ id: taskId, t: text });
   if (!p.success) return { error: "Write a short note first." };
   if (!(await mayEdit(user, p.data.id))) return { error: "Only the assigned person or a manager can comment." };
@@ -110,15 +111,16 @@ export async function refreshPlan(): Promise<R & { created?: number; closed?: nu
 
 /** One page of the creators an action is about. Anyone signed in may look. */
 export async function getTaskCreators(taskId: string, offset: number, q: string, filter: "all" | "todo" | "done"): Promise<{ items: CreatorItem[]; total: number; contacted: number } | { error: string }> {
-  await requirePermission("execution");
+  const user = await requireView("execution");
   const p = z.object({ id: Id, o: z.number().int().min(0).max(5000), q: z.string().trim().max(60), f: z.enum(["all", "todo", "done"]) }).safeParse({ id: taskId, o: offset, q, f: filter });
   if (!p.success) return { error: "Something is wrong with that request." };
-  return listTaskCreators(p.data.id, { offset: p.data.o, limit: 50, q: p.data.q, filter: p.data.f });
+  const r = await listTaskCreators(p.data.id, { offset: p.data.o, limit: 50, q: p.data.q, filter: p.data.f });
+  return user.readOnly ? { ...r, items: r.items.map((i) => ({ ...i, phone: maskPhone(i.phone) })) } : r;
 }
 
 /** Ticks creators off as contacted (or back). The tick shows who did it and when. */
 export async function setCreatorsContacted(taskId: string, usernames: string[], on: boolean): Promise<R & { contacted?: number }> {
-  const user = await requireUser();
+  const user = await requireWriter();
   const p = z.object({ id: Id, u: z.array(z.string().min(1).max(80)).min(1).max(500) }).safeParse({ id: taskId, u: usernames });
   if (!p.success) return { error: "Choose creators first." };
   if (!(await mayEdit(user, p.data.id))) return { error: "Only the assigned person or a manager can tick creators." };
@@ -203,15 +205,16 @@ export async function restoreTasks(items: { id: string; status: string; due: str
 
 /** One page of creators with all their open asks (the By Creator view). */
 export async function getCreatorAsks(offset: number, q: string, scope: "all" | "mine", show: "todo" | "all", priority: string, multi: boolean): Promise<{ items: CreatorCard[]; total: number } | { error: string }> {
-  const user = await requireUser();
+  const user = await requireView("execution");
   const p = z.object({ o: z.number().int().min(0).max(20000), q: z.string().trim().max(60), s: z.enum(["all", "mine"]), sh: z.enum(["todo", "all"]), pr: z.enum(["all", "1", "2", "3"]), m: z.boolean() }).safeParse({ o: offset, q, s: scope, sh: show, pr: priority, m: multi });
   if (!p.success) return { error: "Something is wrong with that request." };
-  return listCreatorAsks({ offset: p.data.o, limit: 25, q: p.data.q, mine: p.data.s === "mine" ? user.id : null, show: p.data.sh, priority: p.data.pr === "all" ? null : Number(p.data.pr), multi: p.data.m });
+  const r = await listCreatorAsks({ offset: p.data.o, limit: 25, q: p.data.q, mine: p.data.s === "mine" ? user.id : null, show: p.data.sh, priority: p.data.pr === "all" ? null : Number(p.data.pr), multi: p.data.m });
+  return user.readOnly ? { ...r, items: r.items.map((i) => ({ ...i, phone: maskPhone(i.phone) })) } : r;
 }
 
 /** Ticks one creator as contacted in every open action that lists them (managers: all; team members: only actions assigned to them). */
 export async function contactCreatorEverywhere(username: string, on: boolean): Promise<R & { count?: number }> {
-  const user = await requireUser();
+  const user = await requireWriter();
   const p = z.string().min(1).max(80).safeParse(username);
   if (!p.success) return { error: "Choose a creator." };
   const mine = can(user, "execution") ? sql`` : sql`and exists (select 1 from ep_task_assignees x where x.task_id = t.id and x.user_id = ${user.id}::uuid)`;

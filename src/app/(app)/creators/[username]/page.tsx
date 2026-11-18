@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { maskPhone } from "@/lib/whatsapp";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink, MessageCircle } from "lucide-react";
-import { can } from "@/lib/auth";
+import { can, mayEditContacts } from "@/lib/auth";
 import { gate } from "@/lib/gate";
 import { getCreatorProfile, type ProfileSample, type SampleResult } from "@/lib/creators/profile";
 import { getStaff } from "@/lib/creators/meta";
@@ -53,7 +54,7 @@ const Td = ({ children, right, className }: { children?: React.ReactNode; right?
 export default async function CreatorProfilePage({ params }: PageProps<"/creators/[username]">) {
   const { user, denied } = await gate("creators", "Affiliate Data");
   if (denied) return denied;
-  const canAct = can(user, "creators");
+  const canAct = mayEditContacts(user);
   const username = decodeURIComponent((await params).username);
   const [p, staff] = await Promise.all([getCreatorProfile(username), getStaff()]);
   if (!p) notFound();
@@ -80,7 +81,7 @@ export default async function CreatorProfilePage({ params }: PageProps<"/creator
               <p className="mt-0.5 text-[14px] text-ink-3">{[e.nickname, row.type, e.followers != null ? `${fmtCompact(e.followers)} followers` : null].filter(Boolean).join(" · ") || "Type unknown"}</p>
               <p className="mt-3 flex flex-wrap items-center gap-2 text-[13.5px]">
                 <a href={`https://www.tiktok.com/@${encodeURIComponent(row.username)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-ink-2 hover:bg-surface-2"><ExternalLink className="size-3.5" /> TikTok</a>
-                {row.phone ? <a href={`https://wa.me/${row.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-ink-2 hover:bg-surface-2"><MessageCircle className="size-3.5" /> {row.phone}</a> : <span className="rounded-full border border-dashed border-line-strong px-2.5 py-1 text-ink-3">No WhatsApp number</span>}
+                {row.phone && !canAct ? <span className="rounded-full border border-line-strong px-2.5 py-1 text-ink-2">{maskPhone(row.phone)}</span> : row.phone ? <a href={`https://wa.me/${row.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-ink-2 hover:bg-surface-2"><MessageCircle className="size-3.5" /> {row.phone}</a> : <span className="rounded-full border border-dashed border-line-strong px-2.5 py-1 text-ink-3">No WhatsApp number</span>}
                 <OwnerPicker username={row.username} ownerId={e.ownerId} staff={staff} canAct={canAct} />
                 {p.firstSeenOn && <span className="text-ink-3">First seen {fmtDayLabel(p.firstSeenOn)}</span>}
               </p>

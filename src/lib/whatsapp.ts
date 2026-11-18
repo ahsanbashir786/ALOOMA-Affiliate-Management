@@ -22,3 +22,6 @@ export function normalisePhone(v: string | number | null | undefined): string | 
 /** A wa.me link that opens WhatsApp with the message ready. */
 export const waLink = (phone: string, text?: string) =>
   `https://wa.me/${phone.replace(/\D/g, "")}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+
+/** For read-only logins: a number is never shown in full. "+60••••••••" */
+export const maskPhone = (p: string | null | undefined) => (p ? `+${p.replace(/\D/g, "").slice(0, 2)}••••••••` : null);

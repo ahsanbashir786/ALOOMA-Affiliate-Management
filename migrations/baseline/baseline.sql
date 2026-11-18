@@ -663,7 +663,8 @@ CREATE TABLE public.roles (
     name text NOT NULL,
     description text DEFAULT ''::text NOT NULL,
     is_admin boolean DEFAULT false NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    read_only boolean DEFAULT false NOT NULL
 );
 
 
@@ -1004,7 +1005,8 @@ CREATE TABLE public.users (
     active boolean DEFAULT true NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     role_id uuid NOT NULL,
-    last_login_at timestamp without time zone
+    last_login_at timestamp without time zone,
+    expires_at timestamp with time zone
 );
 
 

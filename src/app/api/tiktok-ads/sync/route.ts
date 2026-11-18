@@ -16,7 +16,7 @@ export async function GET() {
 /** "Sync now": starts the sync in the background and answers at once; the screen follows progress through GET. */
 export async function POST(request: Request) {
   const user = await getCurrentUser();
-  if (!user || !can(user, "sync")) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
+  if (!user || !can(user, "sync") || user.readOnly) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
   if (!(await adsConnectionInfo()).connected) return NextResponse.json({ error: "TikTok Ads is not connected yet." }, { status: 409 });
   const asked = (await request.json().catch(() => null)) as { dataset?: string; history?: boolean } | null;
   const key = ADS_DATASETS.find((d) => d.key === asked?.dataset)?.key as AdsDatasetKey | undefined;

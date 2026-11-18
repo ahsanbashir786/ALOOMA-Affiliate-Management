@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { AlertCircle, CheckCircle2, Loader2, Lock, MoreHorizontal, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Eye, Loader2, Lock, MoreHorizontal, Plus, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
+import { ReadOnlyAccess, type ReadOnlyLogin } from "@/components/users/read-only-access";
 import { createRole, createUser, deleteRole, renameRole, resetPassword, setRolePermission, updateUser, type Result } from "@/app/actions/users";
 import { Person, Popover } from "@/components/execution/ui";
 import { Button, Input, Select } from "@/components/ui/primitives";
@@ -197,12 +198,12 @@ function FragmentGroup({ group, roles, state, toggle }: { group: string; roles: 
 }
 
 /* ───────── the screen ───────── */
-export function UsersScreen({ users, roles, meId }: { users: U[]; roles: R[]; meId: string }) {
-  const [tab, setTab] = useState<"users" | "roles">("users");
+export function UsersScreen({ users, roles, readOnlyLogins, meId }: { users: U[]; roles: R[]; readOnlyLogins: ReadOnlyLogin[]; meId: string }) {
+  const [tab, setTab] = useState<"users" | "roles" | "readonly">("users");
   return (
     <div className="space-y-5">
       <div className="inline-flex rounded-lg border border-line-strong bg-surface p-0.5" role="tablist" aria-label="Users or roles">
-        {([["users", "Users", Users, users.length], ["roles", "Roles & Permissions", ShieldCheck, roles.length]] as const).map(([k, l, Icon, n]) => (
+        {([["users", "Users", Users, users.length], ["roles", "Roles & Permissions", ShieldCheck, roles.length], ["readonly", "Read-Only Access", Eye, readOnlyLogins.length]] as const).map(([k, l, Icon, n]) => (
           <button key={k} role="tab" aria-selected={tab === k} data-testid={`tab-${k}`} onClick={() => setTab(k)} className={cn("inline-flex h-9 items-center gap-2 rounded-md px-4 text-[14px] font-medium", tab === k ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2")}>
             <Icon className="size-4" />{l}<span className="tnum rounded-full bg-surface px-1.5 text-[12.5px] text-ink-3">{n}</span>
           </button>
@@ -218,7 +219,7 @@ export function UsersScreen({ users, roles, meId }: { users: U[]; roles: R[]; me
             <ul className="divide-y divide-line">{users.map((u) => <UserRow key={u.id} u={u} roles={roles} isMe={u.id === meId} />)}</ul>
           </section>
         </div>
-      ) : <RolesTab roles={roles} />}
+      ) : tab === "roles" ? <RolesTab roles={roles} /> : <ReadOnlyAccess logins={readOnlyLogins} />}
     </div>
   );
 }

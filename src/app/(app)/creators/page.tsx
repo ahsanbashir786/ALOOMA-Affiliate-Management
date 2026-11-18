@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Fragment } from "react";
 import Link from "next/link";
+import { maskPhone } from "@/lib/whatsapp";
 import { ExternalLink, MessageCircle, Users } from "lucide-react";
-import { can } from "@/lib/auth";
+import { can, mayEditContacts } from "@/lib/auth";
 import { gate } from "@/lib/gate";
 import { ACTION_ORDER, getAffiliateDirectory, STATUS_ORDER, type DirLine, type DirRow } from "@/lib/creators/workflow/directory";
 import { parseCreatorParams } from "@/lib/creators/params";
@@ -121,7 +122,7 @@ function CreatorBlock({ r, staff, canAct }: { r: DirRow; staff: { id: string; na
           <OwnerPicker username={r.username} ownerId={e.ownerId} staff={staff} canAct={canAct} />
         </p>
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-ink-3">
-          {r.phone ? <a href={`https://wa.me/${r.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" title="Opening WhatsApp does not count as contact" className="inline-flex items-center gap-1 hover:text-brand"><MessageCircle className="size-3.5" />{r.phone}</a> : <span>No number</span>}
+          {r.phone && !canAct ? <span>{maskPhone(r.phone)}</span> : r.phone ? <a href={`https://wa.me/${r.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" title="Opening WhatsApp does not count as contact" className="inline-flex items-center gap-1 hover:text-brand"><MessageCircle className="size-3.5" />{r.phone}</a> : <span>No number</span>}
           <span>· {r.lastContactedOn ? `Contacted ${fmtDayLabel(r.lastContactedOn)}` : "Not contacted"}</span>
         </p>
         {(r.overdue || e.requestsOpen > 0) && (
@@ -138,7 +139,7 @@ function CreatorBlock({ r, staff, canAct }: { r: DirRow; staff: { id: string; na
 export default async function CreatorsPage({ searchParams }: PageProps<"/creators">) {
   const { user, denied } = await gate("creators", "Affiliate Data");
   if (denied) return denied;
-  const canAct = can(user, "creators");
+  const canAct = mayEditContacts(user);
   const canExport = can(user, "creators");
   const sp = (await searchParams) as SP;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));

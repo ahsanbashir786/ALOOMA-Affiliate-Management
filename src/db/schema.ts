@@ -29,6 +29,8 @@ export const roles = pgTable("roles", {
   description: text("description").notNull().default(""),
   /** The owner role: always has every permission and cannot be edited or deleted. */
   isAdmin: boolean("is_admin").notNull().default(false),
+  /** A read-only role can open its screens but change nothing (migration 0042). */
+  readOnly: boolean("read_only").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 export const rolePermissions = pgTable("role_permissions", {
@@ -44,6 +46,8 @@ export const users = pgTable("users", {
   roleId: uuid("role_id").notNull().references(() => roles.id),
   active: boolean("active").notNull().default(true),
   lastLoginAt: timestamp("last_login_at"),
+  /** The login stops working at this time; empty = never. */
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -42,3 +42,6 @@ export const SCREEN_PERMISSION: Record<string, PermissionKey> = {
   "/users": "users", // now a tab inside Settings; kept so the first-screen rule still works
   "/settings": "settings",
 };
+
+/** The screens a read-only login may be given. Users and Settings are never offered: they hold the team's emails and connections and the power to change things. */
+export const READ_ONLY_SCREENS: PermissionKey[] = ["execution", "creators", "products", "ads", "stock", "profit", "sync"];

@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/db";
 import { rolePermissions, roles, sessions, users } from "@/db/schema";
 import { PERMISSIONS, SCREEN_PERMISSION, type PermissionKey } from "@/lib/permissions";
@@ -45,6 +45,8 @@ export type SessionUser = {
   id: string; name: string; email: string;
   /** The role's short key (admin, manager, viewer, or one you made) and its display name. */
   role: string; roleName: string; isAdmin: boolean;
+  /** A read-only login: it can look, never change. */
+  readOnly: boolean;
   permissions: PermissionKey[];
   /** An extra, per-person permission to edit WhatsApp numbers (on top of the role). */
 };
@@ -54,19 +56,19 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const [row] = await db
-    .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, role: roles.key, roleName: roles.name, isAdmin: roles.isAdmin, expiresAt: sessions.expiresAt })
+    .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, role: roles.key, roleName: roles.name, isAdmin: roles.isAdmin, readOnly: roles.readOnly, userExpires: users.expiresAt, expiresAt: sessions.expiresAt })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(roles, eq(roles.id, users.roleId))
-    .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date()), eq(users.active, true)))
+    .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date()), eq(users.active, true), or(isNull(users.expiresAt), gt(users.expiresAt, new Date()))))
     .limit(1);
   if (!row) return null;
   // Working keeps you signed in: push the end forward (at most once every 5 minutes).
   if (row.expiresAt.getTime() - Date.now() < (SESSION_MINUTES - 5) * 60_000) await db.update(sessions).set({ expiresAt: sessionEnd() }).where(eq(sessions.tokenHash, hashToken(token)));
   const perms = row.isAdmin ? PERMISSIONS.map((p) => p.key) : (await db.select({ p: rolePermissions.permission }).from(rolePermissions).where(eq(rolePermissions.roleId, row.roleId))).map((x) => x.p as PermissionKey);
-  const { roleId: _roleId, expiresAt: _exp, ...rest } = row;
-  void _roleId; void _exp;
-  return { ...rest, permissions: perms };
+  const { roleId: _roleId, expiresAt: _exp, userExpires: _ue, ...rest } = row;
+  void _roleId; void _exp; void _ue;
+  return { ...rest, permissions: row.readOnly ? perms.filter((p) => p !== "users" && p !== "settings") : perms };
 });
 
 /** Redirects to /login unless someone is signed in. What they may do is checked with can() or requirePermission(). */
@@ -83,6 +85,22 @@ import { can } from "@/lib/can";
 export async function requirePermission(permission: PermissionKey): Promise<SessionUser> {
   const user = await requireUser();
   if (!can(user, permission)) redirect(`/denied?need=${permission}`);
+  // Everything that goes through here changes something; a read-only login may not.
+  if (user.readOnly) redirect("/denied?readonly=1");
+  return user;
+}
+
+/** For actions that only look (they read and send data back, saving nothing): a read-only login may use them. */
+export async function requireView(permission: PermissionKey): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!can(user, permission)) redirect(`/denied?need=${permission}`);
+  return user;
+}
+
+/** For actions that only need someone signed in (not a screen permission) but still change something. */
+export async function requireWriter(): Promise<SessionUser> {
+  const user = await requireUser();
+  if (user.readOnly) redirect("/denied?readonly=1");
   return user;
 }
 
@@ -95,4 +113,4 @@ export function firstAllowedScreen(user: Pick<SessionUser, "isAdmin" | "permissi
 }
 
 /** WhatsApp numbers are personal data: only roles with the permission, and people ticked individually, may edit or upload them. */
-export const mayEditContacts = (user: Pick<SessionUser, "isAdmin" | "permissions">) => can(user, "creators");
+export const mayEditContacts = (user: Pick<SessionUser, "isAdmin" | "permissions" | "readOnly">) => can(user, "creators") && !user.readOnly;

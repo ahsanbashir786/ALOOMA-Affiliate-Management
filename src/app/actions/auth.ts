@@ -21,7 +21,7 @@ export async function login(_: FormState, formData: FormData): Promise<FormState
   if (!parsed.success) return { error: parsed.error.issues[0].message, values };
   const [user] = await db.select().from(users).where(eq(users.email, parsed.data.email)).limit(1);
   // Same message for unknown user / bad password / disabled account.
-  const ok = user && user.active && (await bcrypt.compare(parsed.data.password, user.passwordHash));
+  const ok = user && user.active && (!user.expiresAt || user.expiresAt.getTime() > Date.now()) && (await bcrypt.compare(parsed.data.password, user.passwordHash));
   if (!ok) return { error: "Incorrect email or password.", values };
   await createSession(user.id);
   redirect(landingFor());

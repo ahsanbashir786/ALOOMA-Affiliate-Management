@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { Lock, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { NAV, navAllowed, type NavChild, type NavItem } from "./nav";
@@ -67,7 +67,7 @@ export function Sidebar({ user, open, onClose, collapsed }: Props) {
         </div>
 
         <nav className={cn("flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [@media(max-height:820px)]:py-2", rail && "lg:px-2")}>
-          {NAV.map((group, gi) => {
+          {NAV.map((group) => ({ ...group, items: group.items.filter((i) => navAllowed(user, i)) })).filter((g) => g.items.length > 0).map((group, gi) => {
             const items = group.items;
             return (
               <div key={group.label} className={cn(gi > 0 && "mt-3 [@media(max-height:820px)]:mt-2")}>
@@ -77,25 +77,22 @@ export function Sidebar({ user, open, onClose, collapsed }: Props) {
                   {items.map((item) => {
                     const active = isActive(item);
                     const Icon = item.icon;
-                    const allowed = navAllowed(user, item);
                     return (
                       <li key={item.href}>
                         <Link
                           href={item.href}
                           onClick={onClose}
-                          title={rail ? item.label : allowed ? undefined : "Your role cannot open this"}
+                          title={rail ? item.label : undefined}
                           aria-current={active ? "page" : undefined}
                           className={cn(
                             "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14.5px] font-medium transition-colors [@media(max-height:820px)]:py-1.5",
                             rail && "lg:justify-center lg:px-0",
                             active ? "bg-brand-soft text-brand-strong" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
-                            !allowed && !active && "text-ink-3",
                           )}
                         >
                           {active && <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-3 w-[3px] rounded-r-full bg-brand lg:-left-3" />}
                           <Icon className={cn("size-[18px] shrink-0", active ? "text-brand" : "text-ink-3 group-hover:text-ink-2")} />
                           <span className={cn("flex-1 truncate", rail && "lg:hidden")}>{item.label}</span>
-                          {!allowed && <Lock data-testid="nav-lock" aria-label="Locked for your role" className={cn("size-3.5 shrink-0 text-ink-3", rail && "lg:absolute lg:top-1 lg:right-2 lg:size-3")} />}
                         </Link>
                         {item.children && !rail && (
                           <Suspense fallback={null}><SubMenu open={active} onClose={onClose}>{item.children}</SubMenu></Suspense>

@@ -22,7 +22,7 @@ export function AppShell({
   alerts,
   children,
 }: {
-  user: { name: string; email: string; roleName: string; isAdmin: boolean; permissions: PermissionKey[] };
+  user: { name: string; email: string; roleName: string; isAdmin: boolean; readOnly?: boolean; permissions: PermissionKey[] };
   sync: { label: string; ok: boolean };
   alerts?: { unseen: number; worst: "critical" | "warning" | "info" | null } | null;
   children: React.ReactNode;
@@ -57,6 +57,7 @@ export function AppShell({
             <UserMenu name={user.name} email={user.email} role={user.roleName} />
           </div>
         </header>
+        {user.readOnly && <p data-testid="read-only-banner" className="border-b border-line bg-brand-soft px-4 py-1.5 text-center text-[13px] font-medium text-brand-strong sm:px-8">Read-only login: you can look at everything you can open, but nothing can be changed.</p>}
         <main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-8">{children}</main>
       </div>
     </div>

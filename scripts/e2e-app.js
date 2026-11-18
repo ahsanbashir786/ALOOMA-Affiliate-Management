@@ -58,7 +58,7 @@ async function login(p, email) {
   p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   await login(p, "viewer@test.local");
   const vl = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(vl.length === 8, `viewer: sees the whole menu (${vl.length} items)`);
+  ok(vl.length === 3, `viewer: sees only the screens the role allows (${vl.length} items)`);
   // mobile
   p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await login(p, "manager@test.local");

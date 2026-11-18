@@ -9,6 +9,7 @@ export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return new Response("Sign in first", { status: 401 });
   if (!can(user, "profit")) return new Response("Your role cannot open this", { status: 403 });
+  if (user.readOnly) return new Response("A read-only login cannot download exports", { status: 403 });
   const u = new URL(req.url);
   const period = resolvePeriod(u.searchParams.get("range") ?? undefined, u.searchParams.get("from") ?? undefined, u.searchParams.get("to") ?? undefined);
   const data = forChannel(await loadProfit(), parseChannel(u.searchParams.get("channel") ?? undefined));
