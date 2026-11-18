@@ -1,4 +1,5 @@
 // The TikTok calls behind Outreach, against a pretend TikTok (no network). Needs a *_test database.
+export {};
 if (!/_test$/.test(process.env.DATABASE_URL ?? "")) { console.error("Refusing to run: DATABASE_URL must point to a *_test database."); process.exit(1); }
 process.env.TIKTOK_APP_KEY = "KEY"; process.env.TIKTOK_APP_SECRET = "s3cret"; process.env.TIKTOK_SERVICE_ID = "123";
 
