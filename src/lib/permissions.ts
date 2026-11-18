@@ -34,6 +34,8 @@ export function withDependencies(current: PermissionKey[], key: PermissionKey, o
 export const SCREEN_PERMISSION: Record<string, PermissionKey> = {
   "/execution": "execution",
   "/creators": "creators",
+  "/affiliate": "creators",
+  "/affiliate/lifecycle": "creators",
   "/products": "products",
   "/ads": "ads",
   "/stock": "stock",

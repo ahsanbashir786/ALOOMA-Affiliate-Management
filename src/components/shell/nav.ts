@@ -1,4 +1,4 @@
-import { Banknote, Boxes, ListChecks, Package, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
+import { Banknote, Boxes, Compass, Route, ListChecks, Package, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 
 export type NavChild = { href: string; label: string; /** The value of ?channel= that makes this child the open one (empty = none). */ channel: string };
@@ -10,6 +10,8 @@ export const NAV: NavGroup[] = [
   {
     label: "Affiliates",
     items: [
+      { href: "/affiliate", label: "Affiliate Command", icon: Compass, perm: "creators" },
+      { href: "/affiliate/lifecycle", label: "Creator Lifecycle", icon: Route, perm: "creators" },
       { href: "/execution", label: "Execution Plan", icon: ListChecks, perm: "execution" },
       { href: "/creators", label: "Affiliate Data", icon: Users, perm: "creators" },
       { href: "/products", label: "Product Analysis", icon: Package, perm: "products" },

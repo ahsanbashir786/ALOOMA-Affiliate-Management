@@ -40,7 +40,13 @@ function SubMenu({ children, open, onClose }: { children: NavChild[]; open: bool
 
 export function Sidebar({ user, open, onClose, collapsed }: Props) {
   const pathname = usePathname();
-  const isActive = (item: NavItem) => pathname === item.href || pathname.startsWith(item.href + "/");
+  // The most specific menu item wins, so "Affiliate Command" is not lit up while "Creator Lifecycle" is open.
+  const all = NAV.flatMap((g) => g.items).map((i) => i.href.split("?")[0]);
+  const isActive = (item: NavItem) => {
+    const h = item.href.split("?")[0];
+    if (!(pathname === h || pathname.startsWith(h + "/"))) return false;
+    return !all.some((o) => o.length > h.length && (pathname === o || pathname.startsWith(o + "/")));
+  };
   // On phones the menu is always the full one.
   const rail = collapsed;
 

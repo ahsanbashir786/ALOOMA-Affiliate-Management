@@ -1,0 +1,25 @@
+import assert from "node:assert/strict";
+import { explainChange, stageOf, daysInStage } from "@/lib/affiliate/stages";
+
+const eff = explainChange({ sellers: 120, posts: 600, sales: 60000 }, { sellers: 100, posts: 450, sales: 50000 })!;
+assert.ok(Math.abs(eff.effects.reduce((n, e) => n + e.effect, 0) - eff.total) < 1e-6, "effects add up to the change");
+assert.equal(Math.round(eff.total), 10000);
+assert.ok(eff.effects.every((e) => Number.isFinite(e.effect)));
+assert.equal(explainChange({ sellers: 0, posts: 0, sales: 0 }, { sellers: 1, posts: 1, sales: 1 }), null, "nothing to compare");
+const same = explainChange({ sellers: 10, posts: 20, sales: 100 }, { sellers: 10, posts: 20, sales: 100 })!;
+assert.equal(same.total, 0);
+assert.ok(same.effects.every((e) => e.effect === 0));
+
+const line = (status: string, gmv28 = 0, sampleOn: string | null = null) => ({ status, gmv28, gmv: gmv28, sampleSkus: sampleOn ? [{ sku: "A", times: [{ on: sampleOn, delivered: true }] }] : [] });
+const row = (lines: ReturnType<typeof line>[], extra: Record<string, unknown> = {}, gmvAll = 0) => ({ username: "x", lines, gmvAll, extra: { requestsOpen: 0, lastSaleOn: null, ...extra } }) as never;
+assert.equal(stageOf(row([line("New")])), "found");
+assert.equal(stageOf(row([line("New")], { requestsOpen: 2 })), "requested");
+assert.equal(stageOf(row([line("Waiting", 0, "2026-11-10")])), "way");
+assert.equal(stageOf(row([line("Silent", 0, "2026-10-01")])), "notposted");
+assert.equal(stageOf(row([line("Posted")])), "nosale");
+assert.equal(stageOf(row([line("Quiet")], {}, 500)), "quiet");
+assert.equal(stageOf(row([line("Steady", 100)])), "selling");
+assert.equal(stageOf(row([line("Winner", 900), line("Silent")])), "star", "furthest stage wins");
+assert.equal(daysInStage(row([line("Silent", 0, "2026-10-01")]), "notposted", "2026-11-17"), 47);
+assert.equal(daysInStage(row([line("Quiet")], { lastSaleOn: "2026-10-18" }, 5), "quiet", "2026-11-17"), 30);
+console.log("affiliate stages: all passed");
