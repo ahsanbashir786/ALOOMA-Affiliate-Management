@@ -81,6 +81,21 @@ async function login(p, email) {
   await p.goto(BASE + "/affiliate/actions?view=waiting", { waitUntil: "networkidle" });
   await p.locator("[data-testid^=act-]").first().click(); await p.getByRole("button", { name: "Undo" }).first().click({ timeout: 8000 }).catch(() => {});
   await p.waitForTimeout(800); await p.keyboard.press("Escape");
+
+  // content: age mix, KPI strip, the four video lists
+  await p.goto(BASE + "/affiliate/content", { waitUntil: "networkidle" });
+  ok(/Content/.test(await p.locator("h1").first().innerText()), "content: page opens");
+  ok(/Heating Up/.test(await p.getByTestId("content-kpis").innerText()) && /Fading/.test(await p.getByTestId("content-kpis").innerText()), "content: headline numbers are shown");
+  ok(/older than 30 days/.test(await p.getByTestId("age-mix").innerText()), "content: says how much of the sales come from old videos");
+  const tabsTxt = await p.getByTestId("content-tabs").innerText();
+  ok(["Heating Up", "Ready For GMV Max", "Fading", "Stopped Selling"].every((t) => tabsTxt.includes(t)), "content: the four video lists are offered");
+  for (const t of ["heating", "ready", "fading", "stopped"]) {
+    await p.goto(BASE + "/affiliate/content?tab=" + t, { waitUntil: "networkidle" });
+    const body = await p.locator("main").innerText();
+    ok(!/Application error|Internal Server Error/.test(body) && (/No videos here right now/.test(body) || (await p.locator("[data-testid=content-rows] li").count()) > 0), `content: list "${t}" opens`);
+  }
+  const ca = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
+  ok(ca.length === 1 && /Content/.test(ca[0]), `menu: only Content is lit there (${ca.join("|")})`);
   ok(errs.length === 0, `no browser errors (${errs.slice(0, 2).join(" | ")})`);
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" }); await p.screenshot({ path: process.env.SHOT || "/tmp/claude-0/command.png", fullPage: true });
   await b.close(); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

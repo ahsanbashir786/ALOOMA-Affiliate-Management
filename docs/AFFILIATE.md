@@ -32,3 +32,12 @@ Recording a contact (the creator panel, "I contacted them") writes a staff event
 Live: contacts today and this week, an activity log (undone items crossed out), per person.
 Result: each contact is judged when 14 days have passed. Sales in the 14 days from the contact against the 14 days before, set against creators nobody contacted over the same days (only creators who were selling before count). The gap, in percentage points, is the effect of the work, per person and per action type.
 Tests: `scripts/test-affiliate-actions.ts`, `scripts/test-affiliate-outcomes.ts`.
+
+## Content (`/affiliate/content`)
+Each video is judged on its own affiliate sales (valid order lines, by video id): the last 14 days against the 14 days before, ending on the latest day of data. Thresholds are in `src/lib/affiliate/content.ts`.
+- **Heating Up**: RM 100 or more in the last 14 days and at least 30% above the 14 days before → boost now.
+- **Fading**: RM 150 or more in the 14 days before and less than half of that now → ask the creator for a fresh video.
+- **Stopped Selling**: RM 300 or more in its life, last sale within 90 days, nothing in the last 28 days → ask for a replacement.
+- **Ready For GMV Max**: GMV Max's own groups (Proven Left Alone, Hidden Gem, Selling Low Spend, Worth Exploring) that are not boosted now, and that still sell (RM 50 or more in 28 days) or are proven (RM 300 or more in life). The video ids are the same in both systems (`ads_creative_daily.creative_id` = `tt_videos.video_id`), so the two screens always agree.
+The age mix shows sales (28 days) by how old the video is; a high share from videos over 30 days means sales will fall as they fade.
+Test: `scripts/test-affiliate-content.ts`.
