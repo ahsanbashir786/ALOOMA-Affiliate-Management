@@ -123,7 +123,10 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
             <Card data-testid="tiktok-card">
               <CardHeader title="New Creators From TikTok" description="TikTok's own Creator Marketplace, with data for the last 30 days. We do not make this list: it is what TikTok returns. Search by keyword or sales range." action={<a href="https://seller-my.tiktok.com/" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open TikTok Seller Center</a>} />
               {o.tiktok.ok ? <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} /> : (
-                <p className="px-5 pb-6 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">TikTok&apos;s creator list is not available here yet: {o.tiktok.error} You can still use TikTok&apos;s own recommended creators in Seller Center with the link above.</p>
+                <>
+                  <p className="px-5 pb-3 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">TikTok&apos;s creator list is not available right now: {o.tiktok.error} You can also use TikTok&apos;s own recommended creators in Seller Center with the link above.</p>
+                  {o.flags.market && <FindCreators initial={[]} fieldsSeen={[]} />}
+                </>
               )}
             </Card>
           </div>

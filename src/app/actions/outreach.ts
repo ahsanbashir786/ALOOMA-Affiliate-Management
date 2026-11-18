@@ -47,5 +47,7 @@ export async function findCreators(keyword: string, gmv: string[]): Promise<Mark
   await requireView("creators");
   const sc = await outreachScopes();
   if (!sc.connected || !sc.market) return { ok: false, error: "TikTok has not granted the creator search permission yet." };
-  return searchMarketplace({ keyword: keyword.slice(0, 60), gmvRanges: gmv.slice(0, 4) });
+  const r = await searchMarketplace({ keyword: keyword.slice(0, 60), gmvRanges: gmv.slice(0, 4) });
+  if (!r.ok && /too many requests|rate limit/i.test(r.error)) return { ok: false, error: "TikTok is busy right now. Wait a minute and press Search TikTok again." };
+  return r;
 }

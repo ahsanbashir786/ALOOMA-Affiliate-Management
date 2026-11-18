@@ -76,12 +76,22 @@ export async function loadOutreach(): Promise<Outreach | null> {
 
   const [flagOn, scopes] = await Promise.all([reviewEnabled(), outreachScopes()]);
   const more = giveMoreSamples(all);
-  const tiktok = !scopes.connected ? ({ ok: false, error: "TikTok Shop is not connected." } as const)
-    : !scopes.market ? ({ ok: false, error: "TikTok has not granted the creator search permission yet. Reconnect TikTok in Settings after switching it on in Partner Center." } as const)
-    : await cached("outreach-market", "default", async () => {
+  const busy = (m: string) => (/too many requests|rate limit/i.test(m) ? "TikTok is busy right now (it limits how fast the system may ask, and a sync may be running). Wait a minute, then press Search TikTok." : m);
+  let tiktok: Outreach["tiktok"];
+  if (!scopes.connected) tiktok = { ok: false, error: "TikTok Shop is not connected." };
+  else if (!scopes.market) tiktok = { ok: false, error: "TikTok has not granted the creator search permission yet. Reconnect TikTok in Settings after switching it on in Partner Center." };
+  else {
+    try {
+      // Only a good answer is remembered (10 minutes). A refusal or a "too busy" is never kept, so the next visit asks again.
+      tiktok = await cached("outreach-market", "default", async () => {
         const r = await Promise.race([searchMarketplace({}), new Promise<{ ok: false; error: string }>((res) => setTimeout(() => res({ ok: false, error: "TikTok took too long to answer." }), 12_000))]);
-        return r.ok ? ({ ok: true, creators: r.creators.slice(0, 40), fieldsSeen: r.fieldsSeen } as const) : r;
+        if (!r.ok) throw new Error(r.error);
+        return { ok: true, creators: r.creators.slice(0, 40), fieldsSeen: r.fieldsSeen } as const;
       });
+    } catch (e) {
+      tiktok = { ok: false, error: busy(e instanceof Error ? e.message : "TikTok did not answer.") };
+    }
+  }
 
   const lists = Object.fromEntries(Object.entries(samples).map(([k, v]) => [k, v.slice(0, LIMIT)])) as Outreach["samples"];
   const counts = { suggested: more.length + (tiktok.ok ? tiktok.creators.length : 0), requested: samples.requested.length, approved: samples.approved.length, shipped: samples.shipped.length, delivered: samples.delivered.length, posted: samples.posted.length } as Record<PipelineKey, number>;
