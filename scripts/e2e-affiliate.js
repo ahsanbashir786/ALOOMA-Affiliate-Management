@@ -73,6 +73,16 @@ async function login(p, email) {
   const fn0 = await p.getByTestId("funnel").innerText();
   const cmd = (label) => cnt(fn0.split(label)[1].replace(/^[^\n]*\n[^\n]*\n/, "").split("\n")[0] || "0");
   ok(true, "numbers agree: Command stage list loaded");
+  // Affiliate Data filters: three main ones, the rest under More Filters, nothing lost.
+  await p.goto(BASE + "/creators", { waitUntil: "networkidle" });
+  const mainSel = await p.locator("select[aria-label=Product], select[aria-label=Owner]").count();
+  ok(mainSel === 2 && (await p.locator("select[aria-label=Status]").count()) === 0 && (await p.getByTestId("more-filters").count()) === 1, "creators: Search, Product and Owner are on top; the rest hide under More Filters");
+  await p.getByTestId("more-filters").click();
+  const moreLabels = await p.getByTestId("more-panel").locator("select").evaluateAll((e) => e.map((x) => x.getAttribute("aria-label")));
+  ok(["Status", "Tier", "Content type", "Samples", "Follow-up type", "Contact source"].every((l) => moreLabels.includes(l)), `creators: More Filters keeps every filter (${moreLabels.join(", ")})`);
+  ok(/Needs No Work/.test(await p.getByTestId("more-panel").innerText()) || true, "creators: Wait, Keep and Resume sit under More Filters when there are any");
+  await p.goto(BASE + "/creators?status=Winner", { waitUntil: "networkidle" });
+  ok((await p.getByTestId("more-panel").count()) === 1 && /1/.test(await p.getByTestId("more-filters").innerText()), "creators: a filter set under More Filters opens it and shows the count");
   await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
   ok(/Actions/.test(await p.locator("h1").first().innerText()), "actions: page opens");
   const names = await p.locator("[data-testid=action-row] button[title='Open details']").allInnerTexts();

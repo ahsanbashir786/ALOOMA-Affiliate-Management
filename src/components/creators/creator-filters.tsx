@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowDownUp, Download, Search, X } from "lucide-react";
+import { ArrowDownUp, ChevronDown, Download, Search, SlidersHorizontal, X } from "lucide-react";
 import { Input, Select } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { href } from "@/lib/url";
@@ -22,6 +22,8 @@ type Props = {
   canExport: boolean;
 };
 const DEFAULTS: Partial<CreatorFilterValues> = { samples: "all", sort: "gmv" };
+/** Actions that need no work from you: kept one click away, but out of the main row. */
+const QUIET_ACTIONS: CreatorAction[] = ["Wait", "Keep", "Resume"];
 
 /** Every choice takes effect straight away (no Apply). Search waits a moment after typing. */
 export function CreatorFilters({ values, products, actions, todo, statuses, staff, shown, canExport }: Props) {
@@ -29,6 +31,8 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
   const path = usePathname();
   const [pending, start] = useTransition();
   const [q, setQ] = useState(values.q);
+  const moreActive = [values.status, values.tier, values.type, values.contact, values.wa].filter(Boolean).length + (values.samples !== "all" ? 1 : 0) + (QUIET_ACTIONS.includes(values.action as CreatorAction) ? 1 : 0);
+  const [more, setMore] = useState(moreActive > 0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -64,14 +68,20 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
           <option value="">All Products</option>
           {products.map((p) => <option key={p.pid} value={p.pid}>{p.name} ({p.creators})</option>)}
         </Select>
-        <Select aria-label="Status" value={values.status} onChange={(e) => go({ status: e.target.value })}>
-          <option value="">Any Status</option>
-          {statuses.map((s) => <option key={s.key} value={s.key}>{s.key} ({s.count})</option>)}
-        </Select>
         <Select aria-label="Owner" value={values.owner} onChange={(e) => go({ owner: e.target.value })}>
           <option value="">Any Owner</option>
           <option value="none">Unassigned</option>
           {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </Select>
+        <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more} data-testid="more-filters" className={cn("inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-[13.5px] font-medium transition-colors", more || moreActive ? "border-brand/40 bg-brand-soft text-brand" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2")}>
+          <SlidersHorizontal className="size-4" />More Filters{moreActive > 0 && <span className="tnum rounded-full bg-brand px-1.5 text-[12px] text-white">{moreActive}</span>}<ChevronDown className={cn("size-4 transition-transform", more && "rotate-180")} />
+        </button>
+      </div>
+      {more && (
+        <div className="flex flex-wrap items-center gap-2.5 rounded-xl bg-surface-2 p-3" data-testid="more-panel">
+        <Select aria-label="Status" value={values.status} onChange={(e) => go({ status: e.target.value })}>
+          <option value="">Any Status</option>
+          {statuses.map((s) => <option key={s.key} value={s.key}>{s.key} ({s.count})</option>)}
         </Select>
         <Select aria-label="Tier" value={values.tier} onChange={(e) => go({ tier: e.target.value })}>
           <option value="">All Tiers</option>
@@ -84,21 +94,30 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
           <option value="video">Video</option>
         </Select>
         <Select aria-label="Samples" value={values.samples} onChange={(e) => go({ samples: e.target.value })}>
-          <option value="all">All Samples Type</option>
+          <option value="all">All Samples</option>
           <option value="with">Received A Sample</option>
           <option value="none">No Sample Yet</option>
         </Select>
         <Select aria-label="Follow-up type" value={values.contact} onChange={(e) => go({ contact: e.target.value })}>
-          <option value="">Follow-up Type: All</option>
+          <option value="">Follow-up: All</option>
           <option value="contacted">Contacted</option>
           <option value="never">Not Contacted</option>
         </Select>
         <Select aria-label="Contact source" value={values.wa} onChange={(e) => go({ wa: e.target.value })}>
-          <option value="">Contact Source: All</option>
+          <option value="">Contact: All</option>
           <option value="yes">WhatsApp</option>
           <option value="no">No WhatsApp</option>
         </Select>
-      </div>
+          {actions.some((a) => QUIET_ACTIONS.includes(a.key) && (a.count > 0 || values.action === a.key)) && <span className="inline-flex items-center gap-1.5" role="group" aria-label="Other actions">
+            <span className="text-[13px] font-medium text-ink-3">Needs No Work</span>
+            {actions.filter((a) => QUIET_ACTIONS.includes(a.key) && (a.count > 0 || values.action === a.key)).map((a) => (
+              <button key={a.key} type="button" className={chip(values.action === a.key)} aria-pressed={values.action === a.key} onClick={() => go({ action: values.action === a.key ? "" : a.key })} title={ACTION_HINT[a.key]}>
+                {a.key} <span className="tnum opacity-80">{a.count}</span>
+              </button>
+            ))}
+          </span>}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Action to take">
@@ -107,7 +126,7 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
           <button type="button" className={chip(values.action === "todo")} aria-pressed={values.action === "todo"} onClick={() => go({ action: "todo" })} title="Product lines that need you to do something (everything except Wait and Keep)">
             To Do <span className="tnum opacity-80">{todo}</span>
           </button>
-          {actions.filter((a) => a.count > 0 || values.action === a.key).map((a) => (
+          {actions.filter((a) => !QUIET_ACTIONS.includes(a.key) && (a.count > 0 || values.action === a.key)).map((a) => (
             <button key={a.key} type="button" className={chip(values.action === a.key)} aria-pressed={values.action === a.key} onClick={() => go({ action: values.action === a.key ? "" : a.key })} title={ACTION_HINT[a.key]}>
               {a.key} <span className="tnum opacity-80">{a.count}</span>
             </button>
