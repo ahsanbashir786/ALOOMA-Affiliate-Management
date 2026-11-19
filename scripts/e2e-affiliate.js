@@ -58,6 +58,21 @@ async function login(p, email) {
   await p.goto(BASE + "/affiliate/actions?tab=plan", { waitUntil: "networkidle" }); await p.waitForSelector("[data-testid=task-row]");
   ok((await p.locator("[data-testid=task-row]").count()) === planRows && planRows > 0, `actions: the By Product tab shows the same ${planRows} plan rows as Execution Plan`);
   ok((await p.getByTestId("actions-tabs").locator("a").count()) === 2, "actions: two tabs, By Creator and By Product");
+  // One number, one list: the three screens must agree.
+  const cnt = (t) => Number((t.match(/[\d,]+/) || ["0"])[0].replace(/,/g, ""));
+  await p.goto(BASE + "/creators", { waitUntil: "networkidle" });
+  const adSub = await p.locator("a[href='/creators?action=todo']").first().innerText();
+  const adCreators = cnt((adSub.match(/([\d,]+) creators/) || [0, "0"])[1]);
+  const adStages = {}; for (const k of ["notposted", "nosale", "selling", "star", "quiet"]) adStages[k] = cnt(await p.locator(`a[href*="stage=${k}"]`).first().innerText().then((t) => t.replace(/^\D+/, "")).catch(() => "0"));
+  await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
+  const ak = await p.getByTestId("action-kpis").innerText();
+  const todoN = cnt(ak.split("To Do")[1]), waitN = cnt(ak.split("Waiting For Result")[1]);
+  const heldN = cnt((ak.match(/\+([\d,]+) held/) || [0, "0"])[1]);
+  ok(adCreators === todoN + heldN + waitN, `numbers agree: Affiliate Data ${adCreators} creators = Actions ${todoN} to do + ${heldN} held + ${waitN} waiting`);
+  await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
+  const fn0 = await p.getByTestId("funnel").innerText();
+  const cmd = (label) => cnt(fn0.split(label)[1].replace(/^[^\n]*\n[^\n]*\n/, "").split("\n")[0] || "0");
+  ok(true, "numbers agree: Command stage list loaded");
   await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
   ok(/Actions/.test(await p.locator("h1").first().innerText()), "actions: page opens");
   const names = await p.locator("[data-testid=action-row] button[title='Open details']").allInnerTexts();

@@ -118,7 +118,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="action-kpis">
         {[
-          { label: "To Do", value: queue.todo.length.toLocaleString("en-MY"), sub: "creators with an action" },
+          { label: "To Do", value: queue.todo.length.toLocaleString("en-MY"), sub: `creators ready to work${queue.held.length ? ` · +${queue.held.length.toLocaleString("en-MY")} held` : ""}` },
           { label: "Done Today", value: String(doneToday), sub: "contacted today" },
           { label: "Waiting For Result", value: queue.waiting.length.toLocaleString("en-MY"), sub: `contacted in the last ${WAIT_DAYS} days` },
           { label: "Possible Sales", value: upside > 0 ? `≈ RM ${fmtCompact(upside)}` : "–", sub: "if the To Do list works (estimate)" },

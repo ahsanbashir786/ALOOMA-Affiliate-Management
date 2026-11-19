@@ -1,4 +1,5 @@
 import "server-only";
+import { hasNextStep } from "@/lib/affiliate/model";
 import { NEEDS_ACTION, type CreatorAction, type CreatorStatus } from "@/lib/creators/status";
 import { addDaysISO, todayKL } from "@/lib/time";
 import { loadCreatorRows } from "@/lib/creators/load";
@@ -122,7 +123,7 @@ export type Directory = {
   products: { pid: string; name: string; creators: number }[];
   dataEnd: string | null;
   /** Synced data only: headline numbers over ALL creators (ignores the filters). */
-  overview?: { creators: number; newCreators28: number; sellers28: number; sellersPrev: number; gmv28: number; prev28: number; todoLines: number; silentLines: number; requestsOpen: number; unowned: number; tiers: Record<Tier, number> };
+  overview?: { creators: number; newCreators28: number; sellers28: number; sellersPrev: number; gmv28: number; prev28: number; todoLines: number; todoCreators: number; silentLines: number; requestsOpen: number; unowned: number; tiers: Record<Tier, number> };
 };
 
 export const STATUS_ORDER: CreatorStatus[] = ["Silent", "Slipping", "Winner", "Rising", "Quiet", "Posted", "Waiting", "New", "Steady", "Paused"];
@@ -225,7 +226,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
 
   let overview: Directory["overview"];
   {
-    overview = { creators: all.length, newCreators28: 0, sellers28: 0, sellersPrev: 0, gmv28: 0, prev28: 0, todoLines: 0, silentLines: 0, requestsOpen: 0, unowned: 0, tiers: { Gold: 0, Silver: 0, Bronze: 0, Starter: 0 } };
+    overview = { creators: all.length, newCreators28: 0, sellers28: 0, sellersPrev: 0, gmv28: 0, prev28: 0, todoLines: 0, todoCreators: 0, silentLines: 0, requestsOpen: 0, unowned: 0, tiers: { Gold: 0, Silver: 0, Bronze: 0, Starter: 0 } };
     for (const a of all) {
       const e = a.extra;
       if (!e) continue;
@@ -237,6 +238,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
       overview.requestsOpen += e.requestsOpen;
       if (!e.ownerId) overview.unowned++;
       overview.tiers[e.tier]++;
+      if (hasNextStep(a)) overview.todoCreators++;
       for (const l of a.allLines) {
         if (NEEDS_ACTION.includes(l.action)) overview.todoLines++;
         if (l.status === "Silent") overview.silentLines++;
