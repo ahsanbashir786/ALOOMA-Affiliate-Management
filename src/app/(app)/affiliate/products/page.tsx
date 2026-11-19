@@ -51,7 +51,7 @@ export default async function AffiliateProductsPage({ searchParams }: { searchPa
     <div className="space-y-6">
       <PageHeader
         title="Products"
-        description={<span>For each product: which of three things moved its sales, and what to do. Active sellers × videos posted × sales per video · <span className="tnum">{fmtDayLabel(period.start)} – {fmtFullDay(period.end)}</span> against <span className="tnum">{fmtDayLabel(period.prevStart)} – {fmtFullDay(period.prevEnd)}</span></span>}
+        description={<span>For each product: which of three things moved its sales, and what to do. Active creators × videos posted × sales per video · <span className="tnum">{fmtDayLabel(period.start)} – {fmtFullDay(period.end)}</span> against <span className="tnum">{fmtDayLabel(period.prevStart)} – {fmtFullDay(period.prevEnd)}</span></span>}
         actions={<PeriodPicker from={raw.from ?? ""} to={raw.to ?? ""} today={todayKL()} keep={{ sort: sort === "order" ? "" : sort }} />}
       />
 

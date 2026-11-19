@@ -11,17 +11,6 @@ import { cached } from "@/lib/swr";
 import { baselineOf, buildQueue, splitQueue } from "./actions";
 import { explainChange, stageOf, daysInStage, STAGES, type Levers, type StageKey } from "./stages";
 
-const TARGET_KEY = "affiliate_target";
-export const getAffiliateTarget = async (): Promise<number | null> => {
-  const [r] = await db.select().from(settings).where(eq(settings.key, TARGET_KEY));
-  const v = Number((r?.value as { sales28?: number } | undefined)?.sales28);
-  return Number.isFinite(v) && v > 0 ? v : null;
-};
-export async function saveAffiliateTarget(sales28: number | null) {
-  if (sales28 == null) await db.delete(settings).where(eq(settings.key, TARGET_KEY));
-  else await db.insert(settings).values({ key: TARGET_KEY, value: { sales28 } }).onConflictDoUpdate({ target: settings.key, set: { value: { sales28 }, updatedAt: new Date() } });
-}
-
 export type StageRow = { username: string; days: number | null; sales28: number; gmvAll: number; followers: number | null; videos28: number; lines: string[] };
 export type StageSummary = { key: StageKey; creators: number; sales28: number; avgDays: number | null; top: StageRow[] };
 export type SampleGuard = { notPosted: number; noSale: number; soldThenQuiet: number; creators: number; requestsWaiting: number; high: boolean };
@@ -34,7 +23,6 @@ export type Command = {
   prevTo: string;
   levers: { now: Levers; before: Levers };
   change: ReturnType<typeof explainChange>;
-  target: { value: number; per28: number; custom: boolean; basis: string };
   stages: StageSummary[];
   guard: SampleGuard;
   creators: number;
@@ -87,22 +75,10 @@ export async function loadCommand(range?: { start: string; end: string }): Promi
   const start = range?.start && range.start <= end ? range.start : addDaysISO(end, -27);
   const days = daysBetweenISO(start, end) + 1;
   const from = start, prevTo = addDaysISO(start, -1), prevFrom = addDaysISO(prevTo, -(days - 1));
-  const thirdFrom = addDaysISO(ref, -83);
-
-  const [windows, custom, now, before] = await Promise.all([
-    rows<{ w: number; g: number }>(sql`
-      select floor((${ref}::date - ${kd("tl.created_at")}) / 28)::int as w, coalesce(sum(tl.pay) filter (where tl.valid), 0)::float8 as g
-      from ${TL} where tl.creator is not null and ${kd("tl.created_at")} between ${thirdFrom}::date and ${ref}::date group by 1`),
-    getAffiliateTarget(),
+  const [now, before] = await Promise.all([
     cached("aff-levers", `${start}|${end}`, () => leversFor(start, end)),
     cached("aff-levers", `${prevFrom}|${prevTo}`, () => leversFor(prevFrom, prevTo)),
   ]);
-
-  // The goal is per 28 days; for other lengths it is scaled to the number of days chosen.
-  const sums = windows.filter((w) => w.w >= 0 && w.w <= 2).map((w) => w.g).filter((g) => g > 0);
-  const trend = sums.length ? sums.reduce((n, g) => n + g, 0) / sums.length : now.sales;
-  const per28 = custom ?? Math.round(trend);
-  const target = { value: Math.round((per28 * days) / 28), per28, custom: custom != null, basis: custom != null ? "Set by you" : sums.length > 1 ? `Average of the last ${sums.length} periods of 28 days` : "This period (no earlier data yet)" };
 
   const buckets = new Map<StageKey, { r: DirRow; days: number | null }[]>(STAGES.map((s) => [s.key, []]));
   for (const r of all) { const s = stageOf(r); buckets.get(s)!.push({ r, days: daysInStage(r, s, ref) }); }
@@ -117,7 +93,7 @@ export async function loadCommand(range?: { start: string; end: string }): Promi
   const guard = sampleGuard(all);
 
   return {
-    ref, from, to: end, days, prevFrom, prevTo, levers: { now, before }, change: explainChange(now, before), target, stages,
+    ref, from, to: end, days, prevFrom, prevTo, levers: { now, before }, change: explainChange(now, before), stages,
     guard,
     creators: all.length,
   };

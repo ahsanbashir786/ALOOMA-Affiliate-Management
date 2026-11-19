@@ -98,7 +98,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
 
       {guard.high && (
         <div className="flex items-start gap-3 rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner">
-          <span className="mt-0.5 font-semibold">Fix sent samples first.</span>
+          <span className="mt-0.5 font-semibold">Chase idle samples first.</span>
           <span>{(guard.notPosted + guard.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales, so new creators are held back ({queue.held.length.toLocaleString("en-MY")} waiting). <Link href="/affiliate" className="font-semibold text-brand hover:underline">See Sample Status</Link></span>
         </div>
       )}
@@ -116,7 +116,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
             ))}
           </nav>
           <div className="flex flex-wrap items-center gap-2" aria-label="What it is for">
-            <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3">Goal<InfoTip label="About goals">Each action has one purpose: get more sellers, get more videos, or make videos sell better.</InfoTip></span>
+            <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3">Goal<InfoTip label="About goals">Each action has one purpose: get more active creators, get more videos, or make videos sell better.</InfoTip></span>
             {(["", "creators", "content", "quality"] as const).map((l) => (
               <Link key={l || "all"} href={href("/affiliate/actions", { view: view === "todo" ? undefined : view, lever: l || undefined, product: prod || undefined })} scroll={false} aria-current={l === lever ? "page" : undefined}
                 className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", l === lever ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>

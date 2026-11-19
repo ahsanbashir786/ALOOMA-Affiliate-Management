@@ -25,8 +25,8 @@ export const STEADY_BAND = 0.05;
 export const CANCEL_BAND = 0.25;
 
 const TEXT: Record<Effect["key"], { up: string; down: string; lever: "creators" | "content" | "quality" }> = {
-  sellers: { up: "More creators sold it. Keep bringing in sellers.", down: "Fewer creators sold it. Wake up the quiet ones and bring in new sellers.", lever: "creators" },
-  posts: { up: "Creators posted more videos for it.", down: "Fewer videos were posted for it. Ask your sellers for more videos.", lever: "content" },
+  sellers: { up: "More creators sold it. Keep bringing in creators.", down: "Fewer creators sold it. Wake up the quiet ones and bring in new creators.", lever: "creators" },
+  posts: { up: "Creators posted more videos for it.", down: "Fewer videos were posted for it. Ask your creators for more videos.", lever: "content" },
   perPost: { up: "Each video sold more. Find what worked and repeat it.", down: "Each video sells less. Share what works and put ads on the best videos.", lever: "quality" },
 };
 

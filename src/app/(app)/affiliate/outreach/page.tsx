@@ -99,7 +99,7 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
 
       {g.high && (
         <div className="rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner">
-          <b>Fix sent samples first.</b> {(g.notPosted + g.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales. Think twice before approving many new ones. <Link href="/creators?stage=notposted" className="font-semibold text-brand hover:underline">See them</Link>
+          <b>Chase idle samples first.</b> {(g.notPosted + g.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales. Think twice before approving many new ones. <Link href="/creators?stage=notposted" className="font-semibold text-brand hover:underline">See them</Link>
         </div>
       )}
 
@@ -121,7 +121,7 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
           <p className="mt-1 text-ink-2">Creator level <b>{o.rules.level} or higher</b> and main categories in: <b>{o.rules.categories.join(", ")}</b>.</p>
           {o.rules.error && <p className="mt-1 text-[12.5px] text-warn" data-testid="rules-error">Your category list could not be matched in TikTok: {o.rules.error}</p>}
           {o.rules.missing.length > 0 && <p className="mt-1 text-[12.5px] text-warn">TikTok has no category called: {o.rules.missing.join(", ")}.</p>}
-          <p className="mt-1 text-[12px] text-ink-3">Anything else TikTok shows (recommended tag, promotion score, sellers&apos; rating, how often they post after a sample) only helps order the list; it never makes a creator eligible. Where TikTok does not show a level, the creator is marked Not Sure, not rejected.</p>
+          <p className="mt-1 text-[12px] text-ink-3">Anything else TikTok shows (recommended tag, promotion score, shop ratings, how often they post after a sample) only helps order the list; it never makes a creator eligible. Where TikTok does not show a level, the creator is marked Not Sure, not rejected.</p>
         </div>
       </Card>
 

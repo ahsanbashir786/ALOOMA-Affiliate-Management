@@ -5,11 +5,10 @@ import { gate } from "@/lib/gate";
 import { hasSyncedData } from "@/lib/creators/load";
 import { getSuggestedHint, loadCommand } from "@/lib/affiliate/command";
 import { parseRange } from "@/lib/creators/params";
-import { type StageKey } from "@/lib/affiliate/stages";
+import { plainWords, type StageKey } from "@/lib/affiliate/stages";
 import { fmtDayLabel, todayKL } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
-import { TargetForm } from "@/components/affiliate/target-form";
 import { Waterfall } from "@/components/affiliate/waterfall";
 import { DatesPicker } from "@/components/ui/range-picker";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
@@ -35,7 +34,7 @@ function Lever({ label, now, before, fmt, help }: { label: string; now: number; 
 }
 
 export default async function CommandPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { user, denied } = await gate("creators", "Affiliate Command");
+  const { denied } = await gate("creators", "Affiliate Command");
   if (denied) return denied;
   if (!(await hasSyncedData())) {
     return (
@@ -50,10 +49,6 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
   const [c, hint] = await Promise.all([loadCommand(range), getSuggestedHint()]);
   if (!c) return null;
   const { now, before } = c.levers;
-  const goal = c.target.value;
-  const done = goal > 0 ? Math.min(100, Math.round((now.sales / goal) * 100)) : 0;
-  const gap = goal - now.sales;
-  const canEdit = !user.readOnly;
   const stage = new Map(c.stages.map((s) => [s.key, s]));
   const g = c.guard;
   const n = (k: StageKey) => stage.get(k)!;
@@ -73,34 +68,26 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <PageHeader
         title="Affiliate Command"
-        description={`Affiliate sales come from three things: how many creators sell (Active Sellers), how many videos and LIVE sessions each one posts (Videos Per Seller), and how much each video sells (Sales Per Video). This screen shows which of them changed your sales. Dates: ${fmtDayLabel(c.from)} – ${fmtDayLabel(c.to)} (${c.days} days), compared with the ${c.days} days before. The creator stages and Sample Status below are as of today.`}
+        description={`Affiliate sales come from three things: how many creators made a sale (Active Creators), how many videos and LIVE sessions each one posts (Videos Per Creator), and how much each video sells (Sales Per Video). This screen shows which of them changed your sales. Dates: ${fmtDayLabel(c.from)} – ${fmtDayLabel(c.to)} (${c.days} days), compared with the ${c.days} days before. The creator stages and Sample Status below are as of today.`}
         actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
       />
 
       <Card data-testid="goal">
         <div className="px-5 py-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-[13px] font-medium text-ink-3">Affiliate Sales, {c.days} Days</p>
-              <p className="tnum mt-0.5 text-[30px] leading-tight font-semibold tracking-tight text-ink">{fmtRM(now.sales)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[13px] font-medium text-ink-3">Goal For {c.days} Days · {c.target.basis}</p>
-              <p className="tnum text-[18px] font-semibold text-ink">{fmtRM(goal)}</p>
-              {c.days !== 28 && <p className="text-[12px] text-ink-3" data-testid="goal-scale">= your 28-day goal {fmtRM(c.target.per28)} × {c.days} ÷ 28</p>}
-              <TargetForm current={goal} custom={c.target.custom} canEdit={canEdit} />
-            </div>
-          </div>
-          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-surface-2"><div className={cn("h-full rounded-full", done >= 100 ? "bg-good" : "bg-brand")} style={{ width: `${done}%` }} /></div>
-          <p className="mt-2 text-[13px] text-ink-2">{gap > 0 ? <><b>{fmtRM(gap)}</b> short of the goal ({done}% reached).</> : <>Goal reached: <b>{fmtRM(-gap)}</b> above it.</>}{before.sales > 0 && <> Last period: {fmtRM(before.sales)}.</>}</p>
+          <p className="text-[13px] font-medium text-ink-3">Affiliate Sales, {c.days} Days</p>
+          <p className="mt-0.5 flex flex-wrap items-baseline gap-x-3">
+            <span className="tnum text-[30px] leading-tight font-semibold tracking-tight text-ink">{fmtRM(now.sales)}</span>
+            {before.sales > 0 && now.sales !== before.sales && <span className={cn("tnum text-[14px] font-semibold", now.sales > before.sales ? "text-good" : "text-critical")}>{now.sales > before.sales ? "▲" : "▼"} {Math.abs(Math.round((now.sales / before.sales - 1) * 100))}% ({sign(now.sales - before.sales)}RM {Math.abs(Math.round(now.sales - before.sales)).toLocaleString("en-MY")})</span>}
+          </p>
+          <p className="text-[13px] text-ink-3">Last period ({c.days} days before): {fmtRM(before.sales)}</p>
         </div>
       </Card>
 
       <section aria-label="Why sales changed" className="space-y-3">
         <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">Why Sales Changed</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="levers">
-          <Lever label="Active Sellers" now={now.sellers} before={before.sellers} fmt={(n) => n.toLocaleString("en-MY")} help="Creators who had sales in these dates." />
-          <Lever label="Videos Per Seller" now={now.sellers ? now.posts / now.sellers : 0} before={before.sellers ? before.posts / before.sellers : 0} fmt={(n) => n.toFixed(2)} help="Videos and LIVE sessions posted in these dates by each creator who sold." />
+          <Lever label="Active Creators" now={now.sellers} before={before.sellers} fmt={(n) => n.toLocaleString("en-MY")} help="Creators who had sales in these dates." />
+          <Lever label="Videos Per Creator" now={now.sellers ? now.posts / now.sellers : 0} before={before.sellers ? before.posts / before.sellers : 0} fmt={(n) => n.toFixed(2)} help="Videos and LIVE sessions posted in these dates by each creator who sold." />
           <Lever label="Sales Per Video" now={now.posts ? now.sales / now.posts : 0} before={before.posts ? before.sales / before.posts : 0} fmt={(n) => fmtRM(n)} help="Sales divided by videos and LIVE sessions posted: how well each one sells." />
         </div>
         <Card>
@@ -109,7 +96,8 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
             {c.change ? (
               <>
                 <Waterfall startLabel="Last Period" endLabel="This Period" start={before.sales} end={now.sales} steps={c.change.effects.map((e) => ({ label: e.label, effect: e.effect, detail: `${e.key === "perPost" ? fmtRM(e.from) : e.from.toLocaleString("en-MY", { maximumFractionDigits: 2 })} → ${e.key === "perPost" ? fmtRM(e.to) : e.to.toLocaleString("en-MY", { maximumFractionDigits: 2 })}` }))} />
-                <p className="mt-3 border-t border-line pt-3 text-[13.5px] text-ink-2">Total change: <b className={c.change.total >= 0 ? "text-good" : "text-critical"}>{sign(c.change.total)}RM {Math.abs(Math.round(c.change.total)).toLocaleString("en-MY")}</b>. Biggest mover: <b>{[...c.change.effects].sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect))[0].label}</b>.</p>
+                <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink" data-testid="chart-words">{plainWords(c.change, before.sales)}</p>
+                <p className="mt-3 border-t border-line pt-3 text-[13.5px] text-ink-2">Total change in sales: <b className={c.change.total >= 0 ? "text-good" : "text-critical"}>{sign(c.change.total)}RM {Math.abs(Math.round(c.change.total)).toLocaleString("en-MY")}</b>. Biggest mover: <b>{[...c.change.effects].sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect))[0].label}</b>.</p>
               </>
             ) : <p className="text-[13.5px] text-ink-3">Not enough earlier data to compare yet.</p>}
           </div>
@@ -117,7 +105,7 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
       </section>
 
       <Card data-testid="guard" className={cn(g.high && "border-warn/60")}>
-        <CardHeader title="Sample Status" description="Samples already sent that have not turned into sales. Fix these before paying for new creators: the shipping and product are already spent. Counts are creator-and-product pairs, as of today." action={g.high ? <Badge tone="warn">Fix Sent Samples First</Badge> : <Badge tone="good">Healthy</Badge>} />
+        <CardHeader title="Sample Status" description="Samples already sent that have not turned into sales. Fix these before paying for new creators: the shipping and product are already spent. Counts are creator-and-product pairs, as of today." action={g.high ? <Badge tone="warn">Chase Idle Samples First</Badge> : <Badge tone="good">Healthy</Badge>} />
         <div className="grid grid-cols-2 gap-3 px-5 pb-5 lg:grid-cols-4">
           {[
             { n: g.notPosted, label: "Delivered, Not Posted", to: "/creators?stage=notposted" },

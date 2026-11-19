@@ -15,7 +15,7 @@ Found → Sample Requested → Sample On The Way → Delivered, Not Posted → P
 Counts creator-and-product pairs where a sample was sent and has not turned into sales: delivered not posted, posted no sale, sold once then quiet, plus requests waiting. It says "Fix Old Samples First" when 25% or more of sent samples are in the first two groups.
 
 ## Goal
-A 28-day sales goal. Set it on the Command screen (stored in settings as `affiliate_target`); without one it is the average of the last three 28-day periods.
+Removed at this stage: Command shows sales against the previous period of the same length, with no goal to set.
 
 ## Screens
 `/affiliate` (Command) and `/affiliate/lifecycle?stage=…`, both under the Affiliate Data permission. Execution Plan, Affiliate Data and Product Analysis stay until their replacements are built (see the plan in the project notes).
@@ -72,4 +72,4 @@ Affiliate Data gained, without losing anything it had: a **stage strip** (All St
 ## Creator Lifecycle was merged into Affiliate Data and Outreach
 The Creator Lifecycle screen is gone from the menu (old links still work and land on the matching Affiliate Data stage). Its first five stages (sample requested, on the way, delivered…) belong to **Outreach**; its performance stages live in **Affiliate Data** as the stage strip, which shows the five stages after the sample arrives: Delivered Not Posted, Posted No Sale, Selling, Star, Went Quiet.
 The Command screen's **Creator Journey** now starts with **Suggested To Invite**: new creators from TikTok's Creator Marketplace that meet the owner's rules (level 5 or higher, the six categories), including creators who never requested a sample. The count is what Outreach last found (kept in settings `outreach_suggested`), so Command never asks TikTok itself. The next cards go to Outreach (requested, on the way) or to Affiliate Data (the later stages). Early stages no longer show "sales, 28 days".
-**Sample Status** (formerly Sample Guard) counts samples already sent that are not selling now: delivered not posted, posted no sale, sold once then quiet. The "Fix Sent Samples First" warning shows when 25% or more of all sent samples are in the first two groups. For a date range other than 28 days the goal is the 28-day goal × days ÷ 28.
+**Sample Status** (formerly Sample Guard) counts samples already sent that are not selling now: delivered not posted, posted no sale, sold once then quiet. The "Chase Idle Samples First" warning shows when 25% or more of all sent samples are in the first two groups. For a date range other than 28 days the goal is the 28-day goal × days ÷ 28.

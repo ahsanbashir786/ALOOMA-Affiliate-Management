@@ -79,7 +79,7 @@ export function evaluate(p: Profile | null, preferred: string[], categories: Cat
   if (p.risingStar) { fit += 6; good.push("Rising star"); }
   if (p.fastGrowing) { fit += 5; good.push("Fast growing"); }
   if (p.pps != null) { fit += (p.pps - 3) * 4; if (p.pps >= 4) good.push(`Promotion score ${p.pps}`); }
-  if (p.rating != null) { fit += (p.rating - 3) * 3; if (p.rating >= 4) good.push(`Sellers rate them ${p.rating}`); }
+  if (p.rating != null) { fit += (p.rating - 3) * 3; if (p.rating >= 4) good.push(`Shops rate them ${p.rating}`); }
   if (p.postRate != null) { const r = p.postRate > 1 ? p.postRate / 100 : p.postRate; fit += (r - 0.5) * 12; if (r >= 0.6) good.push(`Posts after samples (${Math.round(r * 100)}%)`); }
   if (p.sampleScore != null) { fit += (p.sampleScore - 60) / 6; if (p.sampleScore >= 75) good.push(`Sample score ${Math.round(p.sampleScore)}`); }
   if (p.fulfilmentScore != null) fit += (p.fulfilmentScore - 3.5) * 2;
