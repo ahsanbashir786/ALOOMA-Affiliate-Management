@@ -51,13 +51,13 @@ export default async function AffiliateProductsPage({ searchParams }: { searchPa
     <div className="space-y-6">
       <PageHeader
         title="Products"
-        description={<span>For each product: which of the three levers moved its sales, and what to do. Creators who sell it × videos posted × sales per video · <span className="tnum">{fmtDayLabel(period.start)} – {fmtFullDay(period.end)}</span> against <span className="tnum">{fmtDayLabel(period.prevStart)} – {fmtFullDay(period.prevEnd)}</span></span>}
+        description={<span>For each product: which of three things moved its sales, and what to do. Active sellers × videos posted × sales per video · <span className="tnum">{fmtDayLabel(period.start)} – {fmtFullDay(period.end)}</span> against <span className="tnum">{fmtDayLabel(period.prevStart)} – {fmtFullDay(period.prevEnd)}</span></span>}
         actions={<PeriodPicker from={raw.from ?? ""} to={raw.to ?? ""} today={todayKL()} keep={{ sort: sort === "order" ? "" : sort }} />}
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3" data-testid="prod-kpis">
         <div className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">Affiliate Sales</p><p className="tnum text-[26px] leading-tight font-semibold tracking-tight text-ink">{fmtRM(total.now)}</p><p><Delta now={total.now} prev={total.prev} /></p></div>
-        <div className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">Products Needing Work</p><p className={cn("tnum text-[26px] leading-tight font-semibold tracking-tight", need ? "text-critical" : "text-ink")}>{need}</p><p className="text-[12.5px] text-ink-3">sales fell and a lever explains why</p></div>
+        <div className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">Products Needing Work</p><p className={cn("tnum text-[26px] leading-tight font-semibold tracking-tight", need ? "text-critical" : "text-ink")}>{need}</p><p className="text-[12.5px] text-ink-3">sales fell and one of the three explains why</p></div>
         <div className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">Short Of Creators</p><p className="tnum text-[26px] leading-tight font-semibold tracking-tight text-ink">{rows.filter((r) => fewCreators(r.p.metrics.creators.now, sellersAll)).length}</p><p className="text-[12.5px] text-ink-3">products with far fewer sellers than the rest</p></div>
       </div>
 
@@ -81,7 +81,7 @@ export default async function AffiliateProductsPage({ searchParams }: { searchPa
                 </div>
                 <div>
                   {v.moves ? (
-                    <ul className="space-y-1.5" aria-label="Which lever moved sales">
+                    <ul className="space-y-1.5" aria-label="What moved sales">
                       {v.moves.map((x) => (
                         <li key={x.key} className="grid grid-cols-[120px_1fr_80px] items-center gap-2 text-[12.5px]">
                           <span className="text-ink-2">{x.label}</span>

@@ -4,7 +4,7 @@ import { daysBetweenISO } from "@/lib/time";
 
 /** One creator is in exactly one stage: the furthest they have got. */
 export const STAGES = [
-  { key: "found", label: "Found", help: "Known to us, no sample sent and no sale yet." },
+  { key: "found", label: "Known, Not Sampled", help: "We know them from TikTok data, but they never received a sample and never sold. They are not recommendations: see Outreach for creators worth inviting." },
   { key: "requested", label: "Sample Requested", help: "Asked for a sample that is waiting for a decision." },
   { key: "way", label: "Sample On The Way", help: "A sample was sent and is still inside the posting window." },
   { key: "notposted", label: "Delivered, Not Posted", help: "The sample arrived and the posting window passed with nothing posted and no sales." },
@@ -41,7 +41,7 @@ export function daysInStage(r: DirRow, stage: StageKey, ref: string): number | n
   return null;
 }
 
-/** Sales = Creators Who Sell × Posts Per Seller × Sales Per Post. */
+/** Sales = Active Sellers × Videos Per Seller × Sales Per Video (a "video" is a video or a LIVE). */
 export type Levers = { sellers: number; posts: number; sales: number };
 export type Effect = { key: "sellers" | "posts" | "perPost"; label: string; from: number; to: number; unit: string; effect: number };
 
@@ -59,9 +59,9 @@ export function explainChange(now: Levers, before: Levers): { total: number; eff
   return {
     total: d,
     effects: [
-      { key: "sellers", label: "Creators Who Sell", from: b.sellers, to: a.sellers, unit: "creators", effect: eff("sellers") },
-      { key: "posts", label: "Posts Per Seller", from: b.posts, to: a.posts, unit: "per creator", effect: eff("posts") },
-      { key: "perPost", label: "Sales Per Post", from: b.perPost, to: a.perPost, unit: "RM per post", effect: eff("perPost") },
+      { key: "sellers", label: "Active Sellers", from: b.sellers, to: a.sellers, unit: "creators", effect: eff("sellers") },
+      { key: "posts", label: "Videos Per Seller", from: b.posts, to: a.posts, unit: "per creator", effect: eff("posts") },
+      { key: "perPost", label: "Sales Per Video", from: b.perPost, to: a.perPost, unit: "RM per video", effect: eff("perPost") },
     ],
   };
 }

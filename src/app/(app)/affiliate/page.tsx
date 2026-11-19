@@ -3,12 +3,15 @@ import Link from "next/link";
 import { ArrowRight, Users } from "lucide-react";
 import { gate } from "@/lib/gate";
 import { hasSyncedData } from "@/lib/creators/load";
-import { syncFreshness } from "@/lib/creators/meta";
 import { loadCommand } from "@/lib/affiliate/command";
+import { parseRange } from "@/lib/creators/params";
 import { STAGES, type StageKey } from "@/lib/affiliate/stages";
-import { fmtDayLabel } from "@/lib/time";
+import { fmtDayLabel, todayKL } from "@/lib/time";
+import { one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { TargetForm } from "@/components/affiliate/target-form";
+import { Waterfall } from "@/components/affiliate/waterfall";
+import { DatesPicker } from "@/components/ui/range-picker";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Affiliate Command" };
@@ -31,7 +34,7 @@ function Lever({ label, now, before, fmt, help }: { label: string; now: number; 
   );
 }
 
-export default async function CommandPage() {
+export default async function CommandPage({ searchParams }: { searchParams: Promise<SP> }) {
   const { user, denied } = await gate("creators", "Affiliate Command");
   if (denied) return denied;
   if (!(await hasSyncedData())) {
@@ -42,13 +45,14 @@ export default async function CommandPage() {
       </div>
     );
   }
-  const [c, fresh] = await Promise.all([loadCommand(), syncFreshness()]);
+  const sp = Object.fromEntries(Object.entries(await searchParams).map(([k, v]) => [k, one(v)]));
+  const range = parseRange(sp);
+  const c = await loadCommand(range);
   if (!c) return null;
   const { now, before } = c.levers;
   const goal = c.target.value;
   const done = goal > 0 ? Math.min(100, Math.round((now.sales / goal) * 100)) : 0;
   const gap = goal - now.sales;
-  const max = Math.max(1, ...(c.change?.effects.map((e) => Math.abs(e.effect)) ?? [1]));
   const canEdit = !user.readOnly;
   const stage = new Map(c.stages.map((s) => [s.key, s]));
   const g = c.guard;
@@ -57,19 +61,19 @@ export default async function CommandPage() {
     <div className="space-y-6">
       <PageHeader
         title="Affiliate Command"
-        description={`Affiliate sales are three things multiplied: creators who sell × posts per seller × sales per post. This screen shows which one moved sales, where creators are stuck, and where samples are not turning into sales. Periods are 28 days ending ${fmtDayLabel(c.ref)}, against the 28 days before.`}
-        actions={<span className="inline-flex items-center gap-2 text-[13px] text-ink-3"><span className={cn("size-2 rounded-full", fresh.ok ? "bg-good" : "bg-warn")} />{fresh.label} from TikTok Shop</span>}
+        description={`Affiliate sales come from three things: how many creators sell (Active Sellers), how many videos and LIVE sessions each one posts (Videos Per Seller), and how much each video sells (Sales Per Video). This screen shows which of them changed your sales. Dates: ${fmtDayLabel(c.from)} – ${fmtDayLabel(c.to)} (${c.days} days), compared with the ${c.days} days before. The creator stages and Sample Status below are as of today.`}
+        actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
       />
 
       <Card data-testid="goal">
         <div className="px-5 py-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[13px] font-medium text-ink-3">Affiliate Sales, Last 28 Days</p>
+              <p className="text-[13px] font-medium text-ink-3">Affiliate Sales, {c.days} Days</p>
               <p className="tnum mt-0.5 text-[30px] leading-tight font-semibold tracking-tight text-ink">{fmtRM(now.sales)}</p>
             </div>
             <div className="text-right">
-              <p className="text-[13px] font-medium text-ink-3">28-Day Goal · {c.target.basis}</p>
+              <p className="text-[13px] font-medium text-ink-3">Goal For {c.days} Days · {c.target.basis}</p>
               <p className="tnum text-[18px] font-semibold text-ink">{fmtRM(goal)}</p>
               <TargetForm current={goal} custom={c.target.custom} canEdit={canEdit} />
             </div>
@@ -79,27 +83,19 @@ export default async function CommandPage() {
         </div>
       </Card>
 
-      <section aria-label="What moved sales" className="space-y-3">
-        <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">What Moved Sales</h2>
+      <section aria-label="Why sales changed" className="space-y-3">
+        <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">Why Sales Changed</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="levers">
-          <Lever label="Creators Who Sell" now={now.sellers} before={before.sellers} fmt={(n) => n.toLocaleString("en-MY")} help="Creators with sales in the 28 days." />
-          <Lever label="Posts Per Seller" now={now.sellers ? now.posts / now.sellers : 0} before={before.sellers ? before.posts / before.sellers : 0} fmt={(n) => n.toFixed(1)} help="Videos and LIVE sessions posted in the 28 days by each creator who sold." />
-          <Lever label="Sales Per Post" now={now.posts ? now.sales / now.posts : 0} before={before.posts ? before.sales / before.posts : 0} fmt={(n) => fmtRM(n)} help="Sales divided by posts: how well each video or LIVE sells." />
+          <Lever label="Active Sellers" now={now.sellers} before={before.sellers} fmt={(n) => n.toLocaleString("en-MY")} help="Creators who had sales in these dates." />
+          <Lever label="Videos Per Seller" now={now.sellers ? now.posts / now.sellers : 0} before={before.sellers ? before.posts / before.sellers : 0} fmt={(n) => n.toFixed(1)} help="Videos and LIVE sessions posted in these dates by each creator who sold." />
+          <Lever label="Sales Per Video" now={now.posts ? now.sales / now.posts : 0} before={before.posts ? before.sales / before.posts : 0} fmt={(n) => fmtRM(n)} help="Sales divided by videos and LIVE sessions posted: how well each one sells." />
         </div>
         <Card>
-          <CardHeader title="Which Lever Changed Sales" description="The change in sales, split between the three levers. The three bars add up to the total change. Sales from older videos count in 'Sales Per Post'." />
+          <CardHeader title="From Last Period To This Period" description="Starts with last period's sales and ends with this period's. The three steps in between show what added or lost sales. They add up exactly to the change. Sales that come from older videos count in Sales Per Video." />
           <div className="px-5 pb-5">
             {c.change ? (
               <>
-                <ul className="space-y-2.5" data-testid="waterfall">
-                  {c.change.effects.map((e) => (
-                    <li key={e.key} className="grid grid-cols-[150px_1fr_110px] items-center gap-3 text-[13.5px]">
-                      <span className="text-ink-2">{e.label}</span>
-                      <span className="relative h-5 rounded bg-surface-2"><span className={cn("absolute top-0 h-full rounded", e.effect >= 0 ? "bg-good/70" : "bg-critical/70")} style={{ width: `${(Math.abs(e.effect) / max) * 50}%`, [e.effect >= 0 ? "left" : "right"]: "50%" }} /><span className="absolute inset-y-0 left-1/2 w-px bg-line" /></span>
-                      <span className={cn("tnum text-right font-semibold", e.effect >= 0 ? "text-good" : "text-critical")}>{sign(e.effect)}RM {Math.abs(Math.round(e.effect)).toLocaleString("en-MY")}</span>
-                    </li>
-                  ))}
-                </ul>
+                <Waterfall startLabel="Last Period" endLabel="This Period" start={before.sales} end={now.sales} steps={c.change.effects.map((e) => ({ label: e.label, effect: e.effect, detail: `${e.key === "perPost" ? fmtRM(e.from) : e.from.toLocaleString("en-MY", { maximumFractionDigits: 1 })} → ${e.key === "perPost" ? fmtRM(e.to) : e.to.toLocaleString("en-MY", { maximumFractionDigits: 1 })}` }))} />
                 <p className="mt-3 border-t border-line pt-3 text-[13.5px] text-ink-2">Total change: <b className={c.change.total >= 0 ? "text-good" : "text-critical"}>{sign(c.change.total)}RM {Math.abs(Math.round(c.change.total)).toLocaleString("en-MY")}</b>. Biggest mover: <b>{[...c.change.effects].sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect))[0].label}</b>.</p>
               </>
             ) : <p className="text-[13.5px] text-ink-3">Not enough earlier data to compare yet.</p>}
@@ -108,7 +104,7 @@ export default async function CommandPage() {
       </section>
 
       <Card data-testid="guard" className={cn(g.high && "border-warn/60")}>
-        <CardHeader title="Sample Guard" description="Samples already sent that have not turned into sales. Fix these before paying for new creators: the shipping and product are already spent. Counts are creator-and-product pairs." action={g.high ? <Badge tone="warn">Fix Old Samples First</Badge> : <Badge tone="good">Healthy</Badge>} />
+        <CardHeader title="Sample Status" description="Samples already sent that have not turned into sales. Fix these before paying for new creators: the shipping and product are already spent. Counts are creator-and-product pairs, as of today." action={g.high ? <Badge tone="warn">Fix Old Samples First</Badge> : <Badge tone="good">Healthy</Badge>} />
         <div className="grid grid-cols-2 gap-3 px-5 pb-5 lg:grid-cols-4">
           {[
             { n: g.notPosted, label: "Delivered, Not Posted", stage: "notposted" },

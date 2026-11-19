@@ -3,7 +3,7 @@
 Goal: grow affiliate **sales**. Profit lives in its own part of the system and is not used here.
 
 ## The levers
-Sales (28 days) = **Creators Who Sell** × **Posts Per Seller** × **Sales Per Post**.
+Sales (28 days) = **Active Sellers** × **Posts Per Seller** × **Sales Per Post**.
 `explainChange` (src/lib/affiliate/stages.ts) splits the change since the 28 days before between the three, using logarithmic shares, so the three effects add up exactly to the change in sales.
 Sales that come from older videos show up in Sales Per Post.
 
@@ -25,7 +25,7 @@ A 28-day sales goal. Set it on the Command screen (stored in settings as `affili
 
 ## Actions (`/affiliate/actions`)
 One next action per creator, worked out live from the same rows as Affiliate Data (nothing is copied or stored, so it cannot double count). If a creator has something to do on several products, the product worth the most is shown, with "+N more products".
-Ranked by the sales the action could bring (28 days), from measured numbers: Push = two more posts at her own sales per post, capped at her 28-day sales · Reward = one more post · Coach (slipping) and Revive (slipping) = win back the drop · Revive (quiet) = a typical active month · Chase and Coach (posted, no sale) = the usual sampled seller × how often a sampled creator sells. New creators (Approach) come last, and are held while the Sample Guard is high.
+Ranked by the sales the action could bring (28 days), from measured numbers: Push = two more posts at her own sales per post, capped at her 28-day sales · Reward = one more post · Coach (slipping) and Revive (slipping) = win back the drop · Revive (quiet) = a typical active month · Chase and Coach (posted, no sale) = the usual sampled seller × how often a sampled creator sells. New creators (Approach) come last, and are held while the Sample Status is high.
 Recording a contact (the creator panel, "I contacted them") writes a staff event. A contacted creator waits 14 days under "Waiting For Result".
 
 ## Team (`/affiliate/team`)

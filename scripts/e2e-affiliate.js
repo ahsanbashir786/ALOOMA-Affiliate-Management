@@ -20,16 +20,18 @@ async function login(p, email) {
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
   ok(/Affiliate Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
   const lev = await p.getByTestId("levers").innerText();
-  ok(/Creators Who Sell/.test(lev) && /Posts Per Seller/.test(lev) && /Sales Per Post/.test(lev), "command: the three levers are shown");
-  ok(/RM/.test(await p.getByTestId("goal").innerText()) && /28-Day Goal/.test(await p.getByTestId("goal").innerText()), "command: sales are shown against a 28-day goal");
+  ok(/Active Sellers/.test(lev) && /Videos Per Seller/.test(lev) && /Sales Per Video/.test(lev), "command: the three things behind sales are shown with plain names");
+  ok(/RM/.test(await p.getByTestId("goal").innerText()) && /Goal For \d+ Days/.test(await p.getByTestId("goal").innerText()), "command: sales are shown against a goal for the chosen days");
   const wf = await p.getByTestId("waterfall").count() ? (await p.getByTestId("waterfall").innerText()) : "";
-  ok(wf === "" || (/Creators Who Sell/.test(wf) && /Sales Per Post/.test(wf)), "command: the lever bars appear when there is an earlier period to compare");
+  ok(wf === "" || (/Last Period/.test(wf) && /This Period/.test(wf) && /Active Sellers/.test(wf) && /Sales Per Video/.test(wf)), "command: the waterfall runs from last period to this period through the three steps");
   ok(/Delivered, Not Posted/.test(await p.getByTestId("guard").innerText()) && /Requests Waiting/.test(await p.getByTestId("guard").innerText()), "command: the sample guard counts unproductive samples");
   const jr = await p.getByTestId("journey").innerText();
-  ok(["Found", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((s) => jr.includes(s)), "command: all eight journey stages are shown");
+  ok(["Known, Not Sampled", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((s) => jr.includes(s)), "command: all eight journey stages are shown");
   const active = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(active.length === 1 && /Affiliate Command/.test(active[0]), `menu: only Affiliate Command is lit on this screen (${active.join("|")})`);
 
+  ok(!/Synced .* from TikTok Shop/.test(await p.locator("main").innerText()), "command: no sync-time line (Data Sync shows that)");
+  ok((await p.locator("button", { hasText: "Last 28 Days" }).count()) >= 1, "command: a date picker is there");
   // goal can be set and cleared
   await p.getByText("Set Goal").click(); await p.fill("input[aria-label^='Sales goal']", "123456"); await p.getByRole("button", { name: "Save" }).click();
   await p.waitForFunction(() => /123,456/.test(document.querySelector("[data-testid=goal]").innerText), null, { timeout: 15000 }).catch(() => {});
@@ -42,7 +44,7 @@ async function login(p, email) {
   await p.goto(BASE + "/affiliate/lifecycle", { waitUntil: "networkidle" });
   ok(/Creator Lifecycle/.test(await p.locator("h1").first().innerText()), "lifecycle: page opens");
   const st = await p.getByTestId("stages").innerText();
-  ok(["Found", "Delivered, Not Posted", "Selling", "Star", "Went Quiet"].every((s) => st.includes(s)), "lifecycle: stage pills with counts");
+  ok(["Known, Not Sampled", "Delivered, Not Posted", "Selling", "Star", "Went Quiet"].every((s) => st.includes(s)), "lifecycle: stage pills with counts");
   for (const s of ["found", "way", "notposted", "nosale", "selling", "star", "quiet", "requested"]) {
     await p.goto(BASE + "/affiliate/lifecycle?stage=" + s, { waitUntil: "networkidle" });
     const body = await p.locator("main").innerText();

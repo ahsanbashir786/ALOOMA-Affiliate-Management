@@ -5,7 +5,7 @@ import { NEEDS_ACTION, type CreatorAction } from "@/lib/creators/status";
 import { addDaysISO, daysBetweenISO } from "@/lib/time";
 
 export type Lever = "creators" | "content" | "quality";
-export const LEVER_LABEL: Record<Lever, string> = { creators: "More Creators Selling", content: "More Content", quality: "Better Content" };
+export const LEVER_LABEL: Record<Lever, string> = { creators: "More Sellers", content: "More Videos", quality: "Better Videos" };
 /** Which lever each action pulls. */
 export const ACTION_LEVER: Record<CreatorAction, Lever> = { Push: "content", Reward: "content", Chase: "creators", Revive: "creators", Approach: "creators", Resume: "creators", Coach: "quality", Keep: "content", Wait: "content" };
 /** A creator contacted for an action leaves the To Do list for this many days, while we wait to see the result. */

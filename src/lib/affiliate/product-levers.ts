@@ -45,7 +45,7 @@ export function judgeProduct(p: ProductInput): ProductVerdict {
       const big = Math.min(up.effect, -down.effect);
       if (p.sales.prev > 0 && big >= p.sales.prev * CANCEL_BAND && up.effect > 0 && down.effect < 0) {
         const rm = (n: number) => `RM ${Math.round(Math.abs(n)).toLocaleString("en-MY")}`;
-        return { moves, main: down, headline: `Steady overall, but two levers cancelled out: ${up.label} added ${rm(up.effect)} while ${down.label} lost ${rm(down.effect)}. ${TEXT[down.key].down}`, lever: TEXT[down.key].lever };
+        return { moves, main: down, headline: `Steady overall, but two things cancelled out: ${up.label} added ${rm(up.effect)} while ${down.label} lost ${rm(down.effect)}. ${TEXT[down.key].down}`, lever: TEXT[down.key].lever };
       }
     }
     return { moves, main, headline: "Steady. Nothing moved much.", lever: null };

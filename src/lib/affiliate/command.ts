@@ -6,7 +6,8 @@ import { rows } from "@/lib/sql";
 import { loadCreatorRows } from "@/lib/creators/load";
 import type { DirRow } from "@/lib/creators/workflow/directory";
 import { kd, TL } from "@/lib/creators/sql";
-import { addDaysISO, todayKL } from "@/lib/time";
+import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
+import { cached } from "@/lib/swr";
 import { baselineOf, buildQueue, splitQueue } from "./actions";
 import { explainChange, stageOf, daysInStage, STAGES, type Levers, type StageKey } from "./stages";
 
@@ -27,6 +28,8 @@ export type SampleGuard = { notPosted: number; noSale: number; soldThenQuiet: nu
 export type Command = {
   ref: string;
   from: string;
+  to: string;
+  days: number;
   prevFrom: string;
   prevTo: string;
   levers: { now: Levers; before: Levers };
@@ -75,34 +78,40 @@ export async function loadStageList(stage: StageKey, limit = 100): Promise<{ ref
   return { ref, rows: rs.slice(0, limit), total: rs.length };
 }
 
-export async function loadCommand(): Promise<Command | null> {
+/** Active sellers, the videos and LIVE sessions they posted, and their sales, for any window of days. */
+async function leversFor(start: string, end: string): Promise<Levers> {
+  const [r] = await rows<{ sellers: number; sales: number; posts: number }>(sql`
+    with s as (select tl.creator, sum(tl.pay) as g from ${TL} where tl.valid and tl.creator is not null and ${kd("tl.created_at")} between ${start}::date and ${end}::date group by 1 having sum(tl.pay) > 0)
+    select (select count(*) from s)::int as sellers, (select coalesce(sum(g), 0) from s)::float8 as sales,
+      ((select count(*) from tt_videos v where v.creator in (select creator from s) and ${kd("v.posted_at")} between ${start}::date and ${end}::date)
+       + (select count(*) from tt_lives l where l.creator in (select creator from s) and ${kd("l.started_at")} between ${start}::date and ${end}::date))::int as posts`);
+  return { sellers: r?.sellers ?? 0, posts: r?.posts ?? 0, sales: r?.sales ?? 0 };
+}
+
+/** The chosen dates (or the last 28 days of data) against the same number of days just before. */
+export async function loadCommand(range?: { start: string; end: string }): Promise<Command | null> {
   const { all, ref } = await loadCreatorRows();
   if (!ref) return null;
-  const from = addDaysISO(ref, -27), prevFrom = addDaysISO(ref, -55), prevTo = addDaysISO(ref, -28), thirdFrom = addDaysISO(ref, -83);
+  const end = range?.end && range.end <= ref ? range.end : range?.end ? ref : ref;
+  const start = range?.start && range.start <= end ? range.start : addDaysISO(end, -27);
+  const days = daysBetweenISO(start, end) + 1;
+  const from = start, prevTo = addDaysISO(start, -1), prevFrom = addDaysISO(prevTo, -(days - 1));
+  const thirdFrom = addDaysISO(ref, -83);
 
-  // Posts (videos + LIVE) in the 28 days before, by the creators who sold then – the same window the "now" numbers use.
-  const [posts, windows, custom] = await Promise.all([
-    rows<{ creator: string; n: number }>(sql`
-      select creator, count(*)::int as n from (
-        select v.creator from tt_videos v where v.creator is not null and ${kd("v.posted_at")} between ${prevFrom}::date and ${prevTo}::date
-        union all select l.creator from tt_lives l where l.creator is not null and ${kd("l.started_at")} between ${prevFrom}::date and ${prevTo}::date) x group by creator`),
+  const [windows, custom, now, before] = await Promise.all([
     rows<{ w: number; g: number }>(sql`
       select floor((${ref}::date - ${kd("tl.created_at")}) / 28)::int as w, coalesce(sum(tl.pay) filter (where tl.valid), 0)::float8 as g
       from ${TL} where tl.creator is not null and ${kd("tl.created_at")} between ${thirdFrom}::date and ${ref}::date group by 1`),
     getAffiliateTarget(),
+    cached("aff-levers", `${start}|${end}`, () => leversFor(start, end)),
+    cached("aff-levers", `${prevFrom}|${prevTo}`, () => leversFor(prevFrom, prevTo)),
   ]);
-  const prior = new Map(posts.map((p) => [p.creator, p.n]));
 
-  const now: Levers = { sellers: 0, posts: 0, sales: 0 }, before: Levers = { sellers: 0, posts: 0, sales: 0 };
-  for (const r of all) {
-    const e = r.extra!;
-    if (e.gmv28 > 0) { now.sellers++; now.posts += e.videos28 + e.lives28; now.sales += e.gmv28; }
-    if (e.prev28 > 0) { before.sellers++; before.posts += prior.get(r.username) ?? 0; before.sales += e.prev28; }
-  }
-
+  // The goal is per 28 days; for other lengths it is scaled to the number of days chosen.
   const sums = windows.filter((w) => w.w >= 0 && w.w <= 2).map((w) => w.g).filter((g) => g > 0);
   const trend = sums.length ? sums.reduce((n, g) => n + g, 0) / sums.length : now.sales;
-  const target = { value: custom ?? Math.round(trend), custom: custom != null, basis: custom != null ? "Set by you" : sums.length > 1 ? `Average of the last ${sums.length} periods of 28 days` : "This period (no earlier data yet)" };
+  const per28 = custom ?? Math.round(trend);
+  const target = { value: Math.round((per28 * days) / 28), custom: custom != null, basis: custom != null ? "Set by you" : sums.length > 1 ? `Average of the last ${sums.length} periods of 28 days` : "This period (no earlier data yet)" };
 
   const buckets = new Map<StageKey, { r: DirRow; days: number | null }[]>(STAGES.map((s) => [s.key, []]));
   for (const r of all) { const s = stageOf(r); buckets.get(s)!.push({ r, days: daysInStage(r, s, ref) }); }
@@ -117,7 +126,7 @@ export async function loadCommand(): Promise<Command | null> {
   const guard = sampleGuard(all);
 
   return {
-    ref, from, prevFrom, prevTo, levers: { now, before }, change: explainChange(now, before), target, stages,
+    ref, from, to: end, days, prevFrom, prevTo, levers: { now, before }, change: explainChange(now, before), target, stages,
     guard,
     creators: all.length,
   };
