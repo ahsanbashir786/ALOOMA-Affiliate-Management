@@ -35,12 +35,7 @@ async function login(p, email) {
   ok(["Suggested To Invite", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((x) => fn.includes(x)), "command: all eight creator stages are in the funnel");
   const hrefs = await p.getByTestId("funnel").locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
   ok(hrefs.filter((h) => /\/affiliate\/outreach/.test(h)).length === 3 && hrefs.filter((h) => /\/creators\?stage=/.test(h)).length === 5, `command: three stages open Outreach and five open Affiliate Data`);
-  const checks = await p.locator("[data-testid^=check-]").evaluateAll((as) => as.map((a) => [a.getAttribute("data-testid"), a.getAttribute("data-status")]));
-  ok(checks.length === 4 && checks.every(([, st]) => ["good", "watch", "problem"].includes(st)), `command: four health checks, each Good, Watch or Problem (${checks.map((c) => c.join("=")).join(", ")})`);
-  ok((await p.getByTestId("headline").innerText()).trim().length > 15, "command: one headline sentence sums the checks up");
-  const btns = await p.getByTestId("health").locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
-  ok(btns.every((h) => /^\/affiliate\/(actions|content)/.test(h)), "command: every health-check button goes to Actions or Content");
-  ok(/Delivered, Not Posted/.test(await p.getByTestId("guard").innerText()) && /Requests Waiting/.test(await p.getByTestId("guard").innerText()) && !/creators hold samples/.test(await p.getByTestId("guard").innerText()), "command: Sample Status shows the groups, without the confusing sentence");
+  ok((await p.getByTestId("health").count()) === 0 && !/Sample Status/.test(await p.locator("main").innerText()), "command: no Health Check and no separate Sample Status card");
   const main = await p.locator("main").innerText();
   ok(!/Why Sales Changed|Waterfall|Biggest mover|Total change|Set Goal|Goal For|scale does not start/i.test(main), "command: the formula chart, goal and explanation lines are gone");
   ok(!/Synced .* from TikTok Shop/.test(main), "command: no sync-time line (Data Sync shows that)");

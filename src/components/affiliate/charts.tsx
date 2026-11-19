@@ -34,9 +34,9 @@ const rmFull = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
 
 /** A small box that follows the hovered week. */
 function Tip({ at, total, children }: { at: number; total: number; children: React.ReactNode }) {
-  const right = at > total / 2;
+  const right = at >= total / 2;
   return (
-    <div role="tooltip" data-testid="chart-tip" className="pointer-events-none absolute top-2 z-10 w-[210px] rounded-xl border border-line bg-surface px-3 py-2.5 text-[12.5px] shadow-lg" style={{ left: `${((at + 0.5) / total) * 100}%`, transform: right ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}>
+    <div role="tooltip" data-testid="chart-tip" className="pointer-events-none absolute top-2 z-10 w-max min-w-[210px] whitespace-nowrap rounded-xl border border-line bg-surface px-3 py-2.5 text-[12.5px] shadow-lg" style={{ left: `${((at + 0.5) / total) * 100}%`, transform: right ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}>
       {children}
     </div>
   );
@@ -82,7 +82,7 @@ export function SalesVideosChart({ weeks, shaded }: { weeks: Week[]; shaded: num
           <path d={area} className="fill-brand" opacity={0.12} />
           <path d={line} fill="none" className="stroke-brand" strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
           {weeks.map((w, i) => <circle key={w.start} cx={cx(i)} cy={ys(w.sales)} r={hi === i ? 5 : 3.4} className="fill-brand stroke-surface" strokeWidth={1.5} />)}
-          {weeks.map((w, i) => (i % 2 === (n - 1) % 2 ? <text key={w.start} x={cx(i)} y={H - 14} textAnchor="middle" className="fill-ink-3" fontSize={11}>{w.label}</text> : null))}
+          {weeks.map((w, i) => (true ? <text key={w.start} x={cx(i)} y={H - 14} textAnchor="middle" className="fill-ink-3" fontSize={11}>{w.label}</text> : null))}
           {weeks.map((w, i) => <rect key={`hit${w.start}`} data-hit x={L + slot * i} y={T} width={slot} height={ph} fill="transparent" onMouseEnter={() => setHi(i)} onMouseMove={() => setHi(i)} />)}
         </svg>
         {h && (
@@ -111,16 +111,17 @@ export function AgeStack({ weeks }: { weeks: Week[] }) {
       <div className="relative">
         <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Share of weekly sales by video age">
           {[0, 0.5, 1].map((g) => <g key={g}><line x1={L} x2={W - R} y1={T + ph * (1 - g)} y2={T + ph * (1 - g)} className="stroke-line" strokeDasharray={g === 0 ? undefined : "3 4"} /><text x={L - 6} y={T + ph * (1 - g) + 4} textAnchor="end" className="fill-ink-3" fontSize={10.5}>{Math.round(g * 100)}%</text></g>)}
+          {hi != null && <rect x={L + slot * hi} y={T} width={slot} height={ph} className="fill-ink" opacity={0.07} rx={4} />}
           {weeks.map((w, i) => {
             const t = order.reduce((s, b) => s + w.b[b], 0);
             let y = T + ph;
             return (
-              <g key={w.start} opacity={hi == null || hi === i ? 1 : 0.55}>
+              <g key={w.start}>
                 {t > 0 && order.map((b) => {
                   const hgt = (w.b[b] / t) * ph; y -= hgt;
                   return hgt > 0 ? <rect key={b} x={L + slot * i + (slot - bw) / 2} y={y} width={bw} height={hgt} style={{ fill: BUCKET_COLOR[b] }} /> : null;
                 })}
-                {i % 2 === (n - 1) % 2 && <text x={L + slot * i + slot / 2} y={H - 10} textAnchor="middle" className="fill-ink-3" fontSize={10.5}>{w.label}</text>}
+                {<text x={L + slot * i + slot / 2} y={H - 10} textAnchor="middle" className="fill-ink-3" fontSize={10}>{w.label}</text>}
               </g>
             );
           })}

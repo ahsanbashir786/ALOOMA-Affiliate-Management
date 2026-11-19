@@ -54,7 +54,7 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <PageHeader
         title="Affiliate Command"
-        description="How your affiliate sales are doing, why, and where to act. Charts show the last 12 weeks; the numbers and health checks use the dates you choose, compared with the same number of days just before. Creator stages and Sample Status are as of today."
+        description="How your affiliate sales are doing, why, and where to act. Charts show the last 12 weeks. The headline numbers use the dates you choose, compared with the same number of days just before. Creator stages are as of today."
         actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
       />
       <p className="-mt-3 text-[13px] text-ink-3" data-testid="date-line">
@@ -70,50 +70,25 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
       </div>
 
       <Card>
-        <CardHeader title="Sales And New Videos, Week By Week" description="The line is sales each week. The bars are the videos and LIVE sessions creators posted that week. If the bars shrink while the line stays up, sales are living off older videos." />
+        <CardHeader title="Sales vs Content Posted" description="The line is sales each week. The bars are the videos and LIVE sessions creators posted that week. If the bars shrink while the line stays up, sales are living off older videos." />
         <div className="px-5 pb-5"><SalesVideosChart weeks={weeks} shaded={Math.min(12, Math.ceil(w.days / 7))} /></div>
       </Card>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
-          <CardHeader title="Where Sales Come From" description="Each bar is one week of sales, split by how old the video was when it sold. A growing dark or orange part means sales lean on old videos. Same ages as Product Analysis." />
+          <CardHeader title="Sales By Video Age" description="Each bar is one week of sales, split by how old the video was when it sold. A growing dark or orange part means sales lean on old videos. Same ages as Product Analysis." />
           <div className="px-5 pb-5"><AgeStack weeks={weeks} /></div>
         </Card>
         <Card>
-          <CardHeader title="Creators By Stage" description="From suggested to star. Click a stage to open the creators: the first three go to Outreach, the rest to Affiliate Data. Bars use a square-root scale so small stages stay visible." action={<Link href="/creators" className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand hover:underline">Open Affiliate Data <ArrowRight className="size-3.5" /></Link>} />
+          <CardHeader title="Creators By Stage" description="From suggested to star. Click a stage to open the creators: the first three go to Outreach, the rest to Affiliate Data. Bars use a square-root scale so small stages stay visible." />
+          {g.high && (
+            <p data-testid="guard" className="mx-5 mb-2 rounded-lg bg-warn/10 px-3 py-2 text-[13px] font-medium text-ink-2">
+              <Badge tone="warn">Chase Idle Samples First</Badge> <span className="ml-1">{(g.notPosted + g.noSale).toLocaleString("en-MY")} samples already sent are not paying off. Chase them before paying for new creators.</span>
+            </p>
+          )}
           <div className="px-3 pb-4"><Funnel rows={funnel} /></div>
         </Card>
       </div>
-
-      <Card data-testid="health">
-        <div className="px-5 pt-4 pb-3"><p className="text-[13px] font-medium text-ink-3">Health Check</p><p className="mt-0.5 text-[17px] font-semibold tracking-tight text-ink" data-testid="headline">{d.headline}</p></div>
-        <div className="grid grid-cols-1 gap-3 px-5 pb-5 md:grid-cols-2 xl:grid-cols-4">
-          {d.checks.map((c) => (
-            <div key={c.key} className="flex flex-col rounded-xl border border-line px-4 py-3.5" data-testid={`check-${c.key}`} data-status={c.status}>
-              <p className="flex items-center justify-between gap-2"><span className="text-[13.5px] font-semibold text-ink">{c.question}</span><span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-semibold", STATUS[c.status].cls)}><span className={cn("size-1.5 rounded-full", STATUS[c.status].dot)} />{STATUS[c.status].text}</span></p>
-              <p className="mt-1.5 flex-1 text-[13px] leading-snug text-ink-2">{c.answer}</p>
-              {c.button && <Link href={c.button.href} className="mt-3 inline-flex h-8 items-center justify-center self-start rounded-full border border-brand bg-brand/10 px-3 text-[13px] font-semibold text-brand hover:bg-brand hover:text-white">{c.button.label}</Link>}
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card data-testid="guard" className={cn(g.high && "border-warn/60")}>
-        <CardHeader title="Sample Status" description="Samples already sent that are not paying off. Chase these before paying for new creators: the shipping and product are already spent. Counts are creator-and-product pairs, as of today. Click a number to see the creators." action={g.high ? <Badge tone="warn">Chase Idle Samples First</Badge> : <Badge tone="good">Healthy</Badge>} />
-        <div className="grid grid-cols-2 gap-3 px-5 pb-5 lg:grid-cols-4">
-          {[
-            { n: g.notPosted, label: "Delivered, Not Posted", to: "/creators?stage=notposted" },
-            { n: g.noSale, label: "Posted, No Sale", to: "/creators?stage=nosale" },
-            { n: g.soldThenQuiet, label: "Sold Once, Then Quiet", to: "/creators?stage=quiet" },
-            { n: g.requestsWaiting, label: "Requests Waiting For You", to: "/affiliate/outreach?stage=requested" },
-          ].map((x) => (
-            <Link key={x.label} href={x.to} className="rounded-xl border border-line px-3.5 py-3 transition-colors hover:bg-surface-2">
-              <p className="tnum text-[22px] font-semibold text-ink">{x.n.toLocaleString("en-MY")}</p>
-              <p className="text-[12.5px] text-ink-3">{x.label}</p>
-            </Link>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
