@@ -136,6 +136,38 @@ async function login(p, email) {
   ok(prodNames.length === 0 || new Set(prodNames.map((x) => x.trim())).size === 1, `products: Actions shows only that product (${[...new Set(prodNames.map((x) => x.trim()))].join(", ")})`);
   await p.goto(BASE + "/affiliate/content?product=" + firstKey, { waitUntil: "networkidle" });
   ok(!/Application error|Internal Server Error/.test(await p.locator("main").innerText()) && /Showing one product/.test(await p.locator("main").innerText()), "products: Content filters to that product");
+  // One Products screen: it carries everything Product Analysis shows.
+  await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
+  const names1 = (await p.locator("[data-testid=prod-row] p.text-\\[15px\\]").allInnerTexts()).map((t) => t.trim()).filter(Boolean).sort();
+  await p.goto(BASE + "/products", { waitUntil: "networkidle" });
+  const names2 = (await p.locator("[data-testid=product-grid] h3").allInnerTexts()).map((t) => t.trim()).sort();
+  ok(names2.length > 0 && names2.every((n) => names1.includes(n)), `products: every product on Product Analysis (${names2.length}) is on the merged Products screen`);
+  await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
+  const tagsTxt = await p.getByTestId("prod-tags").innerText();
+  ok(["Growing", "Steady", "Slipping", "Dying", "Fragile"].every((t) => tagsTxt.includes(t)), "products: tag filters Growing, Steady, Slipping, Dying and Fragile are here");
+  const firstRow = await p.locator("[data-testid=prod-row]").first().innerText();
+  ok(/Creators/.test(firstRow) && /New Videos/.test(firstRow) && /Converting/.test(firstRow) && /orders/.test(firstRow), "products: each product shows Creators, New Videos, Converting and orders");
+  ok((await p.locator("[data-testid=prod-row] svg").count()) >= prodRows, "products: mix bar and weekly trend are drawn");
+  await p.goto(BASE + "/affiliate/products?tag=Fragile", { waitUntil: "networkidle" });
+  const fragN = await p.locator("[data-testid=prod-row]").count();
+  const fragChip = Number((tagsTxt.match(/Fragile\s*(\d+)/) || [0, -1])[1]);
+  ok(fragN === fragChip && fragN <= prodRows, `products: the Fragile filter shows exactly what its chip counts (${fragN} of ${prodRows})`);
+  await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
+  // The three lists link to each other.
+  const itsCreators = await p.locator("[data-testid=prod-row] a", { hasText: "Its Creators" }).first().getAttribute("href");
+  ok(/^\/creators\?product=/.test(itsCreators || ""), "links: a product opens its creators");
+  await p.goto(BASE + "/affiliate/content", { waitUntil: "networkidle" });
+  const prodLink = await p.locator("[data-testid=content-rows] a[href^='/products/']").count();
+  const someCreator = await p.locator("[data-testid=content-rows] button[title='Open details']").first().innerText().catch(() => "");
+  ok(prodLink > 0, "links: a video's product opens the product");
+  if (someCreator) {
+    const cname = someCreator.replace(/^@/, "").trim();
+    await p.goto(BASE + "/affiliate/content?creator=" + encodeURIComponent(cname), { waitUntil: "networkidle" });
+    const shown = await p.locator("[data-testid=content-rows] li").count();
+    const others = await p.locator("[data-testid=content-rows] button[title='Open details']").allInnerTexts();
+    ok(/Show all creators/.test(await p.locator("main").innerText()) && others.every((t) => t.replace(/^@/, "").trim() === cname), `links: a creator's videos filter works (${shown} shown for @${cname})`);
+  }
+  await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
   for (const srt of ["sales", "drop", "growth"]) { await p.goto(BASE + "/affiliate/products?sort=" + srt, { waitUntil: "networkidle" }); ok((await p.locator("[data-testid=prod-row]").count()) === prodRows, `products: sort "${srt}" keeps every product`); }
   const pa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(pa.length === 1 && /^Products$/.test(pa[0].trim()), `menu: only Products is lit there (${pa.join("|")})`);

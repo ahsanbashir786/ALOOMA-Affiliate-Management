@@ -177,7 +177,8 @@ function Panel({ username, focus, onClose }: { username: string; focus?: PanelFo
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-[14px]">
               <a className="inline-flex items-center gap-1.5 text-brand hover:underline" href={`https://www.tiktok.com/@${encodeURIComponent(username)}`} target="_blank" rel="noopener noreferrer">TikTok <ExternalLink className="size-3.5" /></a>
               <span className="text-ink-3">{data.phone ? `WhatsApp ${data.phone}` : "No WhatsApp number saved"}</span>
-              <Link href={`/creators/${encodeURIComponent(username)}`} className="ml-auto text-brand hover:underline">Open full page →</Link>
+              <Link href={`/affiliate/content?creator=${encodeURIComponent(username)}`} className="ml-auto text-brand hover:underline">Their Videos →</Link>
+              <Link href={`/creators/${encodeURIComponent(username)}`} className="text-brand hover:underline">Open full page →</Link>
             </div>
             <dl className="mx-5 mb-3 grid grid-cols-3 gap-3 text-center" aria-label="Track record">
               <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Promises kept</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.promisesJudged ? `${data.profile.promisesOnTime}/${data.profile.promisesJudged}` : "–"}</dd></div>

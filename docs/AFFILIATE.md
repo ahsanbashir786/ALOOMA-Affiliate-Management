@@ -84,3 +84,11 @@ The Command screen's **Creator Journey** now starts with **Suggested To Invite**
 - **Dates**: data reaches only the latest synced day. If the chosen dates end later, the whole window moves back so "Last 7 days" is still 7 days of data (`resolveWindow`); the screen says so.
 - Removed: the formula chart, the three cards, the goal, the plain-text explanation lines and the "creators hold samples" sentence.
 Tests: `scripts/test-affiliate-dashboard.ts`, `scripts/e2e-affiliate.js`.
+
+## Structure (restructure, phases 1-2)
+
+- **One model** (`src/lib/affiliate/model.ts`): Stage, Next Step, Tier and Status (the reason). Creators with a next step = To Do + Held + Waiting, on every screen.
+- **Three lists, linked.** Creators (Affiliate Data), Products and Content share the same numbers. A product opens its creators (`/creators?product=`), videos (`/affiliate/content?product=`) and full analysis; a video opens its product and creator; a creator panel opens their videos (`/affiliate/content?creator=`).
+- **Products** carries everything Product Analysis shows (tags, sparkline, age mix, creators, new videos, converting, orders) plus the three levers and the actions. Product Analysis stays until it is approved for removal.
+- **Actions** has two tabs: By Creator and By Product (the full Execution Plan board).
+- **Affiliate Data filters**: Search, Product, Owner on top; everything else under More Filters.
