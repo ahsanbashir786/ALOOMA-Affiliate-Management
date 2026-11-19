@@ -58,8 +58,8 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
         actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
       />
       <p className="-mt-3 text-[13px] text-ink-3" data-testid="date-line">
-        <b className="font-semibold text-ink-2">{fmtDayLabel(w.start)} – {fmtFullDay(w.end)}</b> · {w.days} day{w.days === 1 ? "" : "s"}, compared with {fmtDayLabel(w.prevStart)} – {fmtFullDay(w.prevEnd)}
-        {w.moved && <span> · your dates reach past the latest data ({fmtFullDay(w.end)}), so the {w.days} days ending then are shown</span>}
+        <b className="font-semibold text-ink-2">{fmtDayLabel(w.start)} – {fmtFullDay(w.end)}</b> · {w.days} day{w.days === 1 ? "" : "s"} · vs {fmtDayLabel(w.prevStart)} – {fmtDayLabel(w.prevEnd)}
+        {w.moved && <span> · data ends {fmtDayLabel(w.end)}</span>}
       </p>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="kpis">

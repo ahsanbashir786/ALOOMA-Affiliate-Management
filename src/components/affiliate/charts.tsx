@@ -1,8 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Sparkline } from "@/components/viz/sparkline";
 import { BUCKET_COLOR, bucketLabel } from "@/components/products/ui";
 import type { Bucket } from "@/lib/products/diagnose";
 import type { Week } from "@/lib/affiliate/dashboard";
+import { addDaysISO, fmtDayLabel } from "@/lib/time";
 import { cn, fmtCompact } from "@/lib/utils";
 
 const compact = (n: number) => fmtCompact(n);
@@ -25,9 +29,23 @@ export function KpiCard({ label, value, now, before, values, money, testId }: { 
   );
 }
 
-/** Weekly sales (area line) with new videos and LIVE sessions (bars) on the same weeks. The chosen dates are shaded. */
+const endLabel = (start: string) => fmtDayLabel(addDaysISO(start, 6));
+const rmFull = (n: number) => `RM ${Math.round(n).toLocaleString("en-MY")}`;
+
+/** A small box that follows the hovered week. */
+function Tip({ at, total, children }: { at: number; total: number; children: React.ReactNode }) {
+  const right = at > total / 2;
+  return (
+    <div role="tooltip" data-testid="chart-tip" className="pointer-events-none absolute top-2 z-10 w-[210px] rounded-xl border border-line bg-surface px-3 py-2.5 text-[12.5px] shadow-lg" style={{ left: `${((at + 0.5) / total) * 100}%`, transform: right ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}>
+      {children}
+    </div>
+  );
+}
+
+/** Weekly sales (area line) with the number of new videos and LIVE sessions on each bar. The chosen dates are shaded. Hover a week for its numbers. */
 export function SalesVideosChart({ weeks, shaded }: { weeks: Week[]; shaded: number }) {
-  const W = 900, H = 310, L = 58, R = 46, T = 26, B = 40;
+  const [hi, setHi] = useState<number | null>(null);
+  const W = 900, H = 310, L = 58, R = 16, T = 30, B = 40;
   const pw = W - L - R, ph = H - T - B, n = weeks.length, slot = pw / n, bw = Math.min(34, slot * 0.5);
   const maxS = Math.max(...weeks.map((w) => w.sales), 1) * 1.1, maxV = Math.max(...weeks.map((w) => w.videos), 1);
   const cx = (i: number) => L + slot * i + slot / 2;
@@ -37,55 +55,86 @@ export function SalesVideosChart({ weeks, shaded }: { weeks: Week[]; shaded: num
   const area = `${line} L${cx(n - 1).toFixed(1)},${T + ph} L${cx(0).toFixed(1)},${T + ph} Z`;
   const grid = [0, 0.25, 0.5, 0.75, 1];
   const from = Math.max(0, n - Math.max(1, shaded));
+  const h = hi == null ? null : weeks[hi];
   return (
-    <figure className="w-full" data-testid="sales-videos-chart">
+    <figure className="relative w-full" data-testid="sales-videos-chart" onMouseLeave={() => setHi(null)}>
       <div className="mb-1 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-ink-2">
-        <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-5 rounded bg-brand" /> Sales each week (left scale)</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: "var(--s2)" }} /> New videos and LIVE sessions posted each week (right scale)</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-5 rounded bg-brand" /> Sales each week</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: "var(--s2)" }} /> New videos and LIVE sessions each week (number on each bar)</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-brand-soft ring-1 ring-brand/30" /> Your chosen dates</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Weekly sales and new videos posted">
-        <rect x={L + slot * from} y={T} width={slot * (n - from)} height={ph} className="fill-brand-soft" opacity={0.7} rx={6} />
-        {grid.map((g) => (
-          <g key={g}>
-            <line x1={L} x2={W - R} y1={T + ph * (1 - g)} y2={T + ph * (1 - g)} className="stroke-line" strokeWidth={1} strokeDasharray={g === 0 ? undefined : "3 4"} />
-            <text x={L - 8} y={T + ph * (1 - g) + 4} textAnchor="end" className="fill-ink-3" fontSize={11}>{g === 0 ? "0" : `RM ${compact(maxS * g)}`}</text>
-          </g>
-        ))}
-        {[0, 0.5, 1].map((g) => <text key={g} x={W - R + 8} y={yv(maxV * g) + 4} className="fill-ink-3" fontSize={11}>{Math.round(maxV * g)}</text>)}
-        {weeks.map((w, i) => <rect key={w.start} x={cx(i) - bw / 2} y={yv(w.videos)} width={bw} height={Math.max(1, T + ph - yv(w.videos))} rx={4} style={{ fill: "var(--s2)" }} opacity={0.85}><title>{`${w.label}: ${w.videos} new videos and LIVE sessions`}</title></rect>)}
-        <path d={area} className="fill-brand" opacity={0.12} />
-        <path d={line} fill="none" className="stroke-brand" strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
-        {weeks.map((w, i) => <circle key={w.start} cx={cx(i)} cy={ys(w.sales)} r={3.4} className="fill-brand stroke-surface" strokeWidth={1.5}><title>{`${w.label}: RM ${Math.round(w.sales).toLocaleString("en-MY")} sales`}</title></circle>)}
-        {weeks.map((w, i) => (i % 2 === (n - 1) % 2 ? <text key={w.start} x={cx(i)} y={H - 14} textAnchor="middle" className="fill-ink-3" fontSize={11}>{w.label}</text> : null))}
-      </svg>
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Weekly sales and new videos posted">
+          <rect x={L + slot * from} y={T} width={slot * (n - from)} height={ph} className="fill-brand-soft" opacity={0.7} rx={6} />
+          {grid.map((g) => (
+            <g key={g}>
+              <line x1={L} x2={W - R} y1={T + ph * (1 - g)} y2={T + ph * (1 - g)} className="stroke-line" strokeWidth={1} strokeDasharray={g === 0 ? undefined : "3 4"} />
+              <text x={L - 8} y={T + ph * (1 - g) + 4} textAnchor="end" className="fill-ink-3" fontSize={11}>{g === 0 ? "0" : `RM ${compact(maxS * g)}`}</text>
+            </g>
+          ))}
+          {hi != null && <rect x={L + slot * hi} y={T} width={slot} height={ph} className="fill-ink" opacity={0.06} rx={6} />}
+          {weeks.map((w, i) => (
+            <g key={w.start}>
+              <rect x={cx(i) - bw / 2} y={yv(w.videos)} width={bw} height={Math.max(1, T + ph - yv(w.videos))} rx={4} style={{ fill: "var(--s2)" }} opacity={hi === i ? 1 : 0.82} />
+              <text x={cx(i)} y={yv(w.videos) - 6} textAnchor="middle" className="fill-ink-2" fontSize={11} fontWeight={600}>{w.videos.toLocaleString("en-MY")}</text>
+            </g>
+          ))}
+          <path d={area} className="fill-brand" opacity={0.12} />
+          <path d={line} fill="none" className="stroke-brand" strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
+          {weeks.map((w, i) => <circle key={w.start} cx={cx(i)} cy={ys(w.sales)} r={hi === i ? 5 : 3.4} className="fill-brand stroke-surface" strokeWidth={1.5} />)}
+          {weeks.map((w, i) => (i % 2 === (n - 1) % 2 ? <text key={w.start} x={cx(i)} y={H - 14} textAnchor="middle" className="fill-ink-3" fontSize={11}>{w.label}</text> : null))}
+          {weeks.map((w, i) => <rect key={`hit${w.start}`} data-hit x={L + slot * i} y={T} width={slot} height={ph} fill="transparent" onMouseEnter={() => setHi(i)} onMouseMove={() => setHi(i)} />)}
+        </svg>
+        {h && (
+          <Tip at={hi!} total={n}>
+            <p className="font-semibold text-ink">{h.label} – {endLabel(h.start)}</p>
+            <p className="mt-1 flex justify-between gap-3"><span className="text-ink-3">Sales</span><b className="tnum text-ink">{rmFull(h.sales)}</b></p>
+            <p className="flex justify-between gap-3"><span className="text-ink-3">New videos and LIVE</span><b className="tnum text-ink">{h.videos.toLocaleString("en-MY")}</b></p>
+            <p className="flex justify-between gap-3"><span className="text-ink-3">Creators who sold</span><b className="tnum text-ink">{h.creators.toLocaleString("en-MY")}</b></p>
+          </Tip>
+        )}
+      </div>
     </figure>
   );
 }
 
-/** Share of each week's sales by how old the video was when it sold. A growing "old" colour means sales lean on old videos. */
+/** Share of each week's sales by how old the video was when it sold. A growing "old" colour means sales lean on old videos. Hover a week for the split. */
 export function AgeStack({ weeks }: { weeks: Week[] }) {
+  const [hi, setHi] = useState<number | null>(null);
   const W = 520, H = 250, L = 34, R = 8, T = 10, B = 30, pw = W - L - R, ph = H - T - B, n = weeks.length, slot = pw / n, bw = slot * 0.66;
   const order: Bucket[] = ["new", "recent", "old", "veryold", "live", "other"];
   const shown = order.filter((b) => weeks.some((w) => w.b[b] > 0));
+  const h = hi == null ? null : weeks[hi];
+  const tot = h ? order.reduce((s, b) => s + h.b[b], 0) : 0;
   return (
-    <figure data-testid="age-stack">
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Share of weekly sales by video age">
-        {[0, 0.5, 1].map((g) => <g key={g}><line x1={L} x2={W - R} y1={T + ph * (1 - g)} y2={T + ph * (1 - g)} className="stroke-line" strokeDasharray={g === 0 ? undefined : "3 4"} /><text x={L - 6} y={T + ph * (1 - g) + 4} textAnchor="end" className="fill-ink-3" fontSize={10.5}>{Math.round(g * 100)}%</text></g>)}
-        {weeks.map((w, i) => {
-          const tot = order.reduce((s, b) => s + w.b[b], 0);
-          let y = T + ph;
-          return (
-            <g key={w.start}>
-              {tot > 0 && order.map((b) => {
-                const h = (w.b[b] / tot) * ph; y -= h;
-                return h > 0 ? <rect key={b} x={L + slot * i + (slot - bw) / 2} y={y} width={bw} height={h} style={{ fill: BUCKET_COLOR[b] }}><title>{`${w.label} · ${bucketLabel(b)}: ${Math.round((w.b[b] / tot) * 100)}% (RM ${Math.round(w.b[b]).toLocaleString("en-MY")})`}</title></rect> : null;
-              })}
-              {i % 2 === (n - 1) % 2 && <text x={L + slot * i + slot / 2} y={H - 10} textAnchor="middle" className="fill-ink-3" fontSize={10.5}>{w.label}</text>}
-            </g>
-          );
-        })}
-      </svg>
+    <figure data-testid="age-stack" className="relative" onMouseLeave={() => setHi(null)}>
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Share of weekly sales by video age">
+          {[0, 0.5, 1].map((g) => <g key={g}><line x1={L} x2={W - R} y1={T + ph * (1 - g)} y2={T + ph * (1 - g)} className="stroke-line" strokeDasharray={g === 0 ? undefined : "3 4"} /><text x={L - 6} y={T + ph * (1 - g) + 4} textAnchor="end" className="fill-ink-3" fontSize={10.5}>{Math.round(g * 100)}%</text></g>)}
+          {weeks.map((w, i) => {
+            const t = order.reduce((s, b) => s + w.b[b], 0);
+            let y = T + ph;
+            return (
+              <g key={w.start} opacity={hi == null || hi === i ? 1 : 0.55}>
+                {t > 0 && order.map((b) => {
+                  const hgt = (w.b[b] / t) * ph; y -= hgt;
+                  return hgt > 0 ? <rect key={b} x={L + slot * i + (slot - bw) / 2} y={y} width={bw} height={hgt} style={{ fill: BUCKET_COLOR[b] }} /> : null;
+                })}
+                {i % 2 === (n - 1) % 2 && <text x={L + slot * i + slot / 2} y={H - 10} textAnchor="middle" className="fill-ink-3" fontSize={10.5}>{w.label}</text>}
+              </g>
+            );
+          })}
+          {weeks.map((w, i) => <rect key={`hit${w.start}`} data-hit x={L + slot * i} y={T} width={slot} height={ph} fill="transparent" onMouseEnter={() => setHi(i)} onMouseMove={() => setHi(i)} />)}
+        </svg>
+        {h && (
+          <Tip at={hi!} total={n}>
+            <p className="font-semibold text-ink">{h.label} – {endLabel(h.start)}</p>
+            {tot > 0 ? order.filter((b) => h.b[b] > 0).map((b) => (
+              <p key={b} className="mt-0.5 flex items-center justify-between gap-3"><span className="inline-flex items-center gap-1.5 text-ink-3"><span className="size-2 rounded-sm" style={{ background: BUCKET_COLOR[b] }} />{bucketLabel(b)}</span><b className="tnum text-ink">{Math.round((h.b[b] / tot) * 100)}% · {rmFull(h.b[b])}</b></p>
+            )) : <p className="mt-1 text-ink-3">No sales this week</p>}
+          </Tip>
+        )}
+      </div>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-ink-2">{shown.map((b) => <li key={b} className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: BUCKET_COLOR[b] }} />{bucketLabel(b)}</li>)}</ul>
     </figure>
   );

@@ -25,6 +25,12 @@ async function login(p, email) {
   const sv = p.getByTestId("sales-videos-chart");
   ok((await sv.count()) === 1 && (await sv.locator("rect").count()) >= 12 && (await sv.locator("path").count()) >= 2, "command: the weekly sales line and new-video bars are drawn");
   ok((await p.getByTestId("age-stack").locator("rect").count()) > 0 && /New Videos|Very Old Videos/.test(await p.getByTestId("age-stack").innerText()), "command: sales by video age are drawn, with a legend");
+  await sv.locator("rect[data-hit]").nth(5).hover();
+  const tip = await p.getByTestId("chart-tip").innerText().catch(() => "");
+  ok(/Sales/.test(tip) && /New videos and LIVE/.test(tip) && /Creators who sold/.test(tip) && /RM /.test(tip), "command: hovering a week on the main chart shows its sales, videos and creators");
+  await p.getByTestId("age-stack").locator("rect[data-hit]").nth(8).hover();
+  ok(/%/.test(await p.getByTestId("chart-tip").innerText().catch(() => "")), "command: hovering a week on the age chart shows the split by video age");
+  ok(!/\b363\b|right scale/i.test(await sv.innerText()) && (await sv.locator("svg text").allTextContents()).filter((t) => /^\d+$/.test(t.trim())).length >= 12, "command: no right-hand scale; each bar carries its own video count");
   const fn = await p.getByTestId("funnel").innerText();
   ok(["Suggested To Invite", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((x) => fn.includes(x)), "command: all eight creator stages are in the funnel");
   const hrefs = await p.getByTestId("funnel").locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
@@ -44,7 +50,7 @@ async function login(p, email) {
   // chosen dates: "Last 7 days" ending today must still be 7 days of real data
   const iso = (d) => d.toISOString().slice(0, 10); const td = new Date(); const from7 = new Date(td.getTime() - 6 * 86400000);
   await p.goto(BASE + `/affiliate?from=${iso(from7)}&to=${iso(td)}`, { waitUntil: "networkidle" });
-  ok(/7 days, compared with/.test(await p.getByTestId("date-line").innerText()), `command: choosing the last 7 days shows 7 days, not 6 (${(await p.getByTestId("date-line").innerText()).slice(0, 80)})`);
+  ok(/· 7 days · vs /.test(await p.getByTestId("date-line").innerText()), `command: choosing the last 7 days shows 7 days, not 6 (${(await p.getByTestId("date-line").innerText()).slice(0, 80)})`);
 
   // old Lifecycle links still work: they land on Affiliate Data
   await p.goto(BASE + "/affiliate/lifecycle?stage=star", { waitUntil: "networkidle" });
