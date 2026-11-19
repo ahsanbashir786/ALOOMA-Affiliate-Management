@@ -98,7 +98,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
 
       {guard.high && (
         <div className="flex items-start gap-3 rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner">
-          <span className="mt-0.5 font-semibold">Fix old samples first.</span>
+          <span className="mt-0.5 font-semibold">Fix sent samples first.</span>
           <span>{(guard.notPosted + guard.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales, so new creators are held back ({queue.held.length.toLocaleString("en-MY")} waiting). <Link href="/affiliate" className="font-semibold text-brand hover:underline">See Sample Status</Link></span>
         </div>
       )}

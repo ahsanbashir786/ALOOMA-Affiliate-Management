@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-
 export type Step = { label: string; effect: number; detail?: string };
 
 const rm = (n: number) => `RM ${Math.round(Math.abs(n)).toLocaleString("en-MY")}`;
@@ -53,7 +51,6 @@ export function Waterfall({ startLabel, endLabel, start, end, steps }: { startLa
         <line x1={x(cols - 2) + bw} x2={x(cols - 1)} y1={Y(run)} y2={Y(run)} className="stroke-ink-3" strokeWidth={1} strokeDasharray="3 3" />
         {total(cols - 1, end, endLabel)}
       </svg>
-      <figcaption className={cn("mt-1 text-[12px] text-ink-3")}>The scale does not start at zero, so the steps are easy to see. Green added sales, red lost sales.</figcaption>
     </figure>
   );
 }

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-expressions */
-// Affiliate Command and Creator Lifecycle: the levers, the goal, the sample guard, the journey and the stage lists.
+// Affiliate Command, Outreach, Actions, Team, Content, Products and the stage strip in Affiliate Data.
 // Needs the app on :3100 and the demo data and users (scripts/seed-creators-demo.ts).
 const { chromium } = require("playwright");
 const BASE = "http://localhost:3100";
@@ -15,7 +15,7 @@ async function login(p, email) {
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
   await login(p, "owner@test.local");
   const menu = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(menu.includes("Affiliate Command") && menu.includes("Creator Lifecycle"), `menu: Affiliate Command and Creator Lifecycle are listed (${menu.slice(0, 4).join(", ")})`);
+  ok(menu.includes("Affiliate Command") && !menu.includes("Creator Lifecycle"), `menu: Affiliate Command is listed and Creator Lifecycle is gone (${menu.slice(0, 4).join(", ")})`);
 
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
   ok(/Affiliate Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
@@ -26,7 +26,7 @@ async function login(p, email) {
   ok(wf === "" || (/Last Period/.test(wf) && /This Period/.test(wf) && /Active Sellers/.test(wf) && /Sales Per Video/.test(wf)), "command: the waterfall runs from last period to this period through the three steps");
   ok(/Delivered, Not Posted/.test(await p.getByTestId("guard").innerText()) && /Requests Waiting/.test(await p.getByTestId("guard").innerText()), "command: the sample guard counts unproductive samples");
   const jr = await p.getByTestId("journey").innerText();
-  ok(["Known, Not Sampled", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((s) => jr.includes(s)), "command: all eight journey stages are shown");
+  ok(["Suggested To Invite", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((s) => jr.includes(s)), "command: all eight journey stages are shown");
   const active = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(active.length === 1 && /Affiliate Command/.test(active[0]), `menu: only Affiliate Command is lit on this screen (${active.join("|")})`);
 
@@ -40,24 +40,19 @@ async function login(p, email) {
   await p.waitForFunction(() => !/Set by you/.test(document.querySelector("[data-testid=goal]").innerText), null, { timeout: 15000 }).catch(() => {});
   ok(!/Set by you/.test(await p.getByTestId("goal").innerText()), "command: clearing the goal goes back to the automatic one");
 
-  // lifecycle
-  await p.goto(BASE + "/affiliate/lifecycle", { waitUntil: "networkidle" });
-  ok(/Creator Lifecycle/.test(await p.locator("h1").first().innerText()), "lifecycle: page opens");
-  const st = await p.getByTestId("stages").innerText();
-  ok(["Known, Not Sampled", "Delivered, Not Posted", "Selling", "Star", "Went Quiet"].every((s) => st.includes(s)), "lifecycle: stage pills with counts");
-  for (const s of ["found", "way", "notposted", "nosale", "selling", "star", "quiet", "requested"]) {
-    await p.goto(BASE + "/affiliate/lifecycle?stage=" + s, { waitUntil: "networkidle" });
-    const body = await p.locator("main").innerText();
-    ok(!/Application error|Internal Server Error/.test(body) && /Showing|Nobody is in this stage/.test(body), `lifecycle: stage "${s}" opens`);
-  }
+  // old Lifecycle links still work: they land on Affiliate Data
   await p.goto(BASE + "/affiliate/lifecycle?stage=star", { waitUntil: "networkidle" });
-  if (await p.locator("[data-testid=stage-rows] li").count()) {
-    await p.locator("[data-testid=stage-rows] li button").first().click();
-    await p.waitForSelector("[role=dialog], aside[aria-label*='reator']", { timeout: 10000 }).catch(() => {});
-    ok(true, "lifecycle: clicking a creator opens the details panel");
-  }
-  const lcActive = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
-  ok(lcActive.length === 1 && /Creator Lifecycle/.test(lcActive[0]), `menu: only Creator Lifecycle is lit there (${lcActive.join("|")})`);
+  ok(/\/creators\?stage=star/.test(p.url()), "lifecycle moved: an old link lands on the matching stage in Affiliate Data");
+  // command: journey cards go to Outreach (early stages) or Affiliate Data (later stages); wording and goal line
+  await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
+  const hrefs = await p.getByTestId("journey").locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+  ok(hrefs.filter((h) => /\/affiliate\/outreach/.test(h)).length === 3 && hrefs.filter((h) => /\/creators\?stage=/.test(h)).length === 5, `command: three journey cards go to Outreach and five to Affiliate Data (${hrefs.length} cards)`);
+  const main = await p.locator("main").innerText();
+  ok(/Sample Status/.test(main) && !/Fix Old Samples/i.test(main) && !/have not sold yet/.test(main) && !/scale does not start at zero/i.test(main), "command: wording fixed (Sample Status, no 'old samples', no scale note)");
+  const cardTxt = await p.getByTestId("journey").innerText();
+  ok(!/sales, 28 days/.test(cardTxt), "command: early stages no longer say 'sales, 28 days'");
+  await p.goto(BASE + "/affiliate?from=2026-11-10&to=2026-11-15", { waitUntil: "networkidle" });
+  ok(/28-day goal RM [\d,]+ × 6 ÷ 28/.test(await p.getByTestId("goal-scale").innerText().catch(() => "")), "command: a 6-day range shows how its goal comes from the 28-day goal");
 
   // actions: one next action per creator; contacting one moves it to "waiting", and the Team screen shows it at once
   const num = async (label) => Number((await p.locator("[data-testid=action-kpis] > div", { hasText: label }).first().locator("p").nth(1).innerText()).replace(/\D/g, "") || 0);
@@ -138,14 +133,14 @@ async function login(p, email) {
   const oa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(oa.length === 1 && /^Outreach$/.test(oa[0].trim()), `menu: only Outreach is lit there (${oa.join("|")})`);
 
-  // affiliate data: the same stages as Lifecycle, as a strip, with days in stage and a stuck-longest-first sort; nothing was removed
-  await p.goto(BASE + "/affiliate/lifecycle", { waitUntil: "networkidle" });
-  const lcCounts = await p.getByTestId("stages").locator("a").evaluateAll((as) => Object.fromEntries(as.map((a) => [new URL(a.href).searchParams.get("stage"), Number(a.textContent.replace(/\D+$/, "").match(/(\d[\d,]*)$/)[1].replace(/,/g, ""))])));
+  // affiliate data: the stage strip (the stages after the sample arrives), days in stage and a stuck-longest-first sort; nothing was removed
+  await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
+  const cmdCounts = await p.getByTestId("journey").locator("a").evaluateAll((as) => Object.fromEntries(as.map((a) => [a.getAttribute("data-stage"), Number((a.querySelector("span")?.textContent ?? "").replace(/\D/g, "") || NaN)])));
   await p.goto(BASE + "/creators", { waitUntil: "networkidle" });
   ok((await p.getByTestId("stage-strip").count()) === 1, "affiliate data: has the stage strip");
   const adCounts = await p.getByTestId("stage-strip").locator("a").evaluateAll((as) => Object.fromEntries(as.filter((a) => /\d$/.test(a.textContent)).map((a) => [new URL(a.href).searchParams.get("stage") ?? "all", Number(a.textContent.match(/(\d[\d,]*)$/)[1].replace(/,/g, ""))])));
-  const same = Object.keys(lcCounts).every((k) => lcCounts[k] === adCounts[k]);
-  ok(same, `affiliate data: every stage count equals Lifecycle (${JSON.stringify(adCounts)} vs ${JSON.stringify(lcCounts)})`);
+  ok(JSON.stringify(Object.keys(adCounts).sort()) === JSON.stringify(["notposted", "nosale", "quiet", "selling", "star"].sort()), `affiliate data: the strip shows the five stages after the sample arrives (${Object.keys(adCounts).join(", ")})`);
+  ok(Object.keys(adCounts).every((k) => adCounts[k] === cmdCounts[k]), `affiliate data: every stage count equals the Command screen (${JSON.stringify(adCounts)} vs ${JSON.stringify(cmdCounts)})`);
   ok((await p.getByTestId("stage-line").count()) > 0 && /Stage:/.test(await p.getByTestId("stage-line").first().innerText()), "affiliate data: each creator shows its stage");
   ok((await p.getByTestId("creator-kpis").count()) === 1 && (await p.locator("[data-testid^=act-]").count()) > 0 && /Export To Excel/.test(await p.locator("main").innerText()), "affiliate data: the Action buttons, the headline boxes and Export To Excel are still there");
   const star = Object.keys(adCounts).find((k) => k === "star");

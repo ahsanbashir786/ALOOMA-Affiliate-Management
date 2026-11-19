@@ -99,7 +99,7 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
 
       {g.high && (
         <div className="rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner">
-          <b>Fix old samples first.</b> {(g.notPosted + g.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales. Think twice before approving many new ones. <Link href="/affiliate/lifecycle?stage=notposted" className="font-semibold text-brand hover:underline">See them</Link>
+          <b>Fix sent samples first.</b> {(g.notPosted + g.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales. Think twice before approving many new ones. <Link href="/creators?stage=notposted" className="font-semibold text-brand hover:underline">See them</Link>
         </div>
       )}
 

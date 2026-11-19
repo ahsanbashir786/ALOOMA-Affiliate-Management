@@ -12,7 +12,7 @@ import { getStaff, syncFreshness } from "@/lib/creators/meta";
 import { hasSyncedData } from "@/lib/creators/load";
 import { countsToCompare, recordDailyCounts } from "@/lib/creators/counts";
 import { STATUS_HELP, ACTION_HELP, type CreatorStatus } from "@/lib/creators/status";
-import { daysInStage, stageOf, STAGES } from "@/lib/affiliate/stages";
+import { daysInStage, stageOf, STAGES, STRIP_STAGES } from "@/lib/affiliate/stages";
 import { fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
@@ -197,7 +197,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
 
       <nav aria-label="Stage" className="flex flex-wrap gap-2" data-testid="stage-strip">
         <Link href={href("/creators", { ...pageFilters, stage: undefined, page: undefined })} scroll={false} aria-current={!opts.stage ? "page" : undefined} className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium transition-colors", !opts.stage ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>All Stages</Link>
-        {STAGES.map((x) => (
+        {STAGES.filter((x) => STRIP_STAGES.includes(x.key) || opts.stage === x.key).map((x) => (
           <Link key={x.key} href={href("/creators", { ...pageFilters, stage: x.key, page: undefined })} scroll={false} title={x.help} aria-current={opts.stage === x.key ? "page" : undefined}
             className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium transition-colors", opts.stage === x.key ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
             {x.label}<span className="tnum text-[12.5px] text-ink-3">{dir.stageCounts[x.key].toLocaleString("en-MY")}</span>

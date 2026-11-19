@@ -36,7 +36,6 @@ export const SCREEN_PERMISSION: Record<string, PermissionKey> = {
   "/execution": "execution",
   "/creators": "creators",
   "/affiliate": "creators",
-  "/affiliate/lifecycle": "creators",
   "/affiliate/outreach": "creators",
   "/affiliate/products": "creators",
   "/affiliate/content": "creators",

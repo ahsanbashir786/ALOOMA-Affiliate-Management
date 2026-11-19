@@ -34,7 +34,7 @@ export type Command = {
   prevTo: string;
   levers: { now: Levers; before: Levers };
   change: ReturnType<typeof explainChange>;
-  target: { value: number; custom: boolean; basis: string };
+  target: { value: number; per28: number; custom: boolean; basis: string };
   stages: StageSummary[];
   guard: SampleGuard;
   creators: number;
@@ -67,15 +67,6 @@ function rowFor(r: DirRow, stage: StageKey, ref: string): StageRow {
     username: r.username, days: daysInStage(r, stage, ref), sales28: r.extra?.gmv28 ?? 0, gmvAll: r.gmvAll, followers: r.extra?.followers ?? null, videos28: r.extra?.videos28 ?? 0,
     lines: r.lines.filter((l) => !l.noSample && (stage === "notposted" ? l.status === "Silent" : stage === "nosale" ? l.status === "Posted" : stage === "way" ? l.status === "Waiting" : true)).map((l) => l.name).slice(0, 3),
   };
-}
-
-export async function loadStageList(stage: StageKey, limit = 100): Promise<{ ref: string; rows: StageRow[]; total: number } | null> {
-  const { all, ref } = await loadCreatorRows();
-  if (!ref) return null;
-  const rs = all.filter((r) => stageOf(r) === stage).map((r) => rowFor(r, stage, ref));
-  const stuck = stage === "notposted" || stage === "nosale" || stage === "way" || stage === "quiet";
-  rs.sort((a, b) => (stuck ? (b.days ?? -1) - (a.days ?? -1) || b.gmvAll - a.gmvAll : b.sales28 - a.sales28 || b.gmvAll - a.gmvAll));
-  return { ref, rows: rs.slice(0, limit), total: rs.length };
 }
 
 /** Active sellers, the videos and LIVE sessions they posted, and their sales, for any window of days. */
@@ -111,7 +102,7 @@ export async function loadCommand(range?: { start: string; end: string }): Promi
   const sums = windows.filter((w) => w.w >= 0 && w.w <= 2).map((w) => w.g).filter((g) => g > 0);
   const trend = sums.length ? sums.reduce((n, g) => n + g, 0) / sums.length : now.sales;
   const per28 = custom ?? Math.round(trend);
-  const target = { value: Math.round((per28 * days) / 28), custom: custom != null, basis: custom != null ? "Set by you" : sums.length > 1 ? `Average of the last ${sums.length} periods of 28 days` : "This period (no earlier data yet)" };
+  const target = { value: Math.round((per28 * days) / 28), per28, custom: custom != null, basis: custom != null ? "Set by you" : sums.length > 1 ? `Average of the last ${sums.length} periods of 28 days` : "This period (no earlier data yet)" };
 
   const buckets = new Map<StageKey, { r: DirRow; days: number | null }[]>(STAGES.map((s) => [s.key, []]));
   for (const r of all) { const s = stageOf(r); buckets.get(s)!.push({ r, days: daysInStage(r, s, ref) }); }
@@ -139,4 +130,17 @@ export async function loadQueue() {
   const guard = sampleGuard(all);
   const queue = splitQueue(buildQueue(all, ref, baseline), todayKL(), guard.high);
   return { ref, guard, queue, baseline };
+}
+
+
+/** What Outreach last found (kept in settings), so the Command screen can show it without asking TikTok. */
+const SUGGESTED_KEY = "outreach_suggested";
+export type SuggestedHint = { eligible: number; notSure: number; own: number; at: number } | null;
+export async function getSuggestedHint(): Promise<SuggestedHint> {
+  const [r] = await db.select().from(settings).where(eq(settings.key, SUGGESTED_KEY));
+  const v = r?.value as SuggestedHint | undefined;
+  return v && typeof v.eligible === "number" ? v : null;
+}
+export async function saveSuggestedHint(h: NonNullable<SuggestedHint>) {
+  await db.insert(settings).values({ key: SUGGESTED_KEY, value: h }).onConflictDoUpdate({ target: settings.key, set: { value: h, updatedAt: new Date() } });
 }

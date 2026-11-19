@@ -7,7 +7,7 @@ import { kd, PK_LISTING } from "@/lib/creators/sql";
 import { hasOrderSql } from "@/lib/creators/sample-status";
 import { productName } from "@/lib/products/catalog";
 import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
-import { sampleGuard } from "./command";
+import { sampleGuard, saveSuggestedHint } from "./command";
 import { giveMoreSamples, historyOf, PIPELINE, requestStage, type History, type MarketCreator, type MoreSample, type PipelineKey } from "./outreach";
 import { evaluate, MIN_LEVEL, PREFERRED_CATEGORIES, type Profile, type Verdict } from "./eligibility";
 import { outreachScopes, preferredCategories, reviewEnabled, searchMarketplace } from "@/lib/tiktok/outreach";
@@ -114,6 +114,7 @@ export async function loadOutreach(): Promise<Outreach | null> {
     }
   }
 
+  if (tiktok.ok) await saveSuggestedHint({ eligible: tiktok.creators.filter((c) => c.verdict.status === "eligible").length, notSure: tiktok.creators.filter((c) => c.verdict.status === "unknown").length, own: more.length, at: Date.now() }).catch(() => undefined);
   const rules = { categories: PREFERRED_CATEGORIES, level: MIN_LEVEL, matched: prefs.matched, missing: prefs.missing, error: prefs.ok ? null : prefs.error ?? null };
   const lists = Object.fromEntries(Object.entries(samples).map(([k, v]) => [k, v.slice(0, LIMIT)])) as Outreach["samples"];
   const counts = { suggested: more.length + (tiktok.ok ? tiktok.creators.length : 0), requested: samples.requested.length, approved: samples.approved.length, shipped: samples.shipped.length, delivered: samples.delivered.length, posted: samples.posted.length } as Record<PipelineKey, number>;

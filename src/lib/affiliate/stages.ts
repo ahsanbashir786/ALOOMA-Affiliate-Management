@@ -15,6 +15,9 @@ export const STAGES = [
 ] as const;
 export type StageKey = (typeof STAGES)[number]["key"];
 
+/** The stages Affiliate Data shows as its strip: what happens after the sample arrives. The earlier stages (suggested, requested, on the way) belong to Outreach. */
+export const STRIP_STAGES: StageKey[] = ["notposted", "nosale", "selling", "star", "quiet"];
+
 /** Stages where a sample was sent and has not turned into sales: money is already spent here. */
 export const UNPRODUCTIVE: StageKey[] = ["notposted", "nosale"];
 
