@@ -68,23 +68,3 @@ export function explainChange(now: Levers, before: Levers): { total: number; eff
     ],
   };
 }
-
-const rmK = (n: number) => { const a = Math.abs(n); return `RM ${a >= 1000 ? `${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k` : Math.round(a)}`; };
-const WORDS: Record<Effect["key"], { up: string; down: string }> = {
-  sellers: { up: "more creators sold", down: "fewer creators sold" },
-  posts: { up: "creators posted more videos", down: "creators posted fewer videos" },
-  perPost: { up: "each video sold more", down: "each video sold less" },
-};
-/** The change in sales, said in one or two plain sentences. Small steps (under 3% of last period's sales) are left out. */
-export function plainWords(change: { total: number; effects: Effect[] }, before: number): string {
-  const flat = before > 0 && Math.abs(change.total) / before < 0.02;
-  const lead = flat ? `Sales stayed about the same (${change.total < 0 ? "−" : "+"}${rmK(change.total)}).` : change.total > 0 ? `Sales rose by ${rmK(change.total)}.` : `Sales fell by ${rmK(change.total)}.`;
-  const big = change.effects.filter((e) => before <= 0 || Math.abs(e.effect) / before >= 0.03);
-  const part = (e: Effect) => `${e.effect >= 0 ? WORDS[e.key].up : WORDS[e.key].down} (${e.effect >= 0 ? "+" : "−"}${rmK(e.effect)})`;
-  const ups = big.filter((e) => e.effect > 0).sort((a, b) => b.effect - a.effect).map(part), downs = big.filter((e) => e.effect < 0).sort((a, b) => a.effect - b.effect).map(part);
-  let why = ups.length && downs.length ? `${ups.join(" and ")}, but ${downs.join(" and ")}` : ups.length ? ups.join(" and ") : downs.join(" and ");
-  why = why ? why.charAt(0).toUpperCase() + why.slice(1) + "." : "";
-  const posts = change.effects.find((e) => e.key === "posts"), per = change.effects.find((e) => e.key === "perPost");
-  const older = posts && per && posts.effect < 0 && per.effect > 0 ? " Older videos are still selling, so each video looks stronger while fewer new ones are posted. If posting stays low and the old videos fade, sales will fall." : "";
-  return `${lead} ${why}${older}`.trim();
-}

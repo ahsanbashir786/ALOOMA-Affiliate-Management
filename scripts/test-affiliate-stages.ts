@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { explainChange, stageOf, daysInStage, plainWords } from "@/lib/affiliate/stages";
+import { explainChange, stageOf, daysInStage } from "@/lib/affiliate/stages";
 
 const eff = explainChange({ sellers: 120, posts: 600, sales: 60000 }, { sellers: 100, posts: 450, sales: 50000 })!;
 assert.ok(Math.abs(eff.effects.reduce((n, e) => n + e.effect, 0) - eff.total) < 1e-6, "effects add up to the change");
@@ -22,14 +22,4 @@ assert.equal(stageOf(row([line("Steady", 100)])), "selling");
 assert.equal(stageOf(row([line("Winner", 900), line("Silent")])), "star", "furthest stage wins");
 assert.equal(daysInStage(row([line("Silent", 0, "2026-10-01")]), "notposted", "2026-11-17"), 47);
 assert.equal(daysInStage(row([line("Quiet")], { lastSaleOn: "2026-10-18" }, 5), "quiet", "2026-11-17"), 30);
-const yours = explainChange({ sellers: 599, posts: 479, sales: 168408 }, { sellers: 549, posts: 714, sales: 168638 })!;
-const words = plainWords(yours, 168638);
-assert.match(words, /^Sales stayed about the same \(−RM 230\)\./);
-assert.match(words, /Each video sold more \(\+RM \d+k\) and more creators sold \(\+RM \d+k\), but creators posted fewer videos \(−RM \d+k\)\./);
-assert.match(words, /Older videos are still selling/);
-assert.equal(yours.effects[0].label, "Active Creators"); assert.equal(yours.effects[1].label, "Videos Per Creator");
-const rise = plainWords(explainChange({ sellers: 120, posts: 600, sales: 60000 }, { sellers: 100, posts: 450, sales: 50000 })!, 50000);
-assert.match(rise, /^Sales rose by RM 10k\./); assert.doesNotMatch(rise, /Older videos/);
-const fall = plainWords(explainChange({ sellers: 80, posts: 450, sales: 40000 }, { sellers: 100, posts: 450, sales: 50000 })!, 50000);
-assert.match(fall, /^Sales fell by RM 10k\./); assert.match(fall, /fewer creators sold \(−RM/);
 console.log("affiliate stages: all passed");

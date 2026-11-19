@@ -3,35 +3,23 @@ import Link from "next/link";
 import { ArrowRight, Users } from "lucide-react";
 import { gate } from "@/lib/gate";
 import { hasSyncedData } from "@/lib/creators/load";
-import { getSuggestedHint, loadCommand } from "@/lib/affiliate/command";
+import { loadDashboard } from "@/lib/affiliate/dashboard";
 import { parseRange } from "@/lib/creators/params";
-import { plainWords, type StageKey } from "@/lib/affiliate/stages";
-import { fmtDayLabel, todayKL } from "@/lib/time";
+import type { StageKey } from "@/lib/affiliate/stages";
+import { fmtDayLabel, fmtFullDay, todayKL } from "@/lib/time";
 import { one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
-import { Waterfall } from "@/components/affiliate/waterfall";
 import { DatesPicker } from "@/components/ui/range-picker";
+import { AgeStack, Funnel, KpiCard, SalesVideosChart, type FunnelRow } from "@/components/affiliate/charts";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Affiliate Command" };
 
-const pctChange = (now: number, before: number) => (before > 0 ? Math.round((now / before - 1) * 100) : null);
-const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "");
-const TONE: Record<StageKey | "suggested", "neutral" | "brand" | "warn" | "good" | "critical"> = { suggested: "brand", found: "neutral", requested: "brand", way: "neutral", notposted: "critical", nosale: "warn", selling: "good", star: "good", quiet: "warn" };
-
-function Lever({ label, now, before, fmt, help }: { label: string; now: number; before: number; fmt: (n: number) => string; help: string }) {
-  const p = pctChange(now, before);
-  return (
-    <div className="rounded-2xl border border-line bg-surface px-4 py-3.5" title={help}>
-      <p className="text-[13px] font-medium text-ink-3">{label}</p>
-      <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-        <span className="tnum text-[26px] leading-tight font-semibold tracking-tight text-ink">{fmt(now)}</span>
-        {p != null && p !== 0 && <span className={cn("tnum text-[12.5px] font-semibold", p > 0 ? "text-good" : "text-critical")}>{p > 0 ? "▲" : "▼"} {Math.abs(p)}%</span>}
-      </p>
-      <p className="text-[12.5px] text-ink-3">before: {fmt(before)}</p>
-    </div>
-  );
-}
+const STATUS = {
+  good: { text: "Good", cls: "bg-good-soft text-good", dot: "bg-good" },
+  watch: { text: "Watch", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
+  problem: { text: "Problem", cls: "bg-critical-soft text-critical", dot: "bg-critical" },
+} as const;
 
 export default async function CommandPage({ searchParams }: { searchParams: Promise<SP> }) {
   const { denied } = await gate("creators", "Affiliate Command");
@@ -46,66 +34,72 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
   }
   const sp = Object.fromEntries(Object.entries(await searchParams).map(([k, v]) => [k, one(v)]));
   const range = parseRange(sp);
-  const [c, hint] = await Promise.all([loadCommand(range), getSuggestedHint()]);
-  if (!c) return null;
-  const { now, before } = c.levers;
-  const stage = new Map(c.stages.map((s) => [s.key, s]));
-  const g = c.guard;
-  const n = (k: StageKey) => stage.get(k)!;
-  const days = (k: StageKey) => (n(k).avgDays != null ? `${n(k).avgDays} days on average since the sample` : "");
-  const journey: { key: StageKey | "suggested"; label: string; count: number | null; href: string; help: string; big?: string; sub: string }[] = [
-    { key: "suggested", label: "Suggested To Invite", count: hint ? hint.eligible : null, href: "/affiliate/outreach", help: "New creators from TikTok's Creator Marketplace that meet your rules (level 5 or higher, your categories), including creators who never asked for a sample.", sub: hint ? `meet your rules${hint.own ? ` · plus ${hint.own} of your own for more samples` : ""}` : "Open Outreach to load TikTok's list" },
-    { key: "requested", label: "Sample Requested", count: n("requested").creators, href: "/affiliate/outreach?stage=requested", help: "Asked for a sample and waiting for your decision.", sub: "waiting for your decision" },
-    { key: "way", label: "Sample On The Way", count: n("way").creators, href: "/affiliate/outreach?stage=shipped", help: "Approved and not delivered yet.", sub: n("way").avgDays != null ? `${n("way").avgDays} days on average since it was sent` : "on the way" },
-    { key: "notposted", label: "Delivered, Not Posted", count: n("notposted").creators, href: "/creators?stage=notposted", help: "The sample arrived, the posting window passed, nothing posted and no sales.", sub: days("notposted") || "nothing posted yet" },
-    { key: "nosale", label: "Posted, No Sale", count: n("nosale").creators, href: "/creators?stage=nosale", help: "Posted for the sample but no sales yet.", sub: days("nosale") || "no sales yet" },
-    { key: "selling", label: "Selling", count: n("selling").creators, href: "/creators?stage=selling", help: "Sold in the last 28 days.", big: n("selling").sales28 > 0 ? `RM ${fmtCompact(n("selling").sales28)}` : undefined, sub: "sales in the last 28 days" },
-    { key: "star", label: "Star", count: n("star").creators, href: "/creators?stage=star", help: "Among the top sellers of the last 28 days.", big: n("star").sales28 > 0 ? `RM ${fmtCompact(n("star").sales28)}` : undefined, sub: "sales in the last 28 days" },
-    { key: "quiet", label: "Went Quiet", count: n("quiet").creators, href: "/creators?stage=quiet", help: "Sold before, nothing in the last 28 days.", sub: n("quiet").avgDays != null ? `${n("quiet").avgDays} days since the last sale, on average` : "no sales in the last 28 days" },
+  const d = await loadDashboard(range);
+  if (!d) return null;
+  const { now, before, weeks, window: w, guard: g, hint } = d;
+  const series = (f: (x: (typeof weeks)[number]) => number) => weeks.map(f);
+  const st = (k: StageKey) => d.stages[k];
+  const funnel: FunnelRow[] = [
+    { key: "suggested", label: "Suggested To Invite", count: hint ? hint.eligible : null, href: "/affiliate/outreach", tone: "brand", help: "New creators from TikTok's Creator Marketplace that meet your rules (level 5 or higher, your categories), including creators who never asked for a sample.", sub: hint ? (hint.own ? `+${hint.own} of yours for more samples` : "meet your rules") : "open Outreach to load" },
+    { key: "requested", label: "Sample Requested", count: st("requested").creators, href: "/affiliate/outreach?stage=requested", tone: "brand", help: "Asked for a sample and waiting for your decision.", sub: "waiting for you" },
+    { key: "way", label: "Sample On The Way", count: st("way").creators, href: "/affiliate/outreach?stage=shipped", tone: "neutral", help: "Approved and not delivered yet.", sub: st("way").avgDays != null ? `${st("way").avgDays} days on average` : "" },
+    { key: "notposted", label: "Delivered, Not Posted", count: st("notposted").creators, href: "/creators?stage=notposted", tone: "critical", help: "The sample arrived, the posting window passed, nothing posted and no sales.", sub: st("notposted").avgDays != null ? `${st("notposted").avgDays} days on average` : "" },
+    { key: "nosale", label: "Posted, No Sale", count: st("nosale").creators, href: "/creators?stage=nosale", tone: "warn", help: "Posted for the sample but no sales yet.", sub: st("nosale").avgDays != null ? `${st("nosale").avgDays} days on average` : "" },
+    { key: "selling", label: "Selling", count: st("selling").creators, href: "/creators?stage=selling", tone: "good", help: "Sold in the last 28 days.", sub: st("selling").sales28 > 0 ? `RM ${fmtCompact(st("selling").sales28)} in 28 days` : "" },
+    { key: "star", label: "Star", count: st("star").creators, href: "/creators?stage=star", tone: "good", help: "Among the top sellers of the last 28 days.", sub: st("star").sales28 > 0 ? `RM ${fmtCompact(st("star").sales28)} in 28 days` : "" },
+    { key: "quiet", label: "Went Quiet", count: st("quiet").creators, href: "/creators?stage=quiet", tone: "warn", help: "Sold before, nothing in the last 28 days.", sub: st("quiet").avgDays != null ? `${st("quiet").avgDays} days since last sale` : "" },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Affiliate Command"
-        description={`Affiliate sales come from three things: how many creators made a sale (Active Creators), how many videos and LIVE sessions each one posts (Videos Per Creator), and how much each video sells (Sales Per Video). This screen shows which of them changed your sales. Dates: ${fmtDayLabel(c.from)} – ${fmtDayLabel(c.to)} (${c.days} days), compared with the ${c.days} days before. The creator stages and Sample Status below are as of today.`}
+        description="How your affiliate sales are doing, why, and where to act. Charts show the last 12 weeks; the numbers and health checks use the dates you choose, compared with the same number of days just before. Creator stages and Sample Status are as of today."
         actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
       />
+      <p className="-mt-3 text-[13px] text-ink-3" data-testid="date-line">
+        <b className="font-semibold text-ink-2">{fmtDayLabel(w.start)} – {fmtFullDay(w.end)}</b> · {w.days} day{w.days === 1 ? "" : "s"}, compared with {fmtDayLabel(w.prevStart)} – {fmtFullDay(w.prevEnd)}
+        {w.moved && <span> · your dates reach past the latest data ({fmtFullDay(w.end)}), so the {w.days} days ending then are shown</span>}
+      </p>
 
-      <Card data-testid="goal">
-        <div className="px-5 py-4">
-          <p className="text-[13px] font-medium text-ink-3">Affiliate Sales, {c.days} Days</p>
-          <p className="mt-0.5 flex flex-wrap items-baseline gap-x-3">
-            <span className="tnum text-[30px] leading-tight font-semibold tracking-tight text-ink">{fmtRM(now.sales)}</span>
-            {before.sales > 0 && now.sales !== before.sales && <span className={cn("tnum text-[14px] font-semibold", now.sales > before.sales ? "text-good" : "text-critical")}>{now.sales > before.sales ? "▲" : "▼"} {Math.abs(Math.round((now.sales / before.sales - 1) * 100))}% ({sign(now.sales - before.sales)}RM {Math.abs(Math.round(now.sales - before.sales)).toLocaleString("en-MY")})</span>}
-          </p>
-          <p className="text-[13px] text-ink-3">Last period ({c.days} days before): {fmtRM(before.sales)}</p>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="kpis">
+        <KpiCard testId="kpi-sales" label="Affiliate Sales" value={fmtRM(now.sales)} now={now.sales} before={before.sales} values={series((x) => x.sales)} money />
+        <KpiCard testId="kpi-creators" label="Active Creators" value={now.creators.toLocaleString("en-MY")} now={now.creators} before={before.creators} values={series((x) => x.creators)} />
+        <KpiCard testId="kpi-videos" label="New Videos Posted" value={now.videos.toLocaleString("en-MY")} now={now.videos} before={before.videos} values={series((x) => x.videos)} />
+        <KpiCard testId="kpi-perVideo" label="Sales Per Video" value={fmtRM(now.videos ? now.sales / now.videos : 0)} now={now.videos ? now.sales / now.videos : 0} before={before.videos ? before.sales / before.videos : 0} values={series((x) => (x.videos ? x.sales / x.videos : 0))} money />
+      </div>
+
+      <Card>
+        <CardHeader title="Sales And New Videos, Week By Week" description="The line is sales each week. The bars are the videos and LIVE sessions creators posted that week. If the bars shrink while the line stays up, sales are living off older videos." />
+        <div className="px-5 pb-5"><SalesVideosChart weeks={weeks} shaded={Math.min(12, Math.ceil(w.days / 7))} /></div>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="Where Sales Come From" description="Each bar is one week of sales, split by how old the video was when it sold. A growing dark or orange part means sales lean on old videos. Same ages as Product Analysis." />
+          <div className="px-5 pb-5"><AgeStack weeks={weeks} /></div>
+        </Card>
+        <Card>
+          <CardHeader title="Creators By Stage" description="From suggested to star. Click a stage to open the creators: the first three go to Outreach, the rest to Affiliate Data. Bars use a square-root scale so small stages stay visible." action={<Link href="/creators" className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand hover:underline">Open Affiliate Data <ArrowRight className="size-3.5" /></Link>} />
+          <div className="px-3 pb-4"><Funnel rows={funnel} /></div>
+        </Card>
+      </div>
+
+      <Card data-testid="health">
+        <div className="px-5 pt-4 pb-3"><p className="text-[13px] font-medium text-ink-3">Health Check</p><p className="mt-0.5 text-[17px] font-semibold tracking-tight text-ink" data-testid="headline">{d.headline}</p></div>
+        <div className="grid grid-cols-1 gap-3 px-5 pb-5 md:grid-cols-2 xl:grid-cols-4">
+          {d.checks.map((c) => (
+            <div key={c.key} className="flex flex-col rounded-xl border border-line px-4 py-3.5" data-testid={`check-${c.key}`} data-status={c.status}>
+              <p className="flex items-center justify-between gap-2"><span className="text-[13.5px] font-semibold text-ink">{c.question}</span><span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-semibold", STATUS[c.status].cls)}><span className={cn("size-1.5 rounded-full", STATUS[c.status].dot)} />{STATUS[c.status].text}</span></p>
+              <p className="mt-1.5 flex-1 text-[13px] leading-snug text-ink-2">{c.answer}</p>
+              {c.button && <Link href={c.button.href} className="mt-3 inline-flex h-8 items-center justify-center self-start rounded-full border border-brand bg-brand/10 px-3 text-[13px] font-semibold text-brand hover:bg-brand hover:text-white">{c.button.label}</Link>}
+            </div>
+          ))}
         </div>
       </Card>
 
-      <section aria-label="Why sales changed" className="space-y-3">
-        <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">Why Sales Changed</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="levers">
-          <Lever label="Active Creators" now={now.sellers} before={before.sellers} fmt={(n) => n.toLocaleString("en-MY")} help="Creators who had sales in these dates." />
-          <Lever label="Videos Per Creator" now={now.sellers ? now.posts / now.sellers : 0} before={before.sellers ? before.posts / before.sellers : 0} fmt={(n) => n.toFixed(2)} help="Videos and LIVE sessions posted in these dates by each creator who sold." />
-          <Lever label="Sales Per Video" now={now.posts ? now.sales / now.posts : 0} before={before.posts ? before.sales / before.posts : 0} fmt={(n) => fmtRM(n)} help="Sales divided by videos and LIVE sessions posted: how well each one sells." />
-        </div>
-        <Card>
-          <CardHeader title="From Last Period To This Period" description="Starts with last period's sales and ends with this period's. The three steps in between show what added or lost sales. They add up exactly to the change. Sales that come from older videos count in Sales Per Video." />
-          <div className="px-5 pb-5">
-            {c.change ? (
-              <>
-                <Waterfall startLabel="Last Period" endLabel="This Period" start={before.sales} end={now.sales} steps={c.change.effects.map((e) => ({ label: e.label, effect: e.effect, detail: `${e.key === "perPost" ? fmtRM(e.from) : e.from.toLocaleString("en-MY", { maximumFractionDigits: 2 })} → ${e.key === "perPost" ? fmtRM(e.to) : e.to.toLocaleString("en-MY", { maximumFractionDigits: 2 })}` }))} />
-                <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink" data-testid="chart-words">{plainWords(c.change, before.sales)}</p>
-                <p className="mt-3 border-t border-line pt-3 text-[13.5px] text-ink-2">Total change in sales: <b className={c.change.total >= 0 ? "text-good" : "text-critical"}>{sign(c.change.total)}RM {Math.abs(Math.round(c.change.total)).toLocaleString("en-MY")}</b>. Biggest mover: <b>{[...c.change.effects].sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect))[0].label}</b>.</p>
-              </>
-            ) : <p className="text-[13.5px] text-ink-3">Not enough earlier data to compare yet.</p>}
-          </div>
-        </Card>
-      </section>
-
       <Card data-testid="guard" className={cn(g.high && "border-warn/60")}>
-        <CardHeader title="Sample Status" description="Samples already sent that have not turned into sales. Fix these before paying for new creators: the shipping and product are already spent. Counts are creator-and-product pairs, as of today." action={g.high ? <Badge tone="warn">Chase Idle Samples First</Badge> : <Badge tone="good">Healthy</Badge>} />
+        <CardHeader title="Sample Status" description="Samples already sent that are not paying off. Chase these before paying for new creators: the shipping and product are already spent. Counts are creator-and-product pairs, as of today. Click a number to see the creators." action={g.high ? <Badge tone="warn">Chase Idle Samples First</Badge> : <Badge tone="good">Healthy</Badge>} />
         <div className="grid grid-cols-2 gap-3 px-5 pb-5 lg:grid-cols-4">
           {[
             { n: g.notPosted, label: "Delivered, Not Posted", to: "/creators?stage=notposted" },
@@ -119,24 +113,7 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
             </Link>
           ))}
         </div>
-        <p className="px-5 pb-4 text-[13px] text-ink-3">{g.creators.toLocaleString("en-MY")} creators hold samples that are not selling now (not posted, no sale, or sold once and went quiet).</p>
       </Card>
-
-      <section aria-label="Creator journey" className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-ink">Creator Journey</h2>
-          <Link href="/creators" className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand hover:underline">Open Affiliate Data <ArrowRight className="size-3.5" /></Link>
-        </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="journey">
-          {journey.map((j) => (
-            <Link key={j.key} href={j.href} title={j.help} data-stage={j.key} className="rounded-2xl border border-line bg-surface px-4 py-3.5 transition-colors hover:bg-surface-2">
-              <div className="flex items-center justify-between gap-2"><p className="text-[13px] font-medium text-ink-3">{j.label}</p><Badge tone={TONE[j.key]}>{j.count == null ? "–" : j.count.toLocaleString("en-MY")}</Badge></div>
-              {j.big && <p className="tnum mt-1 text-[18px] font-semibold text-ink">{j.big}</p>}
-              <p className={cn("text-[12.5px] text-ink-3", !j.big && "mt-1")}>{j.sub}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

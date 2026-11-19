@@ -19,33 +19,36 @@ async function login(p, email) {
 
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
   ok(/Affiliate Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
-  const lev = await p.getByTestId("levers").innerText();
-  ok(/Active Creators/.test(lev) && /Videos Per Creator/.test(lev) && /Sales Per Video/.test(lev) && !/Seller/.test(lev), "command: the three things behind sales use creator wording (no 'seller')");
-  ok(/Affiliate Sales, \d+ Days/.test(await p.getByTestId("goal").innerText()) && /Last period/.test(await p.getByTestId("goal").innerText()) && !/Goal/i.test(await p.getByTestId("goal").innerText()), "command: sales are shown against last period, with no goal");
-  const wf = await p.getByTestId("waterfall").count() ? (await p.getByTestId("waterfall").innerText()) : "";
-  ok(wf === "" || (/Last Period/.test(wf) && /This Period/.test(wf) && /Active Creators/.test(wf) && /Sales Per Video/.test(wf)), "command: the waterfall runs from last period to this period through the three steps");
-  ok(/Delivered, Not Posted/.test(await p.getByTestId("guard").innerText()) && /Requests Waiting/.test(await p.getByTestId("guard").innerText()), "command: the sample guard counts unproductive samples");
-  const jr = await p.getByTestId("journey").innerText();
-  ok(["Suggested To Invite", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((s) => jr.includes(s)), "command: all eight journey stages are shown");
+  const kp = await p.getByTestId("kpis").innerText();
+  ok(["Affiliate Sales", "Active Creators", "New Videos Posted", "Sales Per Video"].every((x) => kp.includes(x)) && !/Seller/.test(kp), "command: four headline cards with creator wording (no 'seller')");
+  ok((await p.getByTestId("kpis").locator("svg").count()) === 4, "command: each headline card has a trend line");
+  const sv = p.getByTestId("sales-videos-chart");
+  ok((await sv.count()) === 1 && (await sv.locator("rect").count()) >= 12 && (await sv.locator("path").count()) >= 2, "command: the weekly sales line and new-video bars are drawn");
+  ok((await p.getByTestId("age-stack").locator("rect").count()) > 0 && /New Videos|Very Old Videos/.test(await p.getByTestId("age-stack").innerText()), "command: sales by video age are drawn, with a legend");
+  const fn = await p.getByTestId("funnel").innerText();
+  ok(["Suggested To Invite", "Sample Requested", "Sample On The Way", "Delivered, Not Posted", "Posted, No Sale", "Selling", "Star", "Went Quiet"].every((x) => fn.includes(x)), "command: all eight creator stages are in the funnel");
+  const hrefs = await p.getByTestId("funnel").locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+  ok(hrefs.filter((h) => /\/affiliate\/outreach/.test(h)).length === 3 && hrefs.filter((h) => /\/creators\?stage=/.test(h)).length === 5, `command: three stages open Outreach and five open Affiliate Data`);
+  const checks = await p.locator("[data-testid^=check-]").evaluateAll((as) => as.map((a) => [a.getAttribute("data-testid"), a.getAttribute("data-status")]));
+  ok(checks.length === 4 && checks.every(([, st]) => ["good", "watch", "problem"].includes(st)), `command: four health checks, each Good, Watch or Problem (${checks.map((c) => c.join("=")).join(", ")})`);
+  ok((await p.getByTestId("headline").innerText()).trim().length > 15, "command: one headline sentence sums the checks up");
+  const btns = await p.getByTestId("health").locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+  ok(btns.every((h) => /^\/affiliate\/(actions|content)/.test(h)), "command: every health-check button goes to Actions or Content");
+  ok(/Delivered, Not Posted/.test(await p.getByTestId("guard").innerText()) && /Requests Waiting/.test(await p.getByTestId("guard").innerText()) && !/creators hold samples/.test(await p.getByTestId("guard").innerText()), "command: Sample Status shows the groups, without the confusing sentence");
+  const main = await p.locator("main").innerText();
+  ok(!/Why Sales Changed|Waterfall|Biggest mover|Total change|Set Goal|Goal For|scale does not start/i.test(main), "command: the formula chart, goal and explanation lines are gone");
+  ok(!/Synced .* from TikTok Shop/.test(main), "command: no sync-time line (Data Sync shows that)");
+  ok((await p.locator("button", { hasText: "Last 28 Days" }).count()) >= 1, "command: a date picker is there");
   const active = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(active.length === 1 && /Affiliate Command/.test(active[0]), `menu: only Affiliate Command is lit on this screen (${active.join("|")})`);
-
-  ok(!/Synced .* from TikTok Shop/.test(await p.locator("main").innerText()), "command: no sync-time line (Data Sync shows that)");
-  ok((await p.locator("button", { hasText: "Last 28 Days" }).count()) >= 1, "command: a date picker is there");
-  ok((await p.getByText("Set Goal").count()) === 0, "command: there is no goal to set");
-  ok((await p.getByTestId("chart-words").count()) === 0 || /^Sales (stayed about the same|rose|fell)/.test((await p.getByTestId("chart-words").innerText()).trim()), "command: a plain sentence under the chart says what happened");
+  // chosen dates: "Last 7 days" ending today must still be 7 days of real data
+  const iso = (d) => d.toISOString().slice(0, 10); const td = new Date(); const from7 = new Date(td.getTime() - 6 * 86400000);
+  await p.goto(BASE + `/affiliate?from=${iso(from7)}&to=${iso(td)}`, { waitUntil: "networkidle" });
+  ok(/7 days, compared with/.test(await p.getByTestId("date-line").innerText()), `command: choosing the last 7 days shows 7 days, not 6 (${(await p.getByTestId("date-line").innerText()).slice(0, 80)})`);
 
   // old Lifecycle links still work: they land on Affiliate Data
   await p.goto(BASE + "/affiliate/lifecycle?stage=star", { waitUntil: "networkidle" });
   ok(/\/creators\?stage=star/.test(p.url()), "lifecycle moved: an old link lands on the matching stage in Affiliate Data");
-  // command: journey cards go to Outreach (early stages) or Affiliate Data (later stages); wording and goal line
-  await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
-  const hrefs = await p.getByTestId("journey").locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
-  ok(hrefs.filter((h) => /\/affiliate\/outreach/.test(h)).length === 3 && hrefs.filter((h) => /\/creators\?stage=/.test(h)).length === 5, `command: three journey cards go to Outreach and five to Affiliate Data (${hrefs.length} cards)`);
-  const main = await p.locator("main").innerText();
-  ok(/Sample Status/.test(main) && /Sample Status/.test(main) && !/Fix (Old|Sent) Samples/i.test(main) && !/have not sold yet/.test(main) && !/scale does not start at zero/i.test(main), "command: wording fixed (Sample Status, no 'old samples', no scale note)");
-  const cardTxt = await p.getByTestId("journey").innerText();
-  ok(!/sales, 28 days/.test(cardTxt), "command: early stages no longer say 'sales, 28 days'");
 
   // actions: one next action per creator; contacting one moves it to "waiting", and the Team screen shows it at once
   const num = async (label) => Number((await p.locator("[data-testid=action-kpis] > div", { hasText: label }).first().locator("p").nth(1).innerText()).replace(/\D/g, "") || 0);
@@ -128,7 +131,7 @@ async function login(p, email) {
 
   // affiliate data: the stage strip (the stages after the sample arrives), days in stage and a stuck-longest-first sort; nothing was removed
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
-  const cmdCounts = await p.getByTestId("journey").locator("a").evaluateAll((as) => Object.fromEntries(as.map((a) => [a.getAttribute("data-stage"), Number((a.querySelector("span")?.textContent ?? "").replace(/\D/g, "") || NaN)])));
+  const cmdCounts = await p.getByTestId("funnel").locator("a").evaluateAll((as) => Object.fromEntries(as.map((a) => [a.getAttribute("data-stage"), Number((a.querySelector("span.tnum")?.textContent ?? "").replace(/\D/g, "") || NaN)])));
   await p.goto(BASE + "/creators", { waitUntil: "networkidle" });
   ok((await p.getByTestId("stage-strip").count()) === 1, "affiliate data: has the stage strip");
   const adCounts = await p.getByTestId("stage-strip").locator("a").evaluateAll((as) => Object.fromEntries(as.filter((a) => /\d$/.test(a.textContent)).map((a) => [new URL(a.href).searchParams.get("stage") ?? "all", Number(a.textContent.match(/(\d[\d,]*)$/)[1].replace(/,/g, ""))])));
