@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/primitives";
 const REASONS = [{ key: "NOT_MATCH", label: "Not a match for us" }, { key: "OUT_OF_STOCK", label: "Out of stock" }, { key: "OFFLINE", label: "Product is offline" }, { key: "OTHER", label: "Other reason" }];
 
 /** Approve or reject one waiting request. Both ask first, because TikTok cannot undo a decision. */
-export function ReviewButtons({ id, creator, product, enabled, canReview }: { id: string; creator: string; product: string; enabled: boolean; canReview: boolean }) {
+export function ReviewButtons({ id, creator, product, enabled, canReview, warn }: { id: string; creator: string; product: string; enabled: boolean; canReview: boolean; warn?: string }) {
   const [mode, setMode] = useState<null | "approve" | "reject">(null);
   const [reason, setReason] = useState("NOT_MATCH");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -22,6 +22,7 @@ export function ReviewButtons({ id, creator, product, enabled, canReview }: { id
       {mode === "approve" && (
         <div className="rounded-xl border border-brand/40 bg-brand/5 p-3 text-[13px]">
           <p>Approve <b>{product}</b> for <b>@{creator}</b>? TikTok will ship the sample. <b>This cannot be undone.</b></p>
+          {warn && <p className="mt-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 font-semibold text-warn" data-testid="approve-warn">Not eligible by your rules: {warn}</p>}
           <div className="mt-2 flex gap-2"><Button size="sm" disabled={pending} onClick={() => send("APPROVE")} data-testid="approve-yes">Yes, Approve</Button><Button size="sm" variant="secondary" disabled={pending} onClick={() => setMode(null)}>Cancel</Button></div>
         </div>
       )}

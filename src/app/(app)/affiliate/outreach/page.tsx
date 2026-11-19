@@ -14,6 +14,8 @@ import { Avatar } from "@/components/creators/avatar";
 import { ReviewButtons } from "@/components/affiliate/review-buttons";
 import { ReviewSwitch } from "@/components/affiliate/review-switch";
 import { FindCreators } from "@/components/affiliate/find-creators";
+import { CheckEligibility } from "@/components/affiliate/check-eligibility";
+import { STATUS_LABEL } from "@/lib/affiliate/eligibility";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Outreach" };
@@ -37,12 +39,20 @@ function Card1({ s, enabled, canReview }: { s: SampleCard; enabled: boolean; can
         <Badge tone={TONE[h.tone]}>{h.tone === "good" ? "Proven" : h.tone === "bad" ? "Check First" : h.tone === "warn" ? "Unproven" : "New"}</Badge>
         <p className="mt-1 text-[13px] leading-snug text-ink-2">{h.verdict}</p>
         <p className="tnum mt-1 text-[12px] text-ink-3">{h.samples} samples before · {h.selling} selling · lifetime sales {fmtRM(h.sales)}</p>
+        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]" data-testid="eligibility">
+          {s.verdict ? (
+            <>
+              <span className={cn("rounded-full px-2 py-0.5 font-semibold", s.verdict.status === "eligible" ? "bg-good-soft text-good" : s.verdict.status === "not" ? "bg-critical-soft text-critical" : "bg-surface-2 text-ink-2")}>{STATUS_LABEL[s.verdict.status]}</span>
+              <span className="text-ink-3">{(s.verdict.status === "eligible" ? s.verdict.good : s.verdict.reasons).slice(0, 3).join(" · ")}</span>
+            </>
+          ) : <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3">Not checked yet</span>}
+        </p>
       </div>
       <div>
         {s.stage === "requested" ? (
           <>
             {s.daysLeft != null && <p className={cn("mb-2 text-[12.5px] font-semibold", s.daysLeft <= 2 ? "text-critical" : "text-ink-3")}>{s.daysLeft <= 0 ? "Expires today" : `${s.daysLeft} days left to decide`}</p>}
-            <ReviewButtons id={s.id} creator={s.creator} product={s.product} enabled={enabled} canReview={canReview} />
+            <ReviewButtons id={s.id} creator={s.creator} product={s.product} enabled={enabled} canReview={canReview} warn={s.verdict?.status === "not" ? s.verdict.reasons.join("; ") : undefined} />
           </>
         ) : <p className="text-[13px] text-ink-3">{s.stage === "approved" ? "Waiting for the shipment." : s.stage === "shipped" ? "On the way to the creator." : s.stage === "delivered" ? "Delivered. Waiting for a post." : "Posted. Continues in Creator Lifecycle."}</p>}
       </div>
@@ -69,6 +79,9 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
   const isOwner = can(user, "settings") && !user.readOnly;
   const def = PIPELINE.find((p) => p.key === stage)!;
   const g = o.guard;
+  const fit = (stage === "requested" ? one(sp.fit) ?? "" : "") as "" | "eligible" | "not" | "unknown" | "unchecked";
+  const all = stage === "suggested" ? [] : o.samples[stage as Exclude<PipelineKey, "suggested">];
+  const list = fit ? all.filter((c) => (fit === "unchecked" ? !c.verdict : c.verdict?.status === fit)) : all;
 
   return (
     <div className="space-y-6">
@@ -102,6 +115,16 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
         </div>
       </Card>
 
+      <Card data-testid="rules">
+        <div className="px-5 py-3.5 text-[13.5px]">
+          <p className="font-semibold text-ink">Your Rules For Inviting Or Approving</p>
+          <p className="mt-1 text-ink-2">Creator level <b>{o.rules.level} or higher</b> and main categories in: <b>{o.rules.categories.join(", ")}</b>.</p>
+          {o.rules.error && <p className="mt-1 text-[12.5px] text-warn" data-testid="rules-error">Your category list could not be matched in TikTok: {o.rules.error}</p>}
+          {o.rules.missing.length > 0 && <p className="mt-1 text-[12.5px] text-warn">TikTok has no category called: {o.rules.missing.join(", ")}.</p>}
+          <p className="mt-1 text-[12px] text-ink-3">Anything else TikTok shows (recommended tag, promotion score, sellers&apos; rating, how often they post after a sample) only helps order the list; it never makes a creator eligible. Where TikTok does not show a level, the creator is marked Not Sure, not rejected.</p>
+        </div>
+      </Card>
+
       {stage === "suggested" ? (
         <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
           <Card data-testid="more-samples">
@@ -123,7 +146,7 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
           <Card data-testid="tiktok-card">
             <CardHeader title="From TikTok Affiliate Portal" description="TikTok's own Creator Marketplace, with data for the last 30 days. We do not make this list: it is what TikTok returns. Search by keyword or sales range." action={<a href="https://seller-my.tiktok.com/" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open TikTok Seller Center</a>} />
             <p className="px-5 pb-2 text-[12.5px] text-ink-3">From TikTok · new creators, not yet in your system</p>
-            {o.tiktok.ok ? <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} /> : (
+            {o.tiktok.ok ? <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} hidden={o.tiktok.hidden} /> : (
               <>
                 <p className="px-5 pb-3 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">TikTok&apos;s creator list is not available right now: {o.tiktok.error} You can also use TikTok&apos;s own recommended creators in Seller Center with the link above.</p>
                 {o.flags.market && <FindCreators initial={[]} fieldsSeen={[]} />}
@@ -133,9 +156,22 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
         </div>
       ) : (
         <Card>
-          <div className="border-b border-line px-5 py-3.5"><h2 className="text-[15px] font-semibold text-ink">{def.label}</h2><p className="text-[13px] text-ink-3">{def.help}</p></div>
-          {o.samples[stage as Exclude<PipelineKey, "suggested">].length === 0 ? <p className="px-5 py-10 text-center text-[14px] text-ink-3">Nobody is in this stage right now.</p> : (
-            <ul data-testid="stage-list">{o.samples[stage as Exclude<PipelineKey, "suggested">].map((s) => <Card1 key={s.id} s={s} enabled={o.flags.reviewOn && o.flags.write} canReview={canReview} />)}</ul>
+          <div className="space-y-3 border-b border-line px-5 py-3.5">
+            <div><h2 className="text-[15px] font-semibold text-ink">{def.label}</h2><p className="text-[13px] text-ink-3">{def.help}</p></div>
+            {stage === "requested" && (
+              <>
+                <CheckEligibility unchecked={o.unchecked} />
+                <nav aria-label="Eligibility" className="flex flex-wrap gap-2" data-testid="fit-filter">
+                  {([["", "All"], ["eligible", "Eligible"], ["not", "Not Eligible"], ["unknown", "Not Sure"], ["unchecked", "Not Checked"]] as const).map(([k, label]) => {
+                    const n = k === "" ? o.samples.requested.length : o.samples.requested.filter((c) => (k === "unchecked" ? !c.verdict : c.verdict?.status === k)).length;
+                    return <Link key={k || "all"} href={href("/affiliate/outreach", { stage: "requested", fit: k || undefined })} scroll={false} aria-current={fit === k ? "page" : undefined} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", fit === k ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>{label}<span className="tnum text-[12px] text-ink-3">{n}</span></Link>;
+                  })}
+                </nav>
+              </>
+            )}
+          </div>
+          {list.length === 0 ? <p className="px-5 py-10 text-center text-[14px] text-ink-3">Nobody is in this stage right now.</p> : (
+            <ul data-testid="stage-list">{list.map((s) => <Card1 key={s.id} s={s} enabled={o.flags.reviewOn && o.flags.write} canReview={canReview} />)}</ul>
           )}
         </Card>
       )}

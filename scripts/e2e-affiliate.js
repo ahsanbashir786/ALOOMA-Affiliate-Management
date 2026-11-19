@@ -126,7 +126,10 @@ async function login(p, email) {
   ok(/Off/.test(await p.getByTestId("review-status").innerText()) || /not granted|not connected/i.test(await p.getByTestId("review-status").innerText()), "outreach: approving and rejecting start switched off (or blocked)");
   ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 0 && /Your Own Affiliates/.test(await p.getByTestId("more-samples").innerText()) && /From TikTok Affiliate Portal/.test(await p.getByTestId("tiktok-card").innerText()), "outreach: own affiliates and TikTok are two separate sections, and waiting requests are not on the Suggested page");
   ok((await p.getByTestId("tiktok-unavailable").count()) === 1 || (await p.getByTestId("tiktok-creators").count()) === 1, "outreach: TikTok's list is shown, or says plainly why it is not available");
+  ok((await p.getByTestId("rules").count()) === 1 && /Creator level 5 or higher/.test(await p.getByTestId("rules").innerText()) && /Home Supplies/.test(await p.getByTestId("rules").innerText()) && /Muslim Fashion/.test(await p.getByTestId("rules").innerText()), "outreach: your rules (level 5 or higher and the six categories) are shown");
   ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
+  await p.goto(BASE + "/affiliate/outreach?stage=requested", { waitUntil: "networkidle" });
+  ok((await p.getByTestId("fit-filter").count()) === 1 && /Eligible/.test(await p.getByTestId("fit-filter").innerText()) && /Not Checked/.test(await p.getByTestId("fit-filter").innerText()), "outreach: waiting requests can be filtered by eligibility");
   for (const st of ["requested", "approved", "shipped", "delivered", "posted"]) {
     await p.goto(BASE + "/affiliate/outreach?stage=" + st, { waitUntil: "networkidle" });
     const body = await p.locator("main").innerText();

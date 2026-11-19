@@ -107,7 +107,7 @@ export function sampleRequest(v: R): Row {
   return {
     id: str(v.id),
     status: str(v.status),
-    creator_id: str(c.user_id),
+    creator_id: str(c.creator_open_id ?? c.user_id),
     creator: str(c.username),
     nickname: str(c.nickname),
     followers: int(c.follower_count),

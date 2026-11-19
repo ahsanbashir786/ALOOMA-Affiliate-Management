@@ -2225,6 +2225,28 @@ create table if not exists shopee_sync_runs (
 );
 create index if not exists shopee_sync_runs_started on shopee_sync_runs (started_at desc);
 
+-- 0043: creator profiles from TikTok's Creator Marketplace
+create table if not exists tt_creator_profiles (
+  open_id text primary key,
+  username text,
+  level int,
+  category_ids text[] not null default '{}',
+  followers bigint,
+  pps numeric,
+  rating numeric,
+  post_rate numeric,
+  sample_score numeric,
+  fulfilment_score numeric,
+  official_recommend boolean,
+  rising_star boolean,
+  fast_growing boolean,
+  blocked boolean,
+  has_collaborated boolean,
+  invited_90d boolean,
+  has_profile boolean not null default false,
+  checked_at timestamptz not null default now()
+);
+
 -- The only built-in role: Admin, with every screen. All other roles are created in the app.
 insert into roles (key, name, description, is_admin) values
   ('admin', 'Admin', 'The owner. Can open every screen, always.', true);

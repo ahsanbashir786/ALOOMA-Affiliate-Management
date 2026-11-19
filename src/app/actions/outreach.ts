@@ -6,7 +6,8 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { requirePermission, requireView } from "@/lib/auth";
 import { addEvent } from "@/lib/creators/workflow/events";
-import { outreachScopes, reviewEnabled, reviewSampleApplication, searchMarketplace, setReviewEnabled, type MarketResult } from "@/lib/tiktok/outreach";
+import { fetchCreatorProfile, outreachScopes, preferredCategories, reviewEnabled, reviewSampleApplication, saveProfile, searchMarketplace, setReviewEnabled } from "@/lib/tiktok/outreach";
+import { judgeCreators, type TikTokCreator } from "@/lib/affiliate/outreach-load";
 
 type R = { ok?: true; error?: string };
 const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown as Record<string, unknown>[];
@@ -42,12 +43,41 @@ export async function setOutreachReview(on: boolean): Promise<R> {
   return { ok: true };
 }
 
-/** Looks creators up in TikTok's Creator Marketplace. Reads only, so a read-only login may use it. */
-export async function findCreators(keyword: string, gmv: string[]): Promise<MarketResult> {
+export type FindResult = { ok: true; creators: TikTokCreator[]; hidden: number; fieldsSeen: string[] } | { ok: false; error: string };
+
+/** Looks creators up in TikTok's Creator Marketplace, in your categories, and applies your rules. Reads only, so a read-only login may use it. */
+export async function findCreators(keyword: string, gmv: string[]): Promise<FindResult> {
   await requireView("creators");
   const sc = await outreachScopes();
   if (!sc.connected || !sc.market) return { ok: false, error: "TikTok has not granted the creator search permission yet." };
-  const r = await searchMarketplace({ keyword: keyword.slice(0, 60), gmvRanges: gmv.slice(0, 4) });
-  if (!r.ok && /too many requests|rate limit/i.test(r.error)) return { ok: false, error: "TikTok is busy right now. Wait a minute and press Search TikTok again." };
-  return r;
+  const prefs = await preferredCategories();
+  const r = await searchMarketplace({ keyword: keyword.slice(0, 60), gmvRanges: gmv.slice(0, 4), categoryIds: prefs.ids, notInvited90d: true });
+  if (!r.ok) return { ok: false, error: /too many requests|rate limit/i.test(r.error) ? "TikTok is busy right now. Wait a minute and press Search TikTok again." : r.error };
+  return judgeCreators(r.creators, prefs, r.fieldsSeen);
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Asks TikTok for the level, categories and scores of the creators whose sample requests are waiting and not checked yet (or checked over a week ago).
+ * Fifteen at a time, one every half second, so the shared speed limit is not hit. Press again for the next fifteen.
+ */
+export async function checkEligibility(): Promise<{ ok?: true; checked: number; left: number; error?: string }> {
+  await requirePermission("creators");
+  const sc = await outreachScopes();
+  if (!sc.connected || !sc.market) return { checked: 0, left: 0, error: "TikTok has not granted the creator search permission yet." };
+  const need = async (limit: number) => (await q(sql`
+    select distinct r.creator_id as id from tt_sample_requests r
+    where r.is_approvable and r.creator_id is not null and (r.order_id is null or r.order_id ~ '^0*$')
+      and not exists (select 1 from tt_creator_profiles p where p.open_id = r.creator_id and p.checked_at > now() - interval '7 days') limit ${limit}`)).map((r) => String(r.id));
+  const ids = await need(15);
+  let checked = 0;
+  for (const id of ids) {
+    const r = await fetchCreatorProfile(id);
+    if (r.ok) { await saveProfile(id, r.profile); checked++; }
+    else if (r.busy) { return { checked, left: (await need(500)).length, error: "TikTok is busy right now. Wait a minute and press Check Eligibility again." }; }
+    else { await saveProfile(id, { username: null, followers: null, level: null, categoryIds: [], pps: null, rating: null, postRate: null, sampleScore: null, fulfilmentScore: null, officialRecommend: null, risingStar: null, blocked: null, invited90d: null, hasCollaborated: null, hasProfile: false }); checked++; }
+    await wait(450);
+  }
+  revalidatePath("/affiliate/outreach");
+  return { ok: true, checked, left: (await need(500)).length };
 }

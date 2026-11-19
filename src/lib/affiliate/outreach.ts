@@ -75,37 +75,64 @@ export function giveMoreSamples(rows: DirRow[], limit = 60): MoreSample[] {
 }
 
 // ───────── TikTok's Creator Marketplace answer ─────────
-export type MarketCreator = { id: string | null; username: string | null; nickname: string | null; followers: number | null; gmv: number | null; units: number | null; category: string | null; avgVideoViews: number | null; avgLiveViewers: number | null; region: string | null; avatar: string | null };
+export type MarketCreator = {
+  id: string | null; username: string | null; nickname: string | null; followers: number | null; gmv: number | null; units: number | null; category: string | null;
+  avgVideoViews: number | null; avgLiveViewers: number | null; region: string | null; avatar: string | null;
+  /** What TikTok says about the creator, for the eligibility rules (null = TikTok did not send it). */
+  level: number | null; categoryIds: string[]; pps: number | null; officialRecommend: boolean | null; risingStar: boolean | null; fastGrowing: boolean | null; blocked: boolean | null; hasCollaborated: boolean | null; invited90d: boolean | null;
+};
 const first = (o: Record<string, unknown>, keys: string[]) => { for (const k of keys) if (o[k] != null && o[k] !== "") return o[k]; return null; };
 const str = (v: unknown) => (v == null ? null : typeof v === "object" ? null : String(v));
 const num = (v: unknown): number | null => {
-  if (v == null) return null;
+  if (v == null || v === "") return null;
   if (typeof v === "object") { const o = v as Record<string, unknown>; return num(first(o, ["amount", "value", "total", "gmv"])); }
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
+const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
+const strList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => x != null && typeof x !== "object").map(String) : []);
+const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /** Reads whatever list of creators TikTok sent back, tolerating different field names; the field names seen are returned so a mismatch can be diagnosed. */
 export function readMarketCreators(data: unknown): { creators: MarketCreator[]; next: string | null; fieldsSeen: string[] } {
   const d = (data ?? {}) as Record<string, unknown>;
   const list = (Object.values(d).find((v) => Array.isArray(v) && v.length && typeof v[0] === "object") ?? []) as Record<string, unknown>[];
   const creators = list.map((c) => {
-    const base = ((c.creator_profile ?? c.basic_info ?? c.profile ?? c) as Record<string, unknown>) ?? c;
+    const prof = obj(c.creator_profile);
+    const base = (c.creator_profile && typeof c.creator_profile === "object" && (c.creator_profile as Record<string, unknown>).username ? prof : (obj(c.basic_info ?? c.profile).username ? obj(c.basic_info ?? c.profile) : c)) as Record<string, unknown>;
     const sales = ((c.sales_and_gmv ?? c.sales ?? c) as Record<string, unknown>) ?? c;
+    const ids = strList(c.category_ids);
     return {
-      id: str(first(c, ["creator_user_open_id", "user_open_id", "open_id", "user_id", "creator_id", "id"]) ?? first(base, ["creator_user_open_id", "user_open_id", "open_id", "user_id", "creator_id", "id"])),
+      id: str(first(c, ["creator_open_id", "creator_user_open_id", "user_open_id", "open_id", "user_id", "creator_id", "id"]) ?? first(base, ["creator_open_id", "creator_user_open_id", "user_open_id", "open_id", "user_id", "creator_id", "id"])),
       username: str(first(base, ["username", "user_name", "unique_id", "handle", "tiktok_username"])),
       nickname: str(first(base, ["nickname", "display_name", "name"])),
       followers: num(first(base, ["follower_count", "followers", "fans_count"]) ?? first(c, ["follower_count", "followers"])),
       gmv: num(first(sales, ["gmv", "gmv_30d", "total_gmv", "gmv_amount"])),
       units: num(first(sales, ["units_sold", "units_sold_30d", "items_sold", "sold_count"])),
-      category: str(first(base, ["category", "main_category", "category_name"])) ?? (Array.isArray(c.category_ids) && c.category_ids.length ? `category ${c.category_ids.slice(0, 2).join(", ")}` : null),
+      category: str(first(base, ["category", "main_category", "category_name"])) ?? (ids.length ? `category ${ids.slice(0, 2).join(", ")}` : null),
       avgVideoViews: num(first(c, ["avg_ec_video_view_count", "avg_video_views"])),
       avgLiveViewers: num(first(c, ["avg_ec_live_uv", "avg_live_viewers"])),
       region: str(first(c, ["selection_region", "region"])),
       avatar: (() => { const a = c.avatar as { url?: unknown } | string | undefined; const u = typeof a === "string" ? a : typeof a?.url === "string" ? a.url : null; return u && /^https:\/\//.test(u) ? u : null; })(),
+      level: num(prof.creator_level), categoryIds: ids, pps: num(prof.pps_score), officialRecommend: bool(prof.is_official_recommend), risingStar: bool(prof.is_rising_star), fastGrowing: bool(prof.is_fast_growing),
+      blocked: bool(prof.is_creator_blocked), hasCollaborated: bool(prof.has_collaborated), invited90d: bool(prof.has_invited_90d),
     };
   });
-  const fieldsSeen = list.length ? Object.keys(list[0]).slice(0, 30) : [];
+  const fieldsSeen = list.length ? [...new Set([...Object.keys(list[0]), ...Object.keys(obj(list[0].creator_profile)).map((k) => `creator_profile.${k}`)])].slice(0, 40) : [];
   return { creators, next: str(first(d, ["next_page_token", "next_token", "search_key"])), fieldsSeen };
+}
+
+export type CreatorProfile = {
+  username: string | null; followers: number | null; level: number | null; categoryIds: string[]; pps: number | null; rating: number | null; postRate: number | null; sampleScore: number | null; fulfilmentScore: number | null;
+  officialRecommend: boolean | null; risingStar: boolean | null; blocked: boolean | null; invited90d: boolean | null; hasCollaborated: boolean | null; hasProfile: boolean;
+};
+/** Reads TikTok's answer for one creator ("Get Marketplace Creator Performance"). */
+export function readCreatorProfile(data: unknown): CreatorProfile {
+  const c = obj(obj(data).creator);
+  const p = obj(c.creator_profile);
+  return {
+    username: str(c.username), followers: num(c.follower_count), level: num(p.creator_level), categoryIds: strList(c.category_ids), pps: num(c.pps) ?? num(p.pps_score), rating: num(c.rating), postRate: num(c.post_rate),
+    sampleScore: num(p.sample_score), fulfilmentScore: num(p.creator_fulfillment_score_90d), officialRecommend: bool(p.is_official_recommend), risingStar: bool(p.is_rising_star), blocked: bool(p.is_creator_blocked),
+    invited90d: bool(p.has_invited_90d), hasCollaborated: bool(p.has_collaborated), hasProfile: Object.keys(p).length > 0,
+  };
 }
