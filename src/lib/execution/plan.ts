@@ -146,6 +146,12 @@ export async function loadPlan(): Promise<PlanData> {
   };
 }
 
+/** How many product actions are still open (cheap, for the tab count on Actions). */
+export async function openTaskCount(): Promise<{ open: number; overdue: number }> {
+  const [r] = await rows<{ open: number; overdue: number }>(sql`select count(*)::int as open, count(*) filter (where due_on < ${todayKL()}::date)::int as overdue from ep_tasks where status in ('not_started', 'pending')`);
+  return { open: r?.open ?? 0, overdue: r?.overdue ?? 0 };
+}
+
 export type CreatorItem = { name: string; note: string; value: number; data: import("./rules").LineData; contactedAt: string | null; contactedBy: string | null; owner: string | null; phone: string | null };
 /** One page of the creators an action is about (searchable), loaded when the task is opened. */
 export async function listTaskCreators(taskId: string, o: { offset: number; limit: number; q: string; filter: "all" | "todo" | "done" }): Promise<{ items: CreatorItem[]; total: number; contacted: number }> {

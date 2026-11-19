@@ -53,6 +53,11 @@ async function login(p, email) {
 
   // actions: one next action per creator; contacting one moves it to "waiting", and the Team screen shows it at once
   const num = async (label) => Number((await p.locator("[data-testid=action-kpis] > div", { hasText: label }).first().locator("p").nth(1).innerText()).replace(/\D/g, "") || 0);
+  await p.goto(BASE + "/execution", { waitUntil: "networkidle" }); await p.waitForSelector("[data-testid=task-row]");
+  const planRows = await p.locator("[data-testid=task-row]").count();
+  await p.goto(BASE + "/affiliate/actions?tab=plan", { waitUntil: "networkidle" }); await p.waitForSelector("[data-testid=task-row]");
+  ok((await p.locator("[data-testid=task-row]").count()) === planRows && planRows > 0, `actions: the By Product tab shows the same ${planRows} plan rows as Execution Plan`);
+  ok((await p.getByTestId("actions-tabs").locator("a").count()) === 2, "actions: two tabs, By Creator and By Product");
   await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
   ok(/Actions/.test(await p.locator("h1").first().innerText()), "actions: page opens");
   const names = await p.locator("[data-testid=action-row] button[title='Open details']").allInnerTexts();

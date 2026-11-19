@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Check, Users } from "lucide-react";
+import { can } from "@/lib/auth";
 import { gate } from "@/lib/gate";
+import { loadPlan, openTaskCount, syncPlan } from "@/lib/execution/plan";
+import { ExecutionBoard } from "@/components/execution/board";
 import { hasSyncedData } from "@/lib/creators/load";
 import { loadQueue } from "@/lib/affiliate/command";
 import { LEVER_LABEL, WAIT_DAYS, type Item, type Lever } from "@/lib/affiliate/actions";
@@ -48,8 +51,26 @@ function Row({ i, period }: { i: Item; period: string }) {
   );
 }
 
+function Tabs({ tab, creators, plan }: { tab: "creators" | "plan"; creators: number; plan: { open: number; overdue: number } }) {
+  const items = [
+    { key: "creators", label: "By Creator", n: creators, sub: "one next step for each creator", href: "/affiliate/actions" },
+    { key: "plan", label: "By Product", n: plan.open, sub: plan.overdue ? `${plan.overdue} overdue` : "planned actions with owners", href: "/affiliate/actions?tab=plan" },
+  ] as const;
+  return (
+    <nav aria-label="Actions views" className="flex flex-wrap gap-3" data-testid="actions-tabs">
+      {items.map((t) => (
+        <Link key={t.key} href={t.href} aria-current={t.key === tab ? "page" : undefined} data-tab={t.key}
+          className={cn("min-w-[210px] rounded-2xl border px-4 py-2.5", t.key === tab ? "border-brand/40 bg-brand-soft" : "border-line bg-surface hover:bg-surface-2")}>
+          <p className={cn("text-[13.5px] font-semibold", t.key === tab ? "text-brand" : "text-ink")}>{t.label} <span className="tnum ml-1 text-[13px] font-medium text-ink-3">{t.n.toLocaleString("en-MY")}</span></p>
+          <p className="text-[12px] text-ink-3">{t.sub}</p>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export default async function ActionsPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { denied } = await gate("creators", "Actions");
+  const { user, denied } = await gate("creators", "Actions");
   if (denied) return denied;
   if (!(await hasSyncedData())) {
     return (
@@ -63,6 +84,19 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
   const data = await loadQueue();
   if (!data) return null;
   const { queue, guard } = data;
+  const planCount = await openTaskCount().catch(() => ({ open: 0, overdue: 0 }));
+  if (one(sp.tab) === "plan") {
+    const allowed = can(user, "execution");
+    let plan = allowed ? await loadPlan() : null;
+    if (plan && !plan.tasks.length) { try { await syncPlan(); plan = await loadPlan(); } catch (e) { console.error("Execution plan sync failed", e); } }
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Actions" description="Two views of the same work. By Creator is one next step for each creator. By Product is the plan the system writes from each product's numbers; your team assigns, does and ticks it off." />
+        <Tabs tab="plan" creators={queue.todo.length} plan={planCount} />
+        {plan ? <ExecutionBoard data={plan} me={user.id} meName={user.name} canManage canWork /> : <Card><EmptyState icon={<Users className="size-5" />} title="Product actions are locked for your role" description="Ask an owner to allow Execution Plan for your role." /></Card>}
+      </div>
+    );
+  }
   const view = (VIEWS.find((v) => v.key === one(sp.view))?.key ?? "todo") as (typeof VIEWS)[number]["key"];
   const lever = (["creators", "content", "quality"].includes(one(sp.lever) ?? "") ? one(sp.lever) : "") as Lever | "";
   const prod = one(sp.product) ?? "";
@@ -79,7 +113,8 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Actions" description="One next action for each creator, with the biggest possible sales first. Creators you have already contacted wait here for 14 days while we see whether it worked. Click the action to see a ready message and record what you did." />
+      <PageHeader title="Actions" description="Two views of the same work. By Creator is one next step for each creator, biggest possible sales first; creators you have contacted wait 14 days while we see whether it worked. Click the action for a ready message." />
+      <Tabs tab="creators" creators={queue.todo.length} plan={planCount} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="action-kpis">
         {[
