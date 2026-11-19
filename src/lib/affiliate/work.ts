@@ -44,6 +44,9 @@ async function efficiency(handler: Handler, left: number): Promise<Efficiency> {
     select to_char(d, 'YYYY-MM-DD') as day, sum(n)::int as n from (
       select ${kd("at")} as d, count(*) as n from staff_events where kind = 'contacted' and reverted_at is null and not synthetic and ${kd("at")} >= ${from}::date and (${uid}::uuid is null or user_id = ${uid}::uuid) group by 1
       union all
+      select ${kd("tc.contacted_at")} as d, count(*) as n from ep_task_creators tc where tc.contacted_at is not null and ${kd("tc.contacted_at")} >= ${from}::date and (${uid}::uuid is null or tc.contacted_by = ${uid}::uuid)
+        and not exists (select 1 from staff_events se where se.kind = 'contacted' and se.reverted_at is null and not se.synthetic and se.username = tc.username and ${kd("se.at")} = ${kd("tc.contacted_at")} and se.user_id is not distinct from tc.contacted_by) group by 1
+      union all
       select ${kd("created_at")} as d, count(*) as n from ep_events where kind = 'status' and text like 'Done%' and ${kd("created_at")} >= ${from}::date and (${uid}::uuid is null or user_id = ${uid}::uuid) group by 1
     ) x group by 1`);
   const by = new Map(r.map((x) => [x.day, x.n]));

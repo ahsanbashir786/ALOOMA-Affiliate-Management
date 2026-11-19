@@ -127,6 +127,23 @@ async function login(p, email) {
   ok((await p.getByTestId("team-log").innerText()).includes(who) && /Contacted/.test(await p.getByTestId("team-log").innerText()), "team: the contact is in the activity log at once");
   ok(/Test Owner/.test(await p.getByTestId("team-people").innerText()), "team: the person appears with their count");
   ok(/day \d+ of 14|Not yet|waiting/i.test(await p.getByTestId("team-log").innerText() + await p.getByTestId("team-kpis").innerText()), "team: the result is shown as still filling in");
+  // Team reads product actions too: a ticked creator and a Done action show up next to the creator contacts.
+  {
+    const db = require("postgres")(process.env.DATABASE_URL, { prepare: false, max: 1 });
+    const [u] = await db`select id from users where email = 'owner@test.local'`;
+    const [tc] = await db`select task_id, username from ep_task_creators where contacted_at is null order by task_id, rank limit 1`;
+    const [ev0] = await db`select count(*)::int as n from ep_events where kind = 'status' and text like 'Done%'`;
+    await db`update ep_task_creators set contacted_at = now(), contacted_by = ${u.id} where task_id = ${tc.task_id} and username = ${tc.username}`;
+    await db`insert into ep_events (task_id, user_id, kind, text) values (${tc.task_id}, ${u.id}, 'status', 'Done: e2e')`;
+    await p.goto(BASE + "/affiliate/team", { waitUntil: "networkidle" });
+    const logTxt = await p.getByTestId("team-log").innerText(), kp = await p.getByTestId("team-kpis").innerText(), ppl = await p.getByTestId("team-people").innerText();
+    ok(/Product Action Done/.test(logTxt) && /Product Action/.test(logTxt) && logTxt.includes(tc.username), "team: a ticked creator and a Done product action are both in the activity log");
+    ok(/Actions Done This Week/.test(kp) && /Actions Done/.test(ppl), "team: Actions Done is counted per person and for the week");
+    await db`update ep_task_creators set contacted_at = null, contacted_by = null where task_id = ${tc.task_id} and username = ${tc.username}`;
+    await db`delete from ep_events where kind = 'status' and text = 'Done: e2e'`;
+    await db.end();
+    void ev0;
+  }
   // undo: back to how it was
   await p.goto(BASE + "/affiliate/actions?view=waiting", { waitUntil: "networkidle" });
   await p.locator("[data-testid^=act-]").first().click(); await p.getByRole("button", { name: "Undo" }).first().click({ timeout: 8000 }).catch(() => {});

@@ -98,3 +98,7 @@ Tests: `scripts/test-affiliate-dashboard.ts`, `scripts/e2e-affiliate.js`.
 - **Today** (default) is one list: creator next steps, product actions (open Execution Plan tasks) and fading or stopped videos, biggest sales first. Overdue product actions come first. No daily cap: the whole list is the work.
 - **One handler.** An owner picks "Handled By" (setting `affiliate_default_owner`). Everything without its own owner counts as theirs. The strip shows Done Today, Last 7 Days, Daily Average (14 days) and Left To Do with the days to clear at that pace. "Done" = creators contacted + product actions marked Done, by that person.
 - **By Creator** and **By Product** keep every feature they had. Links with `lever`, `product` or `view` still open By Creator.
+
+## Team: one record (phase 5)
+
+Team and the Today strip count the same events: creators contacted from Actions (`staff_events`), creators ticked inside a product action (`ep_task_creators.contacted_at`, counted once if the same person contacted the same creator that day), and product actions marked Done (`ep_events`, status Done). Contacts of both kinds are judged 14 days later against creators nobody contacted. Old history is untouched.
