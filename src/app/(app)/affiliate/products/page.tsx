@@ -9,6 +9,7 @@ import { fewCreators, judgeProduct } from "@/lib/affiliate/product-levers";
 import { fmtDayLabel, fmtFullDay, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
+import { OpenProductButton } from "@/components/creators/open-panel-button";
 import { PeriodPicker } from "@/components/products/period-picker";
 import { Delta, HealthChip, Legend, MixBar, TagBadge } from "@/components/products/ui";
 import { Sparkline } from "@/components/viz/sparkline";
@@ -91,7 +92,7 @@ export default async function AffiliateProductsPage({ searchParams }: { searchPa
             return (
               <li key={p.key} data-testid="prod-row" className="grid grid-cols-1 gap-x-5 gap-y-3 border-b border-line px-5 py-4 last:border-b-0 lg:grid-cols-[minmax(200px,1.1fr)_minmax(250px,1.4fr)_minmax(230px,1.3fr)]">
                 <div>
-                  <p className="text-[15px] font-semibold text-ink">{p.name}</p>
+                  <p className="text-[15px] font-semibold text-ink"><OpenProductButton pkey={p.key} label={p.name} className="text-left hover:text-brand" /></p>
                   <p className="mt-1 flex flex-wrap items-center gap-2"><TagBadge tag={p.diagnosis.tag} /><HealthChip fragile={p.diagnosis.fragile} oldPct={p.diagnosis.oldShare} />{few && <Badge tone="warn">Short Of Creators</Badge>}</p>
                   <p className="tnum mt-2 text-[18px] font-semibold text-ink">{fmtRM(m.sales.now)} <Delta now={m.sales.now} prev={m.sales.prev} className="align-middle" /></p>
                   <p className="tnum text-[12.5px] text-ink-3">{m.creators.now} creators sold it{m.videosPosted.now != null ? ` · ${m.videosPosted.now} videos posted` : ""}{m.salesPerNewVideo.now != null ? ` · ${fmtRM(m.salesPerNewVideo.now)} per new video` : ""} · {p.orders.now.toLocaleString("en-MY")} orders</p>

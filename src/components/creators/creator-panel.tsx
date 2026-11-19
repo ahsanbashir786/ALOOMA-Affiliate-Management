@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, X } from "lucide-react";
 import { addCommitmentLink, decideCommitmentContent, markContacted, markNeedsHelp, markPromised, resumeCreator, undoEvent } from "@/app/actions/workflow";
@@ -11,23 +11,29 @@ import { Sparkline } from "@/components/viz/sparkline";
 import { Badge, Button, Input } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import type { PanelData } from "@/lib/creators/workflow/panel";
+import { PanelCtx, useCreatorPanel } from "./panel-context";
+import { CreatorLinksSection, ProductPanel, VideoPanel } from "./linked-panels";
 
 /** What the manager clicked: one action on one product line. The panel turns it into a message and outcome buttons. */
 export type PanelFocus = { action: CreatorAction; status: CreatorStatus; product: string | null; productId: string | null; reason: string; line: LineStats | null; all: LineStats[]; period: string };
 
-const Ctx = createContext<{ open: (username: string, focus?: PanelFocus) => void }>({ open: () => {} });
+export { useCreatorPanel };
 
-/** Open the creator side panel from anywhere (Daily Actions, Affiliates…). */
-export const useCreatorPanel = () => useContext(Ctx);
+type Target = { kind: "creator"; user: string; focus?: PanelFocus; n: number } | { kind: "product"; key: string; n: number } | { kind: "video"; id: string; n: number };
 
 export function CreatorPanelProvider({ children }: { children: React.ReactNode }) {
-  const [target, setTarget] = useState<{ user: string; focus?: PanelFocus; n: number } | null>(null);
-  const open = useCallback((u: string, focus?: PanelFocus) => setTarget((t) => ({ user: u, focus, n: (t?.n ?? 0) + 1 })), []);
+  const [target, setTarget] = useState<Target | null>(null);
+  const open = useCallback((u: string, focus?: PanelFocus) => setTarget((t) => ({ kind: "creator", user: u, focus, n: (t?.n ?? 0) + 1 })), []);
+  const openProduct = useCallback((key: string) => setTarget((t) => ({ kind: "product", key, n: (t?.n ?? 0) + 1 })), []);
+  const openVideo = useCallback((id: string) => setTarget((t) => ({ kind: "video", id, n: (t?.n ?? 0) + 1 })), []);
+  const close = useCallback(() => setTarget(null), []);
   return (
-    <Ctx.Provider value={{ open }}>
+    <PanelCtx.Provider value={{ open, openProduct, openVideo }}>
       {children}
-      {target && <Panel key={`${target.user}-${target.n}`} username={target.user} focus={target.focus} onClose={() => setTarget(null)} />}
-    </Ctx.Provider>
+      {target?.kind === "creator" && <Panel key={`c-${target.user}-${target.n}`} username={target.user} focus={target.focus} onClose={close} />}
+      {target?.kind === "product" && <ProductPanel key={`p-${target.key}-${target.n}`} pkey={target.key} onClose={close} />}
+      {target?.kind === "video" && <VideoPanel key={`v-${target.id}-${target.n}`} id={target.id} onClose={close} />}
+    </PanelCtx.Provider>
   );
 }
 
@@ -185,6 +191,7 @@ function Panel({ username, focus, onClose }: { username: string; focus?: PanelFo
               <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Videos, 28 days</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.videos28}</dd></div>
               <div className="rounded-xl bg-surface-2 p-3"><dt className="text-[12.5px] text-ink-3">Last sale</dt><dd className="tnum text-[18px] font-semibold text-ink">{data.profile.lastSaleLabel ?? "–"}</dd></div>
             </dl>
+            <CreatorLinksSection username={username} />
             {focus && <ActionCard username={username} focus={focus} phone={data.phone} canAct={data.canAct} paused={data.paused} onSaved={() => setTick((t) => t + 1)} />}
             {msg && <p role="status" className="mx-5 mb-2 rounded-lg bg-surface-2 px-3 py-2 text-[13.5px] text-ink-2">{msg}</p>}
 

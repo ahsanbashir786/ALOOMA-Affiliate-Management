@@ -157,7 +157,7 @@ async function login(p, email) {
   const itsCreators = await p.locator("[data-testid=prod-row] a", { hasText: "Its Creators" }).first().getAttribute("href");
   ok(/^\/creators\?product=/.test(itsCreators || ""), "links: a product opens its creators");
   await p.goto(BASE + "/affiliate/content", { waitUntil: "networkidle" });
-  const prodLink = await p.locator("[data-testid=content-rows] a[href^='/products/']").count();
+  const prodLink = await p.locator("[data-testid=content-rows] button[data-open-product]").count();
   const someCreator = await p.locator("[data-testid=content-rows] button[title='Open details']").first().innerText().catch(() => "");
   ok(prodLink > 0, "links: a video's product opens the product");
   if (someCreator) {
@@ -167,6 +167,31 @@ async function login(p, email) {
     const others = await p.locator("[data-testid=content-rows] button[title='Open details']").allInnerTexts();
     ok(/Show all creators/.test(await p.locator("main").innerText()) && others.every((t) => t.replace(/^@/, "").trim() === cname), `links: a creator's videos filter works (${shown} shown for @${cname})`);
   }
+  await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
+  // One side panel: product, creator and video open the same way and link to each other.
+  await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
+  await p.locator("[data-testid=prod-row] button[data-open-product]").first().click();
+  await p.getByTestId("product-panel").waitFor({ timeout: 20000 });
+  await p.getByTestId("product-panel").locator("button", { hasText: /^@/ }).first().waitFor({ timeout: 20000 });
+  const ptxt = await p.getByTestId("product-panel").innerText();
+  ok(/Top Creators/.test(ptxt) && /Top Videos/.test(ptxt) && /Full Analysis/.test(ptxt) && /All Its Creators/.test(ptxt), "panel: a product opens in the side panel with its top creators, videos and links");
+  await p.getByTestId("product-panel").locator("button", { hasText: /^@/ }).first().click();
+  await p.getByTestId("creator-panel").waitFor({ timeout: 20000 });
+  await p.getByTestId("creator-links").waitFor({ timeout: 20000 });
+  ok(/Products/.test(await p.getByTestId("creator-links").innerText()), "panel: a creator opens from a product, and shows their products and best videos");
+  await p.getByTestId("creator-links").locator("button[data-open-product], li button").first().click();
+  await p.getByTestId("product-panel").waitFor({ timeout: 20000 });
+  ok(true, "panel: a product opens from a creator");
+  await p.keyboard.press("Escape");
+  await p.goto(BASE + "/affiliate/content", { waitUntil: "networkidle" });
+  await p.locator("[data-testid=content-rows] button[data-open-video]").first().click();
+  await p.getByTestId("video-panel").waitFor({ timeout: 20000 });
+  await p.getByTestId("video-panel").getByText("Made By").waitFor({ timeout: 20000 });
+  ok(/Sells/.test(await p.getByTestId("video-panel").innerText()), "panel: a video opens with its creator and product");
+  await p.getByTestId("video-panel").locator("button", { hasText: /^@/ }).first().click();
+  await p.getByTestId("creator-panel").waitFor({ timeout: 20000 });
+  ok(true, "panel: a creator opens from a video");
+  await p.keyboard.press("Escape");
   await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
   for (const srt of ["sales", "drop", "growth"]) { await p.goto(BASE + "/affiliate/products?sort=" + srt, { waitUntil: "networkidle" }); ok((await p.locator("[data-testid=prod-row]").count()) === prodRows, `products: sort "${srt}" keeps every product`); }
   const pa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();

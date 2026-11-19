@@ -8,7 +8,7 @@ import { CLASSES } from "@/lib/affiliate/content";
 import { fmtDayLabel } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
-import { OpenPanelButton } from "@/components/creators/open-panel-button";
+import { OpenPanelButton, OpenProductButton, OpenVideoButton } from "@/components/creators/open-panel-button";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Content" };
@@ -105,14 +105,14 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
             {list.map((v) => (
               <li key={v.id} className="grid grid-cols-1 gap-x-4 gap-y-1.5 border-b border-line px-5 py-3.5 last:border-b-0 lg:grid-cols-[minmax(220px,1.6fr)_minmax(110px,0.8fr)_130px_minmax(150px,1fr)_minmax(150px,1fr)] lg:items-start">
                 <div className="min-w-0">
-                  <p className="line-clamp-2 text-[13.5px] font-medium text-ink" title={v.title ?? ""}>{v.title || "Untitled video"}</p>
+                  <p className="line-clamp-2 text-[13.5px] font-medium text-ink"><OpenVideoButton id={v.id} label={v.title || "Untitled video"} title={v.title ?? ""} className="text-left hover:text-brand" /></p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12.5px] text-ink-3">
                     {v.creator ? <OpenPanelButton username={v.creator} className="font-semibold text-brand hover:underline" /> : "unknown creator"}
                     <span>{v.postedOn ? `posted ${fmtDayLabel(v.postedOn)}${v.ageDays != null ? ` (${v.ageDays} days)` : ""}` : "date unknown"}</span>
                     {v.creator && <a href={`https://www.tiktok.com/@${v.creator}/video/${v.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 hover:text-ink" aria-label="Open the video on TikTok"><ExternalLink className="size-3" /></a>}
                   </p>
                 </div>
-                <p className="text-[13px] text-ink-2">{v.pk && v.product ? <Link href={`/products/${v.pk}`} className="hover:text-brand hover:underline">{v.product}</Link> : v.product || "–"}</p>
+                <p className="text-[13px] text-ink-2">{v.pk && v.product ? <OpenProductButton pkey={v.pk} label={v.product} className="text-left hover:text-brand hover:underline" /> : v.product || "–"}</p>
                 <div className="tnum text-[13px]"><p className="font-semibold text-ink">{fmtRM(v.s14)} <Change now={v.s14} before={v.p14} /></p><p className="text-ink-3">last 14 days · before {fmtRM(v.p14)}</p></div>
                 <div className="text-[13px]">{v.ads ? <><Badge tone={v.ads.boostNow ? "brand" : v.ads.boosted ? "good" : "neutral"}>{v.ads.boosted ? "Boosting Now" : v.ads.label}</Badge><p className="mt-0.5 text-[12px] leading-snug text-ink-3">{v.ads.why}</p></> : <span className="text-ink-3">Not in GMV Max</span>}</div>
                 <div><Act v={v} tab={tab} /></div>

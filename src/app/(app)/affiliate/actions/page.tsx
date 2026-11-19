@@ -14,7 +14,7 @@ import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/pagination";
 import { InfoTip } from "@/components/ui/info-tip";
-import { OpenPanelButton } from "@/components/creators/open-panel-button";
+import { OpenPanelButton, OpenProductButton } from "@/components/creators/open-panel-button";
 import { LineAction } from "@/components/creators/line-action";
 import { Avatar } from "@/components/creators/avatar";
 import { TierBadge } from "@/components/creators/tier-badge";
@@ -42,7 +42,7 @@ function Row({ i, period }: { i: Item; period: string }) {
         {i.also > 0 && <p className="mt-0.5 text-[12px] text-ink-3">+{i.also} more {i.also === 1 ? "product" : "products"} to do (open the creator)</p>}
       </div>
       <div className="min-w-0">
-        <p className="text-[13.5px] font-medium text-ink">{i.product || "No product yet"}</p>
+        <p className="text-[13.5px] font-medium text-ink">{i.product && i.pid ? <OpenProductButton pkey={i.pid} label={i.product} className="text-left hover:text-brand" /> : i.product || "No product yet"}</p>
         <p className="text-[12.5px] leading-snug text-ink-3">{i.reason}{i.days != null ? ` · ${i.status === "Quiet" ? "last sale" : "sample sent"} ${i.days} days ago` : ""}</p>
       </div>
       <div><Badge tone={LEVER_TONE[i.lever]}>{LEVER_LABEL[i.lever]}</Badge></div>
