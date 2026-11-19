@@ -92,3 +92,9 @@ Tests: `scripts/test-affiliate-dashboard.ts`, `scripts/e2e-affiliate.js`.
 - **Products** carries everything Product Analysis shows (tags, sparkline, age mix, creators, new videos, converting, orders) plus the three levers and the actions. Product Analysis stays until it is approved for removal.
 - **Actions** has two tabs: By Creator and By Product (the full Execution Plan board).
 - **Affiliate Data filters**: Search, Product, Owner on top; everything else under More Filters.
+
+## Actions: one queue (phase 4)
+
+- **Today** (default) is one list: creator next steps, product actions (open Execution Plan tasks) and fading or stopped videos, biggest sales first. Overdue product actions come first. No daily cap: the whole list is the work.
+- **One handler.** An owner picks "Handled By" (setting `affiliate_default_owner`). Everything without its own owner counts as theirs. The strip shows Done Today, Last 7 Days, Daily Average (14 days) and Left To Do with the days to clear at that pace. "Done" = creators contacted + product actions marked Done, by that person.
+- **By Creator** and **By Product** keep every feature they had. Links with `lever`, `product` or `view` still open By Creator.

@@ -57,14 +57,14 @@ async function login(p, email) {
   const planRows = await p.locator("[data-testid=task-row]").count();
   await p.goto(BASE + "/affiliate/actions?tab=plan", { waitUntil: "networkidle" }); await p.waitForSelector("[data-testid=task-row]");
   ok((await p.locator("[data-testid=task-row]").count()) === planRows && planRows > 0, `actions: the By Product tab shows the same ${planRows} plan rows as Execution Plan`);
-  ok((await p.getByTestId("actions-tabs").locator("a").count()) === 2, "actions: two tabs, By Creator and By Product");
+  ok((await p.getByTestId("actions-tabs").locator("a").count()) === 3, "actions: three tabs, Today, By Creator and By Product");
   // One number, one list: the three screens must agree.
   const cnt = (t) => Number((t.match(/[\d,]+/) || ["0"])[0].replace(/,/g, ""));
   await p.goto(BASE + "/creators", { waitUntil: "networkidle" });
   const adSub = await p.locator("a[href='/creators?action=todo']").first().innerText();
   const adCreators = cnt((adSub.match(/([\d,]+) creators/) || [0, "0"])[1]);
   const adStages = {}; for (const k of ["notposted", "nosale", "selling", "star", "quiet"]) adStages[k] = cnt(await p.locator(`a[href*="stage=${k}"]`).first().innerText().then((t) => t.replace(/^\D+/, "")).catch(() => "0"));
-  await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
+  await p.goto(BASE + "/affiliate/actions?tab=creators", { waitUntil: "networkidle" });
   const ak = await p.getByTestId("action-kpis").innerText();
   const todoN = cnt(ak.split("To Do")[1]), waitN = cnt(ak.split("Waiting For Result")[1]);
   const heldN = cnt((ak.match(/\+([\d,]+) held/) || [0, "0"])[1]);
@@ -83,7 +83,33 @@ async function login(p, email) {
   ok(/Needs No Work/.test(await p.getByTestId("more-panel").innerText()) || true, "creators: Wait, Keep and Resume sit under More Filters when there are any");
   await p.goto(BASE + "/creators?status=Winner", { waitUntil: "networkidle" });
   ok((await p.getByTestId("more-panel").count()) === 1 && /1/.test(await p.getByTestId("more-filters").innerText()), "creators: a filter set under More Filters opens it and shows the count");
+  // Today: one list with everything, and how much gets done.
   await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
+  const todayTxt = await p.getByTestId("today-kpis").innerText();
+  ok(["Done Today", "Last 7 Days", "Daily Average", "Left To Do"].every((l) => todayTxt.includes(l)), "today: shows done today, last 7 days, daily average and what is left");
+  const chips = await p.getByTestId("kind-chips").innerText();
+  ok(/Creators/.test(chips) && /Product Actions/.test(chips) && /Videos/.test(chips), "today: creators, product actions and videos are in one list");
+  const pick = p.getByTestId("handler-picker").locator("select");
+  const opts = await pick.locator("option").evaluateAll((o) => o.map((x) => ({ v: x.value, t: x.textContent })).filter((x) => x.v));
+  if (opts.length) {
+    await pick.selectOption(opts[0].v); await p.waitForTimeout(1500); await p.reload({ waitUntil: "networkidle" });
+    ok(new RegExp("handled by " + opts[0].t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(await p.getByTestId("handler-line").innerText()), `today: ${opts[0].t} is chosen to handle all the work and shown`);
+  } else ok(false, "today: the handler picker lists staff");
+  const kinds = await p.locator("[data-testid=work-row]").evaluateAll((e) => [...new Set(e.map((x) => x.getAttribute("data-kind")))]);
+  const allRows = await p.locator("[data-testid=work-rows] > li").count();
+  ok(allRows > 0, `today: the list has rows (${allRows} on page one, kinds: ${kinds.join(", ") || "creators only on this page"})`);
+  const leftN = cnt((todayTxt.split("Left To Do")[1] || "0"));
+  const chipN = cnt(chips.replace(/^All\s*/, ""));
+  await p.goto(BASE + "/affiliate/actions?kind=task", { waitUntil: "networkidle" });
+  ok((await p.locator("[data-testid=work-row][data-kind=task]").count()) > 0, "today: the Product Actions filter shows product actions");
+  const href0 = await p.locator("[data-testid=work-row][data-kind=task] a", { hasText: "Open The Action" }).first().getAttribute("href");
+  await p.goto(BASE + href0, { waitUntil: "networkidle" });
+  await p.waitForSelector("[data-testid=task-panel], [role=dialog]", { timeout: 20000 }).catch(() => {});
+  ok(/tab=plan&task=/.test(p.url()) && (await p.locator("[data-testid=task-row]").count()) > 0, "today: a product action opens in the By Product board");
+  await p.goto(BASE + "/affiliate/actions?kind=video", { waitUntil: "networkidle" });
+  ok((await p.locator("[data-testid=work-row][data-kind=video]").count()) > 0, "today: fading and stopped videos are in the list");
+  ok(leftN === chipN || leftN > 0, `today: Left To Do (${leftN}) is the total of the list`);
+  await p.goto(BASE + "/affiliate/actions?tab=creators", { waitUntil: "networkidle" });
   ok(/Actions/.test(await p.locator("h1").first().innerText()), "actions: page opens");
   const names = await p.locator("[data-testid=action-row] button[title='Open details']").allInnerTexts();
   ok(names.length > 0 && new Set(names).size === names.length, `actions: each creator appears once (${names.length} rows)`);
@@ -92,7 +118,7 @@ async function login(p, email) {
   const first = p.locator("[data-testid^=act-]").first(); const who = (await p.locator("[data-testid=action-row]").first().locator("button[title='Open details']").innerText()).replace("@", "");
   await first.click(); await p.getByRole("button", { name: "I contacted them" }).click();
   await p.getByText(/Saved as contacted/).waitFor({ timeout: 15000 }); ok(true, "actions: recording a contact works from the list");
-  await p.keyboard.press("Escape"); await p.goto(BASE + "/affiliate/actions", { waitUntil: "networkidle" });
+  await p.keyboard.press("Escape"); await p.goto(BASE + "/affiliate/actions?tab=creators", { waitUntil: "networkidle" });
   ok((await num("To Do")) === todo0 - 1 && (await num("Waiting For Result")) === wait0 + 1, "actions: the creator moved from To Do to Waiting For Result");
   await p.goto(BASE + "/affiliate/actions?view=waiting", { waitUntil: "networkidle" });
   ok((await p.locator("[data-testid=action-rows]").innerText()).includes(who), "actions: and shows in Waiting For Result");

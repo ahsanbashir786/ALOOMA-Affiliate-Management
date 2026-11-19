@@ -7,6 +7,8 @@ import { loadPlan, openTaskCount, syncPlan } from "@/lib/execution/plan";
 import { ExecutionBoard } from "@/components/execution/board";
 import { hasSyncedData } from "@/lib/creators/load";
 import { loadQueue } from "@/lib/affiliate/command";
+import { loadWork, staffList, type WorkItem } from "@/lib/affiliate/work";
+import { HandlerPicker } from "@/components/affiliate/handler-picker";
 import { LEVER_LABEL, WAIT_DAYS, type Item, type Lever } from "@/lib/affiliate/actions";
 import { statsOf } from "@/lib/creators/action-messages";
 import { fmtDayLabel, todayKL } from "@/lib/time";
@@ -14,7 +16,7 @@ import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/pagination";
 import { InfoTip } from "@/components/ui/info-tip";
-import { OpenPanelButton, OpenProductButton } from "@/components/creators/open-panel-button";
+import { OpenPanelButton, OpenProductButton, OpenVideoButton } from "@/components/creators/open-panel-button";
 import { LineAction } from "@/components/creators/line-action";
 import { Avatar } from "@/components/creators/avatar";
 import { TierBadge } from "@/components/creators/tier-badge";
@@ -51,9 +53,11 @@ function Row({ i, period }: { i: Item; period: string }) {
   );
 }
 
-function Tabs({ tab, creators, plan }: { tab: "creators" | "plan"; creators: number; plan: { open: number; overdue: number } }) {
+type TabKey = "today" | "creators" | "plan";
+function Tabs({ tab, today, creators, plan }: { tab: TabKey; today: number; creators: number; plan: { open: number; overdue: number } }) {
   const items = [
-    { key: "creators", label: "By Creator", n: creators, sub: "one next step for each creator", href: "/affiliate/actions" },
+    { key: "today", label: "Today", n: today, sub: "everything to do, biggest sales first", href: "/affiliate/actions" },
+    { key: "creators", label: "By Creator", n: creators, sub: "one next step for each creator", href: "/affiliate/actions?tab=creators" },
     { key: "plan", label: "By Product", n: plan.open, sub: plan.overdue ? `${plan.overdue} overdue` : "planned actions with owners", href: "/affiliate/actions?tab=plan" },
   ] as const;
   return (
@@ -66,6 +70,34 @@ function Tabs({ tab, creators, plan }: { tab: "creators" | "plan"; creators: num
         </Link>
       ))}
     </nav>
+  );
+}
+
+const KIND_LABEL = { creator: "Creators", task: "Product Actions", video: "Videos" } as const;
+
+function TaskRow({ w }: { w: Extract<WorkItem, { kind: "task" }> }) {
+  const t = w.task;
+  return (
+    <li className="grid grid-cols-1 gap-x-4 gap-y-2 border-b border-line px-5 py-3.5 last:border-b-0 lg:grid-cols-[minmax(200px,1.1fr)_minmax(150px,0.9fr)_minmax(180px,1.4fr)_110px_90px] lg:items-start" data-testid="work-row" data-kind="task">
+      <div className="min-w-0"><p className="text-[14.5px] font-semibold text-ink">{t.productName ? <OpenProductButton pkey={t.productKey} label={t.productName} className="text-left hover:text-brand" /> : "Product"}</p><p className="text-[12px] text-ink-3">{t.creators ? `${t.creators.toLocaleString("en-MY")} creators · ${t.contacted} contacted` : "no creator list"}</p></div>
+      <div><Link href={`/affiliate/actions?tab=plan&task=${t.id}`} className="inline-flex items-center rounded-full border border-brand bg-brand/10 px-2.5 py-0.5 text-[13px] font-semibold text-brand hover:bg-brand hover:text-white">Open The Action</Link></div>
+      <div className="min-w-0"><p className="text-[13.5px] font-medium text-ink">{t.title}</p><p className="text-[12.5px] text-ink-3">{t.dueOn ? (t.overdueDays > 0 ? <span className="font-semibold text-critical">Overdue {t.overdueDays} day{t.overdueDays === 1 ? "" : "s"}</span> : `Due ${fmtDayLabel(t.dueOn)}`) : "No due date"}</p></div>
+      <div><Badge tone="neutral">Product Action</Badge></div>
+      <p className="tnum text-[14px] font-semibold text-ink lg:text-right">{t.impact > 0 ? `≈ ${fmtRM(t.impact)}` : "–"}</p>
+    </li>
+  );
+}
+
+function VideoWorkRow({ w }: { w: Extract<WorkItem, { kind: "video" }> }) {
+  const v = w.video;
+  return (
+    <li className="grid grid-cols-1 gap-x-4 gap-y-2 border-b border-line px-5 py-3.5 last:border-b-0 lg:grid-cols-[minmax(200px,1.1fr)_minmax(150px,0.9fr)_minmax(180px,1.4fr)_110px_90px] lg:items-start" data-testid="work-row" data-kind="video">
+      <div className="min-w-0">{v.creator ? <OpenPanelButton username={v.creator} className="truncate text-left text-[14.5px] font-semibold text-brand hover:underline" /> : <span className="text-[14.5px] text-ink-3">Unknown creator</span>}<p className="text-[12px] text-ink-3">{v.cls === "fading" ? "Fading video" : "Stopped selling"}</p></div>
+      <div>{v.creator && <OpenPanelButton username={v.creator} label="Ask For A Fresh Video" className="inline-flex items-center rounded-full border border-brand bg-brand/10 px-2.5 py-0.5 text-[13px] font-semibold text-brand hover:bg-brand hover:text-white" />}</div>
+      <div className="min-w-0"><p className="line-clamp-2 text-[13.5px] font-medium text-ink"><OpenVideoButton id={v.id} label={v.title || "Untitled video"} className="text-left hover:text-brand" /></p><p className="text-[12.5px] text-ink-3">{v.product ? `${v.product} · ` : ""}{w.why}</p></div>
+      <div><Badge tone="warn">Video</Badge></div>
+      <p className="tnum text-[14px] font-semibold text-ink lg:text-right" title="Sales (14 days) at risk: measured from this video's own sales">{w.value > 0 ? `≈ ${fmtRM(w.value)}` : "–"}</p>
+    </li>
   );
 }
 
@@ -85,15 +117,59 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
   if (!data) return null;
   const { queue, guard } = data;
   const planCount = await openTaskCount().catch(() => ({ open: 0, overdue: 0 }));
-  if (one(sp.tab) === "plan") {
+  const tab: TabKey = one(sp.tab) === "plan" ? "plan" : one(sp.tab) === "creators" || sp.lever || sp.product || sp.view ? "creators" : "today";
+  const work = await loadWork();
+  const todayN = work?.items.length ?? 0;
+  if (tab === "today" && work) {
+    const kind = (["creator", "task", "video"] as const).find((k) => k === one(sp.kind)) ?? "";
+    const counts = { creator: 0, task: 0, video: 0 };
+    for (const i of work.items) counts[i.kind]++;
+    const shown = kind ? work.items.filter((i) => i.kind === kind) : work.items;
+    const page = Math.max(1, Number(one(sp.page)) || 1);
+    const pages = Math.max(1, Math.ceil(shown.length / SIZE));
+    const slice = shown.slice((page - 1) * SIZE, page * SIZE);
+    const period = `Last 28 days to ${fmtDayLabel(work.ref)}`;
+    const e = work.eff;
+    const staff = can(user, "users") ? await staffList() : [];
+    const kpis = [
+      { label: "Done Today", value: String(e.doneToday), sub: "contacts and actions finished" },
+      { label: "Last 7 Days", value: String(e.last7), sub: `${(e.last7 / 7).toFixed(1)} a day` },
+      { label: "Daily Average", value: e.avg14.toFixed(1), sub: "over the last 14 days" },
+      { label: "Left To Do", value: work.items.length.toLocaleString("en-MY"), sub: e.daysToClear != null ? `about ${e.daysToClear.toLocaleString("en-MY")} days at this pace` : "no pace yet: nothing done in 14 days" },
+    ];
+    const qs = (extra: Record<string, string | number | undefined>) => href("/affiliate/actions", { kind: kind || undefined, ...extra });
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Actions" description="Everything to do in one list, biggest sales first: creators to contact, product actions and fading videos. Whoever handles the work is shown below with how much gets done." actions={staff.length > 0 ? <HandlerPicker staff={staff} value={work.handler?.id ?? ""} /> : undefined} />
+        <Tabs tab="today" today={todayN} creators={queue.todo.length} plan={planCount} />
+        <p className="-mt-2 text-[13px] text-ink-3" data-testid="handler-line">{work.handler ? <>All work is handled by <b className="text-ink-2">{work.handler.name}</b>. Their numbers are below. </> : <>No one is chosen yet, so the numbers are for everyone. </>}<Link href="/affiliate/team" className="font-semibold text-brand hover:underline">See Results In Team</Link></p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="today-kpis">
+          {kpis.map((k) => (<div key={k.label} className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">{k.label}</p><p className="tnum mt-0.5 text-[26px] leading-tight font-semibold tracking-tight text-ink">{k.value}</p><p className="text-[12.5px] text-ink-3">{k.sub}</p></div>))}
+        </div>
+        {work.guard.high && <div className="rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner"><b>Chase idle samples first.</b> {(work.guard.notPosted + work.guard.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales, so new creators are held back ({queue.held.length.toLocaleString("en-MY")} waiting).</div>}
+        <Card>
+          <nav aria-label="Kind" className="flex flex-wrap gap-2 border-b border-line px-5 py-3" data-testid="kind-chips">
+            {[{ key: "", label: "All", n: work.items.length }, ...(["creator", "task", "video"] as const).map((k) => ({ key: k as string, label: KIND_LABEL[k], n: counts[k] }))].map((c) => (
+              <Link key={c.key || "all"} href={href("/affiliate/actions", { kind: c.key || undefined })} scroll={false} aria-current={c.key === kind ? "page" : undefined} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", c.key === kind ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>{c.label}<span className="tnum text-[12px] text-ink-3">{c.n.toLocaleString("en-MY")}</span></Link>
+            ))}
+          </nav>
+          {slice.length === 0 ? <div className="px-5 py-12 text-center text-[14px] text-ink-3"><Check className="mx-auto mb-2 size-5 text-good" />Nothing left to do right now.</div> : (
+            <ul data-testid="work-rows">{slice.map((w) => w.kind === "creator" ? <Row key={w.key} i={w.item} period={period} /> : w.kind === "task" ? <TaskRow key={w.key} w={w} /> : <VideoWorkRow key={w.key} w={w} />)}</ul>
+          )}
+          <Pagination page={Math.min(page, pages)} pages={pages} total={shown.length} pageSize={SIZE} hrefFor={(p) => qs({ page: p > 1 ? p : undefined })} />
+        </Card>
+      </div>
+    );
+  }
+  if (tab === "plan") {
     const allowed = can(user, "execution");
     let plan = allowed ? await loadPlan() : null;
     if (plan && !plan.tasks.length) { try { await syncPlan(); plan = await loadPlan(); } catch (e) { console.error("Execution plan sync failed", e); } }
     return (
       <div className="space-y-6">
         <PageHeader title="Actions" description="Two views of the same work. By Creator is one next step for each creator. By Product is the plan the system writes from each product's numbers; your team assigns, does and ticks it off." />
-        <Tabs tab="plan" creators={queue.todo.length} plan={planCount} />
-        {plan ? <ExecutionBoard data={plan} me={user.id} meName={user.name} canManage canWork /> : <Card><EmptyState icon={<Users className="size-5" />} title="Product actions are locked for your role" description="Ask an owner to allow Execution Plan for your role." /></Card>}
+        <Tabs tab="plan" today={todayN} creators={queue.todo.length} plan={planCount} />
+        {plan ? <ExecutionBoard data={plan} me={user.id} meName={user.name} canManage canWork openFirst={one(sp.task)} /> : <Card><EmptyState icon={<Users className="size-5" />} title="Product actions are locked for your role" description="Ask an owner to allow Execution Plan for your role." /></Card>}
       </div>
     );
   }
@@ -114,7 +190,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
   return (
     <div className="space-y-6">
       <PageHeader title="Actions" description="Two views of the same work. By Creator is one next step for each creator, biggest possible sales first; creators you have contacted wait 14 days while we see whether it worked. Click the action for a ready message." />
-      <Tabs tab="creators" creators={queue.todo.length} plan={planCount} />
+      <Tabs tab="creators" today={todayN} creators={queue.todo.length} plan={planCount} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="action-kpis">
         {[

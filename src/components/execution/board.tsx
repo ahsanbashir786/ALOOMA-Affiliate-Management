@@ -33,13 +33,13 @@ const sortTasks = (a: TaskView, b: TaskView) =>
   liveFirst(a) - liveFirst(b) || ORDER[a.status] - ORDER[b.status] || a.priority - b.priority || (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || b.impactRm - a.impactRm;
 const same = (a: Filters, b: Partial<Filters>) => (Object.keys(NO_FILTER) as (keyof Filters)[]).every((k) => a[k] === (b[k] ?? NO_FILTER[k]));
 
-export function ExecutionBoard({ data, me, meName, canManage, canWork }: { data: PlanData; me: string; meName: string; canManage: boolean; canWork: boolean }) {
+export function ExecutionBoard({ data, me, meName, canManage, canWork, openFirst }: { data: PlanData; me: string; meName: string; canManage: boolean; canWork: boolean; openFirst?: string }) {
   const router = useRouter();
   // Team members start on their own work, grouped by when it is due; owners and managers start on everything, grouped by product.
   const [view, setView] = useState<View>("list");
   const [group, setGroup] = useState<GroupBy>(canManage ? "product" : "due");
   const [f, setF] = useState<Filters>(canManage ? NO_FILTER : { ...NO_FILTER, person: "me", status: "open" });
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(openFirst ?? null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [over, setOver] = useState<Over>({});
   const [toast, setToast] = useState<Toast | null>(null);
