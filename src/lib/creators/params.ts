@@ -3,6 +3,7 @@ import type { DirOpts, DirSort } from "@/lib/creators/workflow/directory";
 import { ACTIONS, STATUSES } from "@/lib/creators/workflow/directory-params";
 import { TIERS, type Tier } from "./score";
 import { isProductKey, UNMAPPED } from "@/lib/products/catalog";
+import { STAGES, type StageKey } from "@/lib/affiliate/stages";
 import { addDaysISO, todayKL } from "@/lib/time";
 
 /** Quick choices for the date range (days counted back from today, today included). */
@@ -38,6 +39,7 @@ export const CREATOR_SORTS: { key: DirSort; label: string }[] = [
   { key: "attention", label: "Needs attention" },
   { key: "recent", label: "Latest sale" },
   { key: "stale", label: "Longest without a video" },
+  { key: "stuck", label: "Stuck Longest First" },
   { key: "name", label: "Name A–Z" },
 ];
 const ALLOWED_SORTS = new Set<string>([...CREATOR_SORTS.map((s) => s.key), "gmv_asc", "linegmv", "linegmv_asc", "orders_asc", "videos_all_asc", "video"]);
@@ -50,6 +52,7 @@ export function parseCreatorParams(sp: Record<string, string | undefined>): DirO
     samples: (pick(sp.samples, ["with", "none", "all"]) || "all") as "with" | "none" | "all",
     product: isProductKey(sp.product ?? "") || sp.product === UNMAPPED ? sp.product : "",
     status: pick(sp.status, STATUSES),
+    stage: pick(sp.stage, STAGES.map((x) => x.key) as readonly StageKey[]),
     action: pick(sp.action, [...ACTIONS, "todo"] as const),
     type: pick(sp.type, ["video", "live", "both"] as const),
     wa: pick(sp.wa, ["yes", "no"] as const),

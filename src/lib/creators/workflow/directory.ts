@@ -4,6 +4,7 @@ import { addDaysISO, todayKL } from "@/lib/time";
 import { loadCreatorRows } from "@/lib/creators/load";
 import { productRank } from "@/lib/products/catalog";
 import type { Tier } from "@/lib/creators/score";
+import { daysInStage, stageOf, STAGES, type StageKey } from "@/lib/affiliate/stages";
 
 /** One sampled product of a creator: its own sales, videos, status and action. */
 export type DirLine = {
@@ -87,12 +88,14 @@ export type DirRow = {
   extra?: CreatorExtra;
 };
 
-export type DirSort = "followers" | "score" | "recent" | "orders" | "orders_asc" | "videos_all" | "videos_all_asc" | "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "name";
+export type DirSort = "followers" | "score" | "recent" | "orders" | "orders_asc" | "videos_all" | "videos_all_asc" | "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "stuck" | "name";
 export type DirOpts = {
   q?: string;
   samples?: "with" | "none" | "all";
   product?: string;
   status?: CreatorStatus | "";
+  /** The creator's stage (Known, Not Sampled … Went Quiet): the same stages as Creator Lifecycle. */
+  stage?: StageKey | "";
   /** A single action, or "todo" for every action that needs work. */
   action?: CreatorAction | "todo" | "";
   type?: "video" | "live" | "both" | "";
@@ -114,6 +117,8 @@ export type Directory = {
   /** Lines per action / status under the other filters (so the chips show what clicking them would give). */
   actionCounts: Record<CreatorAction | "todo", number>;
   statusCounts: Record<CreatorStatus, number>;
+  /** Creators per stage, under every other filter (so the stage strip shows what clicking it would give). */
+  stageCounts: Record<StageKey, number>;
   products: { pid: string; name: string; creators: number }[];
   dataEnd: string | null;
   /** Synced data only: headline numbers over ALL creators (ignores the filters). */
@@ -141,6 +146,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     (!opts.wa || (opts.wa === "yes") === !!a.phone) &&
     (!opts.contact ||
       (opts.contact === "contacted" ? !!a.lastContactedOn : opts.contact === "never" ? !a.lastContactedOn : opts.contact === "recent" ? !!a.lastContactedOn && a.lastContactedOn >= weekAgo : a.overdue));
+  const creatorOkStage = (a: DirRow) => creatorOk(a) && (!opts.stage || stageOf(a) === opts.stage);
   const lineOk = (l: DirLine, skip?: "status" | "action") =>
     (!opts.product || l.pid === opts.product) &&
     (skip === "status" || !opts.status || l.status === opts.status) &&
@@ -151,8 +157,11 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
   for (const a of ACTION_ORDER) actionCounts[a] = 0;
   const statusCounts = {} as Directory["statusCounts"];
   for (const s of STATUS_ORDER) statusCounts[s] = 0;
+  const stageCounts = Object.fromEntries(STAGES.map((x) => [x.key, 0])) as Record<StageKey, number>;
   for (const a of all) {
     if (!creatorOk(a)) continue;
+    if (a.lines.some((l) => lineOk(l))) stageCounts[stageOf(a)]++;
+    if (opts.stage && stageOf(a) !== opts.stage) continue;
     for (const l of a.lines) {
       if (lineOk(l, "action")) {
         actionCounts[l.action]++;
@@ -174,7 +183,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
   // Keep only the matching lines of the matching creators.
   const filtered: DirRow[] = [];
   for (const a of all) {
-    if (!creatorOk(a)) continue;
+    if (!creatorOkStage(a)) continue;
     const ls = a.lines.filter((l) => lineOk(l));
     if (ls.length) filtered.push({ ...a, lines: ls, allLines: a.lines });
   }
@@ -202,6 +211,11 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
         // Longest since the last video first; creators with no video at all come first.
         const x = lastVid(a), y = lastVid(b);
         return x.localeCompare(y) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
+      }
+      case "stuck": {
+        // Longest in its stage first; creators with no date for their stage come last.
+        const x = daysInStage(a, stageOf(a), ref ?? "") ?? -1, y = daysInStage(b, stageOf(b), ref ?? "") ?? -1;
+        return y - x || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
       }
       case "lately": return (gmv28By.get(b.username) ?? 0) - (gmv28By.get(a.username) ?? 0) || a.username.localeCompare(b.username);
       case "attention": return Number(b.overdue) - Number(a.overdue) || best(a) - best(b) || b.gmvAll - a.gmvAll || a.username.localeCompare(b.username);
@@ -238,6 +252,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
     totalLines: filtered.reduce((n, a) => n + a.lines.length, 0),
     actionCounts,
     statusCounts,
+    stageCounts,
     products,
     dataEnd: ref,
     overview,

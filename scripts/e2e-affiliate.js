@@ -137,6 +137,23 @@ async function login(p, email) {
   }
   const oa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
   ok(oa.length === 1 && /^Outreach$/.test(oa[0].trim()), `menu: only Outreach is lit there (${oa.join("|")})`);
+
+  // affiliate data: the same stages as Lifecycle, as a strip, with days in stage and a stuck-longest-first sort; nothing was removed
+  await p.goto(BASE + "/affiliate/lifecycle", { waitUntil: "networkidle" });
+  const lcCounts = await p.getByTestId("stages").locator("a").evaluateAll((as) => Object.fromEntries(as.map((a) => [new URL(a.href).searchParams.get("stage"), Number(a.textContent.replace(/\D+$/, "").match(/(\d[\d,]*)$/)[1].replace(/,/g, ""))])));
+  await p.goto(BASE + "/creators", { waitUntil: "networkidle" });
+  ok((await p.getByTestId("stage-strip").count()) === 1, "affiliate data: has the stage strip");
+  const adCounts = await p.getByTestId("stage-strip").locator("a").evaluateAll((as) => Object.fromEntries(as.filter((a) => /\d$/.test(a.textContent)).map((a) => [new URL(a.href).searchParams.get("stage") ?? "all", Number(a.textContent.match(/(\d[\d,]*)$/)[1].replace(/,/g, ""))])));
+  const same = Object.keys(lcCounts).every((k) => lcCounts[k] === adCounts[k]);
+  ok(same, `affiliate data: every stage count equals Lifecycle (${JSON.stringify(adCounts)} vs ${JSON.stringify(lcCounts)})`);
+  ok((await p.getByTestId("stage-line").count()) > 0 && /Stage:/.test(await p.getByTestId("stage-line").first().innerText()), "affiliate data: each creator shows its stage");
+  ok((await p.getByTestId("creator-kpis").count()) === 1 && (await p.locator("[data-testid^=act-]").count()) > 0 && /Export To Excel/.test(await p.locator("main").innerText()), "affiliate data: the Action buttons, the headline boxes and Export To Excel are still there");
+  const star = Object.keys(adCounts).find((k) => k === "star");
+  await p.goto(BASE + "/creators?stage=star", { waitUntil: "networkidle" });
+  ok(new RegExp(adCounts[star] + " creators").test((await p.locator("main").innerText()).replace(/,/g, "")), "affiliate data: choosing a stage lists exactly those creators");
+  await p.goto(BASE + "/creators?stage=quiet&sort=stuck", { waitUntil: "networkidle" });
+  const days = (await p.getByTestId("stage-line").allInnerTexts()).map((t) => Number((t.match(/(\d+) days/) || [])[1])).filter((n) => !Number.isNaN(n));
+  ok(days.length > 0 && days.every((d, i) => i === 0 || d <= days[i - 1]), `affiliate data: "Stuck Longest First" orders by days in stage (${days.slice(0, 5).join(", ")}…)`);
   ok(errs.length === 0, `no browser errors (${errs.slice(0, 2).join(" | ")})`);
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" }); await p.screenshot({ path: process.env.SHOT || "/tmp/claude-0/command.png", fullPage: true });
   await b.close(); console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

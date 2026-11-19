@@ -13,8 +13,6 @@ import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Creator Lifecycle" };
 const KEYS = STAGES.map((s) => s.key) as string[];
-/** The Affiliate Data filter that matches each stage, for people who want the full table. */
-const STATUS: Partial<Record<StageKey, string>> = { found: "New", way: "Waiting", notposted: "Silent", nosale: "Posted", quiet: "Quiet", star: "Winner" };
 
 export default async function LifecyclePage({ searchParams }: { searchParams: Promise<SP> }) {
   const { denied } = await gate("creators", "Creator Lifecycle");
@@ -35,7 +33,7 @@ export default async function LifecyclePage({ searchParams }: { searchParams: Pr
   const def = STAGES.find((s) => s.key === stage)!;
   const counts = new Map(cmd.stages.map((s) => [s.key, s.creators]));
   const stuck = stage === "way" || stage === "notposted" || stage === "nosale" || stage === "quiet";
-  const full = STATUS[stage];
+  const full = stage;
 
   return (
     <div className="space-y-6">
@@ -54,7 +52,7 @@ export default async function LifecyclePage({ searchParams }: { searchParams: Pr
             <h2 className="text-[15px] font-semibold text-ink">{def.label}</h2>
             <p className="text-[13px] text-ink-3">{def.help} Showing {list.rows.length.toLocaleString("en-MY")} of {list.total.toLocaleString("en-MY")}{stuck ? ", stuck longest first" : ", best sellers first"}.</p>
           </div>
-          {full && <Link href={href("/creators", { status: full })} className="text-[13px] font-semibold text-brand hover:underline">Open Full Table With Filters</Link>}
+          {full && <Link href={href("/creators", { stage: full })} className="text-[13px] font-semibold text-brand hover:underline">Open In Affiliate Data</Link>}
         </div>
         {list.rows.length === 0 ? <p className="px-5 py-10 text-center text-[14px] text-ink-3">Nobody is in this stage right now.</p> : (
           <ul data-testid="stage-rows">

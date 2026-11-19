@@ -12,6 +12,7 @@ import { getStaff, syncFreshness } from "@/lib/creators/meta";
 import { hasSyncedData } from "@/lib/creators/load";
 import { countsToCompare, recordDailyCounts } from "@/lib/creators/counts";
 import { STATUS_HELP, ACTION_HELP, type CreatorStatus } from "@/lib/creators/status";
+import { daysInStage, stageOf, STAGES } from "@/lib/affiliate/stages";
 import { fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
@@ -102,8 +103,11 @@ function StatusCell({ l }: { l: DirLine }) {
   );
 }
 
-function CreatorBlock({ r, staff, canAct }: { r: DirRow; staff: { id: string; name: string }[]; canAct: boolean }) {
+function CreatorBlock({ r, staff, canAct, dataEnd }: { r: DirRow; staff: { id: string; name: string }[]; canAct: boolean; dataEnd: string | null }) {
   const e = r.extra!;
+  const st = stageOf(r);
+  const stageDef = STAGES.find((x) => x.key === st)!;
+  const inStage = dataEnd ? daysInStage(r, st, dataEnd) : null;
   return (
     <div className="flex min-w-0 gap-3">
       <RowCheck username={r.username} />
@@ -121,6 +125,7 @@ function CreatorBlock({ r, staff, canAct }: { r: DirRow; staff: { id: string; na
           <TierBadge tier={e.tier} score={e.score} why={e.scoreWhy} />
           <OwnerPicker username={r.username} ownerId={e.ownerId} staff={staff} canAct={canAct} />
         </p>
+        <p className="mt-1 text-[12px] text-ink-3" title={stageDef.help} data-testid="stage-line">Stage: <b className="font-semibold text-ink-2">{stageDef.label}</b>{inStage != null ? <span className="tnum"> · {inStage} days</span> : null}</p>
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-ink-3">
           {r.phone && !canAct ? <span>{maskPhone(r.phone)}</span> : r.phone ? <a href={`https://wa.me/${r.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" title="Opening WhatsApp does not count as contact" className="inline-flex items-center gap-1 hover:text-brand"><MessageCircle className="size-3.5" />{r.phone}</a> : <span>No number</span>}
           <span>· {r.lastContactedOn ? `Contacted ${fmtDayLabel(r.lastContactedOn)}` : "Not contacted"}</span>
@@ -158,7 +163,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   const dir = await getAffiliateDirectory({ ...opts, size: SIZE });
   const ov = dir.overview!;
   const periodLabel = opts.range ? `${fmtDayLabel(opts.range.start)} – ${fmtDayLabel(opts.range.end)}` : "All time";
-  const values = { q: opts.q ?? "", samples: opts.samples ?? "all", product: opts.product ?? "", status: opts.status ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", owner: opts.owner ?? "", tier: opts.tier ?? "", sort: opts.sort ?? "gmv", from: opts.from, to: opts.to };
+  const values = { q: opts.q ?? "", samples: opts.samples ?? "all", product: opts.product ?? "", status: opts.status ?? "", stage: opts.stage ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", owner: opts.owner ?? "", tier: opts.tier ?? "", sort: opts.sort ?? "gmv", from: opts.from, to: opts.to };
   const pageFilters = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, (k === "samples" && v === "all") || (k === "sort" && v === "gmv") ? undefined : v || undefined]));
   const sortHref = (sort: string) => href("/creators", { ...pageFilters, sort: sort === "gmv" ? undefined : sort });
   /** A column heading that sorts: first click high to low, click again for low to high. */
@@ -190,6 +195,16 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
         <Kpi label="Not owned" value={ov.unowned.toLocaleString("en-MY")} sub="nobody looks after them yet" hint={since} change={<Change now={ov.unowned} before={cmp?.unowned ?? null} good="down" note={since} />} href="/creators?owner=none" wide />
       </div>
 
+      <nav aria-label="Stage" className="flex flex-wrap gap-2" data-testid="stage-strip">
+        <Link href={href("/creators", { ...pageFilters, stage: undefined, page: undefined })} scroll={false} aria-current={!opts.stage ? "page" : undefined} className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium transition-colors", !opts.stage ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>All Stages</Link>
+        {STAGES.map((x) => (
+          <Link key={x.key} href={href("/creators", { ...pageFilters, stage: x.key, page: undefined })} scroll={false} title={x.help} aria-current={opts.stage === x.key ? "page" : undefined}
+            className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium transition-colors", opts.stage === x.key ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
+            {x.label}<span className="tnum text-[12.5px] text-ink-3">{dir.stageCounts[x.key].toLocaleString("en-MY")}</span>
+          </Link>
+        ))}
+      </nav>
+
       <BulkProvider canAct={canAct} pageNames={dir.rows.map((r) => r.username)} total={dir.total} params={Object.fromEntries(Object.entries(pageFilters).filter(([, v]) => v !== undefined)) as Record<string, string>} staff={staff}>
       <Card>
         <CreatorFilters
@@ -214,7 +229,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
               {dir.rows.map((r) => (
                 <li key={r.username} data-testid={`dir-${r.username}`} className="px-5 py-4">
                   <div className={cn("hidden gap-x-3 gap-y-3 lg:grid", COLS)}>
-                    <div style={{ gridColumn: 1, gridRow: `1 / span ${r.lines.length}` }}><CreatorBlock r={r} staff={staff} canAct={canAct} /></div>
+                    <div style={{ gridColumn: 1, gridRow: `1 / span ${r.lines.length}` }}><CreatorBlock r={r} staff={staff} canAct={canAct} dataEnd={dir.dataEnd} /></div>
                     {r.lines.map((l, i) => (
                       <Fragment key={l.pid ?? `n${i}`}>
                         <div data-testid="dir-line" className={cn("col-start-2 col-end-7 grid grid-cols-subgrid items-start gap-x-3", i > 0 && "border-t border-dashed border-line pt-3")} style={{ gridRow: i + 1 }}>
@@ -236,7 +251,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
                   </div>
                   <div className="space-y-3 lg:hidden">
                     <div className="flex items-start justify-between gap-3">
-                      <CreatorBlock r={r} staff={staff} canAct={canAct} />
+                      <CreatorBlock r={r} staff={staff} canAct={canAct} dataEnd={dir.dataEnd} />
                       <p className="tnum shrink-0 text-right text-[13px] text-ink-3">Total GMV<b className="block text-[16px] text-ink">{rmShort(r.gmvAll)}</b></p>
                     </div>
                     {r.lines.map((l, i) => (

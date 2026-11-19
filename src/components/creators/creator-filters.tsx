@@ -10,7 +10,7 @@ import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/creat
 import { CREATOR_SORTS } from "@/lib/creators/params";
 import { TIERS } from "@/lib/creators/score";
 
-export type CreatorFilterValues = { q: string; samples: string; product: string; status: string; action: string; type: string; wa: string; contact: string; owner: string; tier: string; sort: string; from: string; to: string };
+export type CreatorFilterValues = { q: string; samples: string; product: string; status: string; stage: string; action: string; type: string; wa: string; contact: string; owner: string; tier: string; sort: string; from: string; to: string };
 type Props = {
   values: CreatorFilterValues;
   products: { pid: string; name: string; creators: number }[];
