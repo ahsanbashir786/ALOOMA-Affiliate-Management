@@ -52,7 +52,7 @@ const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }
 const Td = ({ children, right, className }: { children?: React.ReactNode; right?: boolean; className?: string }) => <td className={cn("px-3 py-2.5 align-top text-[14px] text-ink", right && "tnum text-right", className)}>{children}</td>;
 
 export default async function CreatorProfilePage({ params }: PageProps<"/creators/[username]">) {
-  const { user, denied } = await gate("creators", "Affiliate Data");
+  const { user, denied } = await gate("creators", "Creators");
   if (denied) return denied;
   const canAct = mayEditContacts(user);
   const username = decodeURIComponent((await params).username);
@@ -70,7 +70,7 @@ export default async function CreatorProfilePage({ params }: PageProps<"/creator
 
   return (
     <div className="space-y-6">
-      <Link href="/creators" className="inline-flex items-center gap-1.5 text-[14px] text-ink-3 hover:text-ink"><ArrowLeft className="size-4" /> Affiliate Data</Link>
+      <Link href="/creators" className="inline-flex items-center gap-1.5 text-[14px] text-ink-3 hover:text-ink"><ArrowLeft className="size-4" /> Creators</Link>
 
       <Card className="p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">

@@ -14,9 +14,9 @@ async function login(p, email) {
   let p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error" && !/404/.test(m.text())) errs.push(m.text().slice(0, 160)); });
   await login(p, "owner@test.local");
-  ok(/\/execution$/.test(p.url()), "landing: everyone opens on the Execution Plan");
+  ok(/\/affiliate$/.test(p.url()), "landing: everyone opens on Command");
   const links = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(links) === JSON.stringify(["Affiliate Command", "Outreach", "Products", "Content", "Actions", "Team", "Execution Plan", "Affiliate Data", "Product Analysis", "GMV Max", "Profit And Loss", "Stock And Costing", "Data Sync", "Settings"]), `menu: the fourteen items (${links.join(", ")})`);
+  ok(JSON.stringify(links) === JSON.stringify(["Command", "Outreach", "Creators", "Products", "Content", "Actions", "Team", "GMV Max", "Profit And Loss", "Stock And Costing", "Data Sync", "Settings"]), `menu: the twelve items (${links.join(", ")})`);
   ok(!/Synced/.test(await p.locator("aside").innerText()), "menu: no sync status line at the bottom");
   { // a short screen: no scroll bar in the menu, and a loading bar the moment a menu item is clicked
     const sp = await (await b.newContext({ viewport: { width: 1280, height: 620 } })).newPage(); await login(sp, "owner@test.local");
@@ -30,21 +30,21 @@ async function login(p, email) {
   for (const gone of ["/today", "/command", "/data", "/samples", "/affiliates", "/progress", "/orders", "/content", "/demand", "/order-health", "/opportunities"]) {
     const r = await p.goto(BASE + gone); ok(r.status() === 404, `old screen ${gone} is gone`);
   }
-  await p.goto(BASE + "/"); ok(/\/execution$/.test(p.url()), "the home address leads to the Execution Plan");
+  await p.goto(BASE + "/"); ok(/\/affiliate$/.test(p.url()), "the home address leads to Command");
   // Affiliate Data
   await p.goto(BASE + "/creators"); await p.waitForSelector("[data-testid=creator-kpis]");
-  ok((await p.getByRole("heading", { name: "Affiliate Data" }).count()) >= 1, "Affiliate Data: the screen has its new name");
-  ok((await p.locator("[data-testid^=dir-]").count()) >= 10, "Affiliate Data: creators are listed");
+  ok((await p.getByRole("heading", { name: "Creators" }).count()) >= 1, "Creators: the screen has its new name");
+  ok((await p.locator("[data-testid^=dir-]").count()) >= 10, "Creators: creators are listed");
   const name = (await p.locator("[data-testid^=dir-]").first().getAttribute("data-testid")).replace("dir-", "");
   await p.goto(BASE + "/creators/" + name); await p.waitForSelector("[data-testid=profile-tiles]");
-  ok((await p.getByText(name).count()) >= 1 && (await p.getByRole("link", { name: /Affiliate Data/ }).count()) >= 1, "profile: opens with the creator and a way back");
+  ok((await p.getByText(name).count()) >= 1 && (await p.getByRole("link", { name: /Creators/ }).count()) >= 1, "profile: opens with the creator and a way back");
   ok(await p.getByText("Latest orders").first().isVisible().catch(() => false) || (await p.locator("section, h2").count()) > 3, "profile: sections are shown");
   await p.goBack(); await p.waitForSelector("[data-testid=creator-kpis]");
   const act = p.locator("[data-testid^=act-]").first();
   if (await act.count()) { await act.click(); await p.waitForSelector("[role=dialog], aside[aria-label], [data-testid=creator-panel]", { timeout: 8000 }).catch(() => {}); ok(true, "side panel: opens from an action"); await p.keyboard.press("Escape"); } else ok(true, "side panel: no action in view (skipped)");
   // Product Analysis
-  await p.goto(BASE + "/products"); await p.waitForSelector("[data-testid=product-kpis]");
-  ok((await p.getByRole("heading", { name: "Product Analysis" }).count()) >= 1, "Product Analysis: the screen has its new name");
+  await p.goto(BASE + "/products"); await p.waitForSelector("[data-testid=prod-kpis]");
+  ok(/\/affiliate\/products/.test(p.url()) && (await p.getByRole("heading", { name: "Products" }).count()) >= 1, "Products: the old Product Analysis address opens Products");
   // Settings + Data Sync
   await p.goto(BASE + "/settings"); await p.waitForSelector("h1");
   const settingsText = await p.locator("main").innerText();
@@ -58,10 +58,10 @@ async function login(p, email) {
   p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   await login(p, "viewer@test.local");
   const vl = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(vl.length === 9, `viewer: sees only the screens the role allows (${vl.length} items)`);
+  ok(vl.length === 7, `viewer: sees only the screens the role allows (${vl.length} items)`);
   // mobile
   p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await login(p, "manager@test.local");
-  for (const path of ["/execution", "/creators", "/products", "/sync", "/settings"]) { await p.goto(BASE + path); await p.waitForSelector("h1"); ok(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `mobile: ${path} has no sideways scrolling`); }
+  for (const path of ["/affiliate", "/affiliate/actions", "/creators", "/affiliate/products", "/sync", "/settings"]) { await p.goto(BASE + path); await p.waitForSelector("h1"); ok(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `mobile: ${path} has no sideways scrolling`); }
   console.log(`\n${pass} passed, ${fail} failed`); await b.close();
 })();

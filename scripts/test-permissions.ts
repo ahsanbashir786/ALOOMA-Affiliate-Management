@@ -33,7 +33,7 @@ const q = async (s: ReturnType<typeof sql>) => (await db.execute(s)) as unknown 
   check("toggle: switching a screen on adds only that screen", on.length === 2 && on.includes("sync") && on.includes("products"));
   const off = withDependencies(["execution", "products"], "execution", false);
   check("toggle: switching a screen off removes only that screen", off.length === 1 && off[0] === "products");
-  check("menu: every menu screen names one permission and each is known", Object.values(SCREEN_PERMISSION).every((k) => PERMISSIONS.some((p) => p.key === k)) && Object.keys(SCREEN_PERMISSION).length === 15);
+  check("menu: every menu screen names one permission and each is known", Object.values(SCREEN_PERMISSION).every((k) => PERMISSIONS.some((p) => p.key === k)) && Object.keys(SCREEN_PERMISSION).length === 13);
 
   // The migration keeps who was who: an admin user is still on the Admin role.
   const owners = await q(sql`select u.email from users u join roles r on r.id = u.role_id where r.is_admin`);

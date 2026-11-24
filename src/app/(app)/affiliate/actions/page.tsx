@@ -102,7 +102,7 @@ function VideoWorkRow({ w }: { w: Extract<WorkItem, { kind: "video" }> }) {
 }
 
 export default async function ActionsPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { user, denied } = await gate("creators", "Actions");
+  const { user, denied } = await gate(["creators", "execution"], "Actions");
   if (denied) return denied;
   if (!(await hasSyncedData())) {
     return (
@@ -112,7 +112,8 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
       </div>
     );
   }
-  const sp = await searchParams;
+  const sp0 = await searchParams;
+  const sp: SP = can(user, "creators") ? sp0 : { ...sp0, tab: "plan" };
   const data = await loadQueue();
   if (!data) return null;
   const { queue, guard } = data;
@@ -169,7 +170,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
       <div className="space-y-6">
         <PageHeader title="Actions" description="Two views of the same work. By Creator is one next step for each creator. By Product is the plan the system writes from each product's numbers; your team assigns, does and ticks it off." />
         <Tabs tab="plan" today={todayN} creators={queue.todo.length} plan={planCount} />
-        {plan ? <ExecutionBoard data={plan} me={user.id} meName={user.name} canManage canWork openFirst={one(sp.task)} /> : <Card><EmptyState icon={<Users className="size-5" />} title="Product actions are locked for your role" description="Ask an owner to allow Execution Plan for your role." /></Card>}
+        {plan ? <ExecutionBoard data={plan} me={user.id} meName={user.name} canManage canWork openFirst={one(sp.task)} /> : <Card><EmptyState icon={<Users className="size-5" />} title="Product actions are locked for your role" description="Ask an owner to allow Actions: By Product for your role." /></Card>}
       </div>
     );
   }

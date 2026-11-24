@@ -6,14 +6,14 @@ export type PermissionKey = "execution" | "creators" | "products" | "ads" | "sto
 export type Permission = { key: PermissionKey; group: string; label: string; help: string };
 
 export const PERMISSIONS: Permission[] = [
-  { key: "execution", group: "Execution Plan", label: "Execution Plan", help: "See and work on the actions, assign people, update the plan" },
-  { key: "creators", group: "Affiliate Data", label: "Affiliate Data", help: "See every creator and their profile, record contacts, export to Excel" },
-  { key: "products", group: "Product Analysis", label: "Product Analysis", help: "See how every product is doing and why" },
+  { key: "execution", group: "Affiliates", label: "Actions: By Product", help: "See and work on the product actions in Actions › By Product: assign people, set due dates, tick creators" },
+  { key: "creators", group: "Affiliates", label: "Affiliate Screens", help: "Command, Outreach, Creators, Content, Actions and Team: see every creator, record contacts, export to Excel" },
+  { key: "products", group: "Affiliates", label: "Products", help: "See how every product is doing and why (Products and each product's full analysis)" },
   { key: "ads", group: "GMV Max", label: "GMV Max", help: "See GMV Max ad results and which videos are worth boosting" },
   { key: "stock", group: "Stock", label: "Stock And Costing", help: "See stock-in orders, cost per piece and FIFO stock; import stock files" },
   { key: "profit", group: "Profit", label: "Profit And Loss", help: "See order profit, monthly profit and loss, and what can be claimed back" },
   { key: "sync", group: "Data Sync", label: "Data Sync", help: "See what is synced and run a sync" },
-  { key: "approve_samples", group: "Affiliate Data", label: "Outreach: Approve Samples", help: "Approve or reject creators' sample requests on TikTok from the Outreach screen. An approval cannot be undone." },
+  { key: "approve_samples", group: "Affiliates", label: "Outreach: Approve Samples", help: "Approve or reject creators' sample requests on TikTok from the Outreach screen. An approval cannot be undone." },
   { key: "users", group: "Settings", label: "Settings: User Management", help: "Add people, create roles, choose what each role can open" },
   { key: "settings", group: "Settings", label: "Settings: Connection", help: "Connect, check and disconnect TikTok Shop and TikTok Ads" },
 ];
@@ -33,15 +33,13 @@ export function withDependencies(current: PermissionKey[], key: PermissionKey, o
 
 /** Which permission opens each screen (the menu). */
 export const SCREEN_PERMISSION: Record<string, PermissionKey> = {
-  "/execution": "execution",
-  "/creators": "creators",
   "/affiliate": "creators",
   "/affiliate/outreach": "creators",
-  "/affiliate/products": "creators",
+  "/creators": "creators",
+  "/affiliate/products": "products",
   "/affiliate/content": "creators",
-  "/affiliate/actions": "creators",
+  "/affiliate/actions": "execution",
   "/affiliate/team": "creators",
-  "/products": "products",
   "/ads": "ads",
   "/stock": "stock",
   "/profit": "profit",

@@ -102,3 +102,9 @@ Tests: `scripts/test-affiliate-dashboard.ts`, `scripts/e2e-affiliate.js`.
 ## Team: one record (phase 5)
 
 Team and the Today strip count the same events: creators contacted from Actions (`staff_events`), creators ticked inside a product action (`ep_task_creators.contacted_at`, counted once if the same person contacted the same creator that day), and product actions marked Done (`ep_events`, status Done). Contacts of both kinds are judged 14 days later against creators nobody contacted. Old history is untouched.
+
+## Clean-up (phase 6)
+
+- Menu (Affiliates): Command, Outreach, Creators, Products, Content, Actions, Team. "Affiliate Data" is now **Creators**.
+- `/execution` redirects to Actions › By Product. `/products` redirects to Products (tag, sort and dates kept). The product detail page `/products/[key]` stays.
+- Permissions keep their keys. Products opens with `creators` or `products`; Actions with `creators` or `execution` (a role with only `execution` sees By Product). The system opens on Command.

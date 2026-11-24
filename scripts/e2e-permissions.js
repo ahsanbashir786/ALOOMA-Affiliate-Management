@@ -15,17 +15,17 @@ const run = Date.now().toString(36);
   // ── a viewer: full menu, locks, Permission Denied
   let v = await mk(); await login(v, "viewer@test.local");
   const items = (await v.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(items) === JSON.stringify(["Affiliate Command", "Outreach", "Products", "Content", "Actions", "Team", "Execution Plan", "Affiliate Data", "Product Analysis"]), `viewer: the menu shows only what the role may open (${items.join(", ")})`);
+  ok(JSON.stringify(items) === JSON.stringify(["Command", "Outreach", "Creators", "Products", "Content", "Actions", "Team"]), `viewer: the menu shows only what the role may open (${items.join(", ")})`);
   ok((await v.getByTestId("nav-lock").count()) === 0 && (await v.locator("aside a", { hasText: "Data Sync" }).count()) === 0 && (await v.locator("aside a", { hasText: "Settings" }).count()) === 0, "viewer: screens the role cannot open are not in the menu at all (no lock, no grey)");
   await v.goto(BASE + "/sync"); await v.waitForSelector("[data-testid=permission-denied]");
   const t = await v.getByTestId("permission-denied").innerText();
   ok(/Permission Denied/.test(t) && /Viewer/.test(t) && /Data Sync/.test(t) && /Needs:\s*Data Sync/i.test(t), "viewer: typing the Data Sync address shows Permission Denied with the role, the screen and what is needed");
-  ok(await v.getByRole("link", { name: /Go to Execution Plan/ }).isVisible(), "viewer: the denied page offers a way back");
+  ok(await v.getByRole("link", { name: /Go to Command/ }).isVisible(), "viewer: the denied page offers a way back");
   ok((await v.getByRole("link", { name: "Manage roles" }).count()) === 0, "viewer: no Manage roles button");
   for (const path of ["/users", "/settings", "/settings?tab=users"]) { await v.goto(BASE + path); await v.waitForSelector("[data-testid=permission-denied]"); ok(true, `viewer: ${path} is denied`); }
   ok((await v.evaluate(async () => (await fetch("/api/tiktok/test", { method: "POST" })).status)) === 403, "viewer: the TikTok test is refused by the server too");
   ok((await v.evaluate(async () => (await fetch("/api/tiktok/sync", { method: "POST", body: "{}" })).status)) === 403, "viewer: running a sync is refused by the server too");
-  await v.goto(BASE + "/products"); await v.waitForSelector("[data-testid=product-kpis]"); ok(true, "viewer: Product Analysis opens");
+  await v.goto(BASE + "/affiliate/products"); await v.waitForSelector("[data-testid=prod-kpis]"); ok(true, "viewer: Products opens");
   // ── the owner edits roles
   const o = await mk(); await login(o, "owner@test.local");
   await o.goto(BASE + "/settings?tab=users"); await o.waitForSelector("[data-testid=user-row]");
@@ -33,12 +33,12 @@ const run = Date.now().toString(36);
   await o.getByTestId("tab-roles").click(); await o.waitForSelector("[data-testid=roles-tab]");
   ok((await o.getByTestId("role-head").count()) >= 3, "roles: a column for each role");
   ok(await o.getByTestId("sw-admin-users").isDisabled() && (await o.getByTestId("sw-admin-users").getAttribute("aria-checked")) === "true", "roles: Admin has everything and cannot be changed");
-  // take Product Analysis away from Viewer, check, give it back
-  await o.getByTestId("sw-viewer-products").click(); await o.waitForTimeout(900);
-  ok((await o.getByTestId("sw-viewer-products").getAttribute("aria-checked")) === "false", "roles: the switch turns off");
-  await v.goto(BASE + "/products"); await v.waitForSelector("[data-testid=permission-denied]"); ok(true, "roles: the viewer loses Product Analysis at once");
-  await o.getByTestId("sw-viewer-products").click(); await o.waitForTimeout(900);
-  await v.goto(BASE + "/products"); await v.waitForSelector("[data-testid=product-kpis]"); ok(true, "roles: and gets it back");
+  // take the affiliate screens away from Viewer, check, give them back
+  await o.getByTestId("sw-viewer-creators").click(); await o.waitForTimeout(900);
+  ok((await o.getByTestId("sw-viewer-creators").getAttribute("aria-checked")) === "false", "roles: the switch turns off");
+  await v.goto(BASE + "/creators"); await v.waitForSelector("[data-testid=permission-denied]"); ok(true, "roles: the viewer loses Creators at once");
+  await o.getByTestId("sw-viewer-creators").click(); await o.waitForTimeout(900);
+  await v.goto(BASE + "/creators"); await v.waitForSelector("[data-testid=creator-kpis]"); ok(true, "roles: and gets it back");
   // a new role, a new person
   const roleName = `E2E ${run}`;
   await o.getByTestId("new-role").click(); await o.getByTestId("new-role-name").fill(roleName);

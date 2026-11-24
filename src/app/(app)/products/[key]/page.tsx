@@ -109,7 +109,7 @@ function FunnelView({ f, o }: { f: Funnel; o: Funnel }) {
 }
 
 export default async function ProductPage({ params, searchParams }: PageProps<"/products/[key]">) {
-  const { denied } = await gate("products", "Product Analysis");
+  const { denied } = await gate(["products", "creators"], "Products");
   if (denied) return denied;
   const { key } = await params;
   const sp = (await searchParams) as SP;
@@ -134,7 +134,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 text-[14px]">
-        <Link href={href("/products", q)} className="inline-flex items-center gap-1.5 text-ink-3 hover:text-ink"><ArrowLeft className="size-4" /> Product Analysis</Link>
+        <Link href={href("/affiliate/products", q)} className="inline-flex items-center gap-1.5 text-ink-3 hover:text-ink"><ArrowLeft className="size-4" /> Products</Link>
         <span className="flex items-center gap-4 text-ink-3">
           <Link href={href(`/products/${prev.key}`, q)} className="inline-flex max-w-[200px] items-center gap-1 truncate hover:text-ink" title={prev.name}><ArrowLeft className="size-4 shrink-0" /><span className="truncate">{prev.name}</span></Link>
           <Link href={href(`/products/${next.key}`, q)} className="inline-flex max-w-[200px] items-center gap-1 truncate hover:text-ink" title={next.name}><span className="truncate">{next.name}</span><ArrowRight className="size-4 shrink-0" /></Link>

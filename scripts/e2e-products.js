@@ -11,8 +11,8 @@ const ok = (c, n) => { c ? pass++ : fail++; console.log((c ? "PASS  " : "FAIL  "
     await p.goto("http://localhost:3100/login"); await p.fill("input[name=email]", "manager@test.local"); await p.fill("input[name=password]", "Passw0rd!test");
     await Promise.all([p.waitForURL((u) => !/login/.test(u.pathname)), p.click("button[type=submit]")]);
     await p.goto("http://localhost:3100/products"); await p.waitForTimeout(1500);
-    const cards = await p.$$eval('a[href^="/products/"]', (a) => [...new Set(a.map((x) => x.getAttribute("href")))]);
-    ok(cards.length === 13, `${label}: 13 product cards`);
+    const cards = await p.$$eval('[data-testid=prod-row] a[href^="/products/"]', (a) => [...new Set(a.map((x) => x.getAttribute("href")))]);
+    ok(cards.length === 13, `${label}: 13 products, each with its full analysis`);
     ok(await p.getByText("Mattress Protector · Non-Waterproof").first().isVisible(), `${label}: first product in owner's order`);
     ok(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `${label}: list has no sideways scroll`);
     if (label === "desktop") {

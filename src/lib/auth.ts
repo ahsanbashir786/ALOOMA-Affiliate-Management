@@ -105,7 +105,7 @@ export async function requireWriter(): Promise<SessionUser> {
 }
 
 /** Where a person lands after signing in. */
-export const landingFor = () => "/execution";
+export const landingFor = () => "/affiliate";
 
 /** The first screen this person is allowed to open (used by the Permission Denied page). */
 export function firstAllowedScreen(user: Pick<SessionUser, "isAdmin" | "permissions">): string | null {

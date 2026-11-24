@@ -25,7 +25,7 @@ const rmShort = (n: number) => `${sign(n)}RM ${Math.abs(Math.round(n)).toLocaleS
 const pctOf = (now: number, prev: number) => (prev > 0 ? (now - prev) / prev : now > 0 ? 9 : 0);
 
 export default async function AffiliateProductsPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { denied } = await gate("creators", "Products");
+  const { denied } = await gate(["creators", "products"], "Products");
   if (denied) return denied;
   const sp = await searchParams;
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));

@@ -30,7 +30,7 @@ import { BulkProvider, RowCheck, SelectAllPage } from "@/components/creators/bul
 import { Sparkline } from "@/components/viz/sparkline";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Affiliate Data" };
+export const metadata: Metadata = { title: "Creators" };
 const SIZE = 50;
 const COLS = "lg:grid-cols-[250px_minmax(100px,1.2fr)_minmax(64px,0.7fr)_58px_72px_92px_104px_minmax(110px,1.1fr)_minmax(96px,0.9fr)]";
 const TONE: Record<CreatorStatus, "good" | "brand" | "warn" | "critical" | "neutral"> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
@@ -142,7 +142,7 @@ function CreatorBlock({ r, staff, canAct, dataEnd }: { r: DirRow; staff: { id: s
 }
 
 export default async function CreatorsPage({ searchParams }: PageProps<"/creators">) {
-  const { user, denied } = await gate("creators", "Affiliate Data");
+  const { user, denied } = await gate("creators", "Creators");
   if (denied) return denied;
   const canAct = mayEditContacts(user);
   const canExport = can(user, "creators");
@@ -154,7 +154,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   if (!synced) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Affiliate Data" />
+        <PageHeader title="Creators" />
         <Card><EmptyState icon={<Users className="size-5" />} title="No TikTok data yet" description="Connect TikTok Shop and run Data Sync. Your creators appear here as soon as the first orders arrive." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
       </div>
     );
@@ -182,7 +182,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Affiliate Data"
+        title="Creators"
         description={<span className="inline-flex items-center gap-2"><span className={cn("size-2 rounded-full", fresh.ok ? "bg-good" : "bg-warn")} />{fresh.label} from TikTok Shop</span>}
         actions={<DatesPicker from={pageFilters.from ?? ""} to={pageFilters.to ?? ""} today={todayKL()} emptyLabel="All Time" />}
       />

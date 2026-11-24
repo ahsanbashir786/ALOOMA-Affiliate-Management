@@ -8,11 +8,13 @@ const LABEL = new Map([...NAV.flatMap((g) => g.items).map((i) => [i.href, i.labe
 
 /**
  * Opens a screen for someone allowed to, otherwise gives back the Permission Denied page to render instead.
- *   const { user, denied } = await gate("products", "Product Analysis");  if (denied) return denied;
+ *   const { user, denied } = await gate("products", "Products");  if (denied) return denied;
  */
-export async function gate(permission: PermissionKey, screen: string): Promise<{ user: SessionUser; denied: React.ReactElement | null }> {
+export async function gate(permission: PermissionKey | PermissionKey[], screen: string): Promise<{ user: SessionUser; denied: React.ReactElement | null }> {
   const user = await requireUser();
-  if (can(user, permission)) return { user, denied: null };
+  const any = Array.isArray(permission) ? permission : [permission];
+  if (any.some((p) => can(user, p))) return { user, denied: null };
+  permission = any[0];
   const homeHref = firstAllowedScreen(user);
   return {
     user,

@@ -63,7 +63,7 @@ export function Sidebar({ user, open, onClose, collapsed }: Props) {
         )}
       >
         <div className={cn("flex h-16 shrink-0 items-center justify-between border-b border-line px-5", rail && "lg:justify-center lg:px-0")}>
-          <Link href="/execution" className="flex items-center" onClick={onClose} aria-label="ALOOMA home">
+          <Link href="/affiliate" className="flex items-center" onClick={onClose} aria-label="ALOOMA home">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/alooma-logo.jpg" alt="ALOOMA" width={118} height={29} className={cn("h-[29px] w-[118px] rounded-md object-cover", rail && "lg:h-8 lg:w-8 lg:object-left")} />
           </Link>

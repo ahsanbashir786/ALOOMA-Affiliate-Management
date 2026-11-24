@@ -9,9 +9,13 @@ import { PRODUCTS } from "@/lib/products/catalog";
 export const runtime = "nodejs";
 
 const HELP: Record<string, string> = {
-  "/execution": "What to do next to sell more, and who does it",
+  "/affiliate": "Affiliate sales at a glance: charts, stages, health",
+  "/affiliate/outreach": "New creators and sample requests",
   "/creators": "Every creator, their sales and follow-ups",
-  "/products": "How each product is doing and why",
+  "/affiliate/products": "How each product is doing and why",
+  "/affiliate/content": "Videos heating up, fading or stopped",
+  "/affiliate/actions": "What to do today, product actions, who does it",
+  "/affiliate/team": "Who did what, and what it changed",
   "/ads": "GMV Max: ads today, boost picks, batch planner, boost log, campaign health, products, creators",
   "/sync": "What is synced from TikTok, and when",
   "/settings": "TikTok connections, people and roles",
@@ -27,7 +31,7 @@ export async function GET(req: Request) {
     .filter((i) => navAllowed(user, i)) // a screen the person cannot open is not offered at all
     .filter((i) => !q || i.label.toLowerCase().includes(q) || (HELP[i.href] ?? "").toLowerCase().includes(q))
     .map((i) => ({ label: i.label, href: i.href, help: HELP[i.href] ?? "", locked: !navAllowed(user, i) }));
-  const products = q && can(user, "products")
+  const products = q && (can(user, "products") || can(user, "creators"))
     ? PRODUCTS.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5).map((p) => ({ key: p.key, name: p.name }))
     : [];
   const creators = can(user, "creators") && q.length >= 2 && /^[a-z0-9._]+$/.test(q)

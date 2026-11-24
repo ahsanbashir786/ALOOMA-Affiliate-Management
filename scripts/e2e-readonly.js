@@ -25,7 +25,7 @@ async function login(p, email, password = "Passw0rd!test") {
   const pw = (await o.getByTestId("ro-password").innerText()).trim();
   ok(pw.length >= 20 && !/[0OIl1]/.test(pw), `owner: a long random password is made and shown once (${pw.length} characters, no look-alike letters)`);
   const cred = (await o.getByTestId("ro-credentials").innerText()).replace(/\s+/g, " ");
-  ok(/Affiliate Data, Profit And Loss/.test(cred) && /localhost:3100\/login/.test(cred), "owner: the details list the chosen screens and the sign-in address");
+  ok(/Affiliate Screens, Profit And Loss/.test(cred) && /localhost:3100\/login/.test(cred), "owner: the details list the chosen screens and the sign-in address");
   ok((await o.getByTestId("ro-copy").count()) === 1, "owner: there is a button to copy instructions for ChatGPT or Claude");
   await o.reload(); await o.getByTestId("tab-readonly").click();
   ok((await o.locator("[data-testid=ro-row]").count()) === 1 && /Until/.test(await o.getByTestId("ro-status").innerText()) && !(await o.locator("body").innerText()).includes(pw), "owner: the login is listed with its end date, and the password is never shown again");
@@ -37,7 +37,7 @@ async function login(p, email, password = "Passw0rd!test") {
   await login(r, "ai-e2e@alooma.my", pw);
   ok(!/login/.test(r.url()), "read-only: can sign in with the password");
   const items = (await r.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(JSON.stringify(items) === JSON.stringify(["Affiliate Command", "Outreach", "Products", "Content", "Actions", "Team", "Affiliate Data", "Profit And Loss"]), `read-only: the menu shows only the two screens chosen (${items.join(", ")})`);
+  ok(JSON.stringify(items) === JSON.stringify(["Command", "Outreach", "Creators", "Products", "Content", "Actions", "Team", "Profit And Loss"]), `read-only: the menu shows only the two screens chosen (${items.join(", ")})`);
   ok((await r.getByTestId("read-only-banner").count()) === 1, "read-only: a banner says the login is read-only");
   const [{ creator }] = await sql`select creator from tt_affiliate_order_lines where creator is not null group by creator order by sum(price) desc limit 1`;
   const cr = { username: creator };
@@ -48,7 +48,7 @@ async function login(p, email, password = "Passw0rd!test") {
   ok(!(await r.locator("main a[href^='https://wa.me/']").count()), "read-only: no WhatsApp link is offered");
   const panel = await r.evaluate(async (u) => { const j = await (await fetch(`/api/creators/${encodeURIComponent(u)}/panel`)).json(); return j.phone; }, cr.username);
   ok(/^\+60•+$/.test(String(panel)), "read-only: the side panel does not send the number either (" + panel + ")");
-  await r.goto(BASE + "/creators"); await r.waitForSelector("[data-testid=creator-kpis]"); ok(true, "read-only: Affiliate Data opens");
+  await r.goto(BASE + "/creators"); await r.waitForSelector("[data-testid=creator-kpis]"); ok(true, "read-only: Creators opens");
   await r.goto(BASE + "/profit?range=lifetime"); await r.waitForSelector("[data-testid=profit-table]"); ok(true, "read-only: Profit And Loss opens and can be read");
   for (const path of ["/settings", "/settings?tab=users", "/sync", "/stock", "/ads"]) { await r.goto(BASE + path); await r.waitForSelector("[data-testid=permission-denied]"); ok(true, `read-only: ${path} is denied (not given, and never given for Settings)`); }
   const status = (m, u, body) => r.evaluate(async ([m, u, body]) => (await fetch(u, { method: m, body, redirect: "manual" })).status, [m, u, body]);

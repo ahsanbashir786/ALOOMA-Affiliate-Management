@@ -15,10 +15,10 @@ async function login(p, email) {
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
   await login(p, "owner@test.local");
   const menu = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(menu.includes("Affiliate Command") && !menu.includes("Creator Lifecycle"), `menu: Affiliate Command is listed and Creator Lifecycle is gone (${menu.slice(0, 4).join(", ")})`);
+  ok(menu.includes("Command") && !menu.includes("Creator Lifecycle") && !menu.includes("Execution Plan") && !menu.includes("Product Analysis"), `menu: Command is listed; Creator Lifecycle, Execution Plan and Product Analysis are gone (${menu.slice(0, 4).join(", ")})`);
 
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
-  ok(/Affiliate Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
+  ok(/Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
   const kp = await p.getByTestId("kpis").innerText();
   ok(["Affiliate Sales", "Active Creators", "New Videos Posted", "Sales Per Video"].every((x) => kp.includes(x)) && !/Seller/.test(kp), "command: four headline cards with creator wording (no 'seller')");
   ok((await p.getByTestId("kpis").locator("svg").count()) === 4, "command: each headline card has a trend line");
@@ -41,7 +41,7 @@ async function login(p, email) {
   ok(!/Synced .* from TikTok Shop/.test(main), "command: no sync-time line (Data Sync shows that)");
   ok((await p.locator("button", { hasText: "Last 28 Days" }).count()) >= 1, "command: a date picker is there");
   const active = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
-  ok(active.length === 1 && /Affiliate Command/.test(active[0]), `menu: only Affiliate Command is lit on this screen (${active.join("|")})`);
+  ok(active.length === 1 && /Command/.test(active[0]), `menu: only Command is lit on this screen (${active.join("|")})`);
   // chosen dates: "Last 7 days" ending today must still be 7 days of real data
   const iso = (d) => d.toISOString().slice(0, 10); const td = new Date(); const from7 = new Date(td.getTime() - 6 * 86400000);
   await p.goto(BASE + `/affiliate?from=${iso(from7)}&to=${iso(td)}`, { waitUntil: "networkidle" });
@@ -54,6 +54,7 @@ async function login(p, email) {
   // actions: one next action per creator; contacting one moves it to "waiting", and the Team screen shows it at once
   const num = async (label) => Number((await p.locator("[data-testid=action-kpis] > div", { hasText: label }).first().locator("p").nth(1).innerText()).replace(/\D/g, "") || 0);
   await p.goto(BASE + "/execution", { waitUntil: "networkidle" }); await p.waitForSelector("[data-testid=task-row]");
+  ok(/\/affiliate\/actions\?tab=plan/.test(p.url()), "old Execution Plan address lands on Actions › By Product");
   const planRows = await p.locator("[data-testid=task-row]").count();
   await p.goto(BASE + "/affiliate/actions?tab=plan", { waitUntil: "networkidle" }); await p.waitForSelector("[data-testid=task-row]");
   ok((await p.locator("[data-testid=task-row]").count()) === planRows && planRows > 0, `actions: the By Product tab shows the same ${planRows} plan rows as Execution Plan`);
@@ -182,9 +183,9 @@ async function login(p, email) {
   // One Products screen: it carries everything Product Analysis shows.
   await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
   const names1 = (await p.locator("[data-testid=prod-row] p.text-\\[15px\\]").allInnerTexts()).map((t) => t.trim()).filter(Boolean).sort();
-  await p.goto(BASE + "/products", { waitUntil: "networkidle" });
-  const names2 = (await p.locator("[data-testid=product-grid] h3").allInnerTexts()).map((t) => t.trim()).sort();
-  ok(names2.length > 0 && names2.every((n) => names1.includes(n)), `products: every product on Product Analysis (${names2.length}) is on the merged Products screen`);
+  await p.goto(BASE + "/products?tag=Steady&sort=sales", { waitUntil: "networkidle" });
+  ok(/\/affiliate\/products\?/.test(p.url()) && /tag=Steady/.test(p.url()) && /sort=sales/.test(p.url()), "old Product Analysis address lands on Products, filters kept");
+  ok(names1.length >= 13, `products: all ${names1.length} products are on Products`);
   await p.goto(BASE + "/affiliate/products", { waitUntil: "networkidle" });
   const tagsTxt = await p.getByTestId("prod-tags").innerText();
   ok(["Growing", "Steady", "Slipping", "Dying", "Fragile"].every((t) => tagsTxt.includes(t)), "products: tag filters Growing, Steady, Slipping, Dying and Fragile are here");

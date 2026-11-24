@@ -1,4 +1,4 @@
-import { Banknote, Boxes, Compass, ListTodo, UserCheck, Clapperboard, PackageSearch, Send, ListChecks, Package, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
+import { Banknote, Boxes, Compass, ListTodo, UserCheck, Clapperboard, PackageSearch, Send, RefreshCw, Rocket, Settings, Users, type LucideIcon } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 
 export type NavChild = { href: string; label: string; /** The value of ?channel= that makes this child the open one (empty = none). */ channel: string };
@@ -10,15 +10,13 @@ export const NAV: NavGroup[] = [
   {
     label: "Affiliates",
     items: [
-      { href: "/affiliate", label: "Affiliate Command", icon: Compass, perm: "creators" },
+      { href: "/affiliate", label: "Command", icon: Compass, perm: "creators" },
       { href: "/affiliate/outreach", label: "Outreach", icon: Send, perm: "creators" },
-      { href: "/affiliate/products", label: "Products", icon: PackageSearch, perm: "creators" },
+      { href: "/creators", label: "Creators", icon: Users, perm: "creators" },
+      { href: "/affiliate/products", label: "Products", icon: PackageSearch, perm: "creators", perms: ["creators", "products"] },
       { href: "/affiliate/content", label: "Content", icon: Clapperboard, perm: "creators" },
-      { href: "/affiliate/actions", label: "Actions", icon: ListTodo, perm: "creators" },
+      { href: "/affiliate/actions", label: "Actions", icon: ListTodo, perm: "creators", perms: ["creators", "execution"] },
       { href: "/affiliate/team", label: "Team", icon: UserCheck, perm: "creators" },
-      { href: "/execution", label: "Execution Plan", icon: ListChecks, perm: "execution" },
-      { href: "/creators", label: "Affiliate Data", icon: Users, perm: "creators" },
-      { href: "/products", label: "Product Analysis", icon: Package, perm: "products" },
     ],
   },
   {

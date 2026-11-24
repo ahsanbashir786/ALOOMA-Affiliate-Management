@@ -17,7 +17,7 @@ const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
   });
   await p.goto(BASE + "/login"); await p.fill("input[name=email]", "manager@test.local"); await p.fill("input[name=password]", "Passw0rd!test");
   await Promise.all([p.waitForURL((u) => !/login/.test(u.pathname)), p.click("button[type=submit]")]);
-  const pages = [["Execution Plan", "/execution"], ["Affiliate Data", "/creators"], ["Product Analysis", "/products"], ["Product detail", "/products/mp_wp"], ["Data Sync", "/sync"], ["Settings", "/settings"]];
+  const pages = [["Command", "/affiliate"], ["Actions", "/affiliate/actions"], ["Creators", "/creators"], ["Products", "/affiliate/products"], ["Product detail", "/products/mp_wp"], ["Data Sync", "/sync"], ["Settings", "/settings"]];
   console.log(`Open a screen directly (ms to title, median of 5) – ${BASE}`);
   for (const [name, path] of pages) {
     const ts = [];

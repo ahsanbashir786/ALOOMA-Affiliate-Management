@@ -13,7 +13,7 @@ import { DatesPicker } from "@/components/ui/range-picker";
 import { AgeStack, Funnel, KpiCard, SalesVideosChart, type FunnelRow } from "@/components/affiliate/charts";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Affiliate Command" };
+export const metadata: Metadata = { title: "Command" };
 
 const STATUS = {
   good: { text: "Good", cls: "bg-good-soft text-good", dot: "bg-good" },
@@ -22,12 +22,12 @@ const STATUS = {
 } as const;
 
 export default async function CommandPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { denied } = await gate("creators", "Affiliate Command");
+  const { denied } = await gate("creators", "Command");
   if (denied) return denied;
   if (!(await hasSyncedData())) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Affiliate Command" />
+        <PageHeader title="Command" />
         <Card><EmptyState icon={<Users className="size-5" />} title="No TikTok data yet" description="Connect TikTok Shop and run Data Sync. This screen fills in as soon as the first orders arrive." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
       </div>
     );
@@ -53,7 +53,7 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Affiliate Command"
+        title="Command"
         description="How your affiliate sales are doing, why, and where to act. Charts show the last 12 weeks. The headline numbers use the dates you choose, compared with the same number of days just before. Creator stages are as of today."
         actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
       />
@@ -76,11 +76,11 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
-          <CardHeader title="Sales By Video Age" description="Each bar is one week of sales, split by how old the video was when it sold. A growing dark or orange part means sales lean on old videos. Same ages as Product Analysis." />
+          <CardHeader title="Sales By Video Age" description="Each bar is one week of sales, split by how old the video was when it sold. A growing dark or orange part means sales lean on old videos." />
           <div className="px-5 pb-5"><AgeStack weeks={weeks} /></div>
         </Card>
         <Card>
-          <CardHeader title="Creators By Stage" description="From suggested to star. Click a stage to open the creators: the first three go to Outreach, the rest to Affiliate Data. Bars use a square-root scale so small stages stay visible." />
+          <CardHeader title="Creators By Stage" description="From suggested to star. Click a stage to open the creators: the first three go to Outreach, the rest to Creators. Bars use a square-root scale so small stages stay visible." />
           {g.high && (
             <p data-testid="guard" className="mx-5 mb-2 rounded-lg bg-warn/10 px-3 py-2 text-[13px] font-medium text-ink-2">
               <Badge tone="warn">Chase Idle Samples First</Badge> <span className="ml-1">{(g.notPosted + g.noSale).toLocaleString("en-MY")} samples already sent are not paying off. Chase them before paying for new creators.</span>
