@@ -1,6 +1,9 @@
 import "server-only";
 import { localStamp, syncStamp } from "@/lib/data-stamp";
 
+/** How many results one screen keeps in memory (each date range or filter is one). */
+const MAX_ENTRIES = 40;
+
 type Entry<T> = { local: string; sync: string; at: number; value: T; refreshing?: Promise<void> };
 
 /**
@@ -11,8 +14,16 @@ type Entry<T> = { local: string; sync: string; at: number; value: T; refreshing?
 export async function swr<T>(cache: Map<string, Entry<T>>, key: string, stamp: { local: string; sync: string }, compute: () => Promise<T>, maxAgeMs = 15 * 60_000): Promise<T> {
   if (process.env.SWR_OFF === "1") return compute(); // tests: always build fresh
   const hit = cache.get(key);
-  const build = async () => { const value = await compute(); if (cache.size > 12) cache.clear(); cache.set(key, { local: stamp.local, sync: stamp.sync, at: Date.now(), value }); return value; };
+  const build = async () => {
+    const value = await compute();
+    cache.delete(key);
+    // Keep the most recent results (each date range is one). Only the oldest is dropped, never all of them.
+    while (cache.size >= MAX_ENTRIES) cache.delete(cache.keys().next().value as string);
+    cache.set(key, { local: stamp.local, sync: stamp.sync, at: Date.now(), value });
+    return value;
+  };
   if (!hit || hit.local !== stamp.local) return build();
+  cache.delete(key); cache.set(key, hit); // most recently used goes to the back of the line
   // New TikTok data: rebuild in the background, but not more than once every 3 minutes (a rebuild keeps the database busy for several seconds).
   const age = Date.now() - hit.at;
   if ((hit.sync !== stamp.sync && age > 3 * 60_000) || age > maxAgeMs) {

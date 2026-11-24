@@ -2,8 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { BarChart } from "@/components/viz/bar-chart";
 import { CheckCircle2, ClipboardList, Clock, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LogBatch } from "@/lib/ads/insights";
@@ -42,7 +41,7 @@ export function LogBoard({ batches, saved, rangeLabel }: { batches: LogBatch[]; 
           ["Boosts Logged", nfmt(stats.total), "", ClipboardList], ["Hit Rate", stats.rate == null ? "–" : `${stats.rate}%`, stats.done ? `${stats.up} of ${stats.done} raised sales` : "waiting for results", TrendingUp],
           ["Sales After Boosts", rm(stats.sales), `from ${rm(stats.spend)} spent`, TrendingUp], ["ROI After Boosts", roiFmt(stats.roi), "", TrendingUp],
         ].map(([l, v, sub, I], i) => { const Icon = I as typeof TrendingUp; return (
-          <motion.div key={String(l)} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-2xl border border-line bg-gradient-to-br from-brand-soft to-surface p-4"><Icon className="size-5 text-brand" /><p className="tnum mt-1 text-[26px] leading-none font-semibold text-ink">{String(v)}</p><p className="mt-1 text-[12.5px] font-medium text-ink-2">{String(l)}</p>{sub && <p className="text-[12px] text-ink-3">{String(sub)}</p>}</motion.div>); })}
+          <div data-anim key={String(l)} style={{ animationDelay: `${Math.round((i * 0.05) * 1000)}ms` }} className="rounded-2xl border border-line bg-gradient-to-br from-brand-soft to-surface p-4"><Icon className="size-5 text-brand" /><p className="tnum mt-1 text-[26px] leading-none font-semibold text-ink">{String(v)}</p><p className="mt-1 text-[12.5px] font-medium text-ink-2">{String(l)}</p>{sub && <p className="text-[12px] text-ink-3">{String(sub)}</p>}</div>); })}
       </section>
       <ol className="relative space-y-4 border-l-2 border-line pl-5">
         {batches.map((b, i) => {
@@ -50,7 +49,7 @@ export function LogBoard({ batches, saved, rangeLabel }: { batches: LogBatch[]; 
           const pd = (k: { revenue: number }, d: number) => (d > 0 ? k.revenue / d : 0);
           const data = [{ name: `Before (${LOG_WINDOW}d)`, sales: Math.round(pd(b.before, LOG_WINDOW)) }, { name: `After (${b.afterDays || 0}d)`, sales: Math.round(pd(b.after, b.afterDays)) }];
           return (
-            <motion.li key={b.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(0.3, i * 0.05) }} className="relative" data-testid="ads-log-batch">
+            <li data-anim key={b.id} style={{ animationDelay: `${Math.round((Math.min(0.3, i * 0.05)) * 1000)}ms` }} className="relative" data-testid="ads-log-batch">
               <span className={cn("absolute top-5 -left-[31px] grid size-5 place-items-center rounded-full ring-4 ring-bg", v.edge)}><Icon className="size-3 text-white" /></span>
               <div className="overflow-hidden rounded-2xl border border-line bg-surface">
                 <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_240px]">
@@ -65,16 +64,10 @@ export function LogBoard({ batches, saved, rangeLabel }: { batches: LogBatch[]; 
                       {[["Sales A Day", `${rm(pd(b.before, LOG_WINDOW))} → ${b.afterDays ? rm(pd(b.after, b.afterDays)) : "–"}`], ["ROI", `${roiFmt(b.before.roi)} → ${roiFmt(b.after.roi)}`], ["Orders", `${nfmt(b.before.orders)} → ${nfmt(b.after.orders)}`]].map(([l, x]) => <div key={l} className="rounded-xl bg-surface-2 px-2 py-2"><p className="tnum text-[13.5px] font-semibold text-ink">{x}</p><p className="text-[11.5px] text-ink-3">{l}</p></div>)}
                     </div>
                   </div>
-                  <div className="h-[130px]" role="img" aria-label="Sales a day before and after the boost">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: -18 }}>
-                        <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
-                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--ink-3)" }} tickLine={false} axisLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "var(--ink-3)" }} tickLine={false} axisLine={false} width={44} />
-                        <Tooltip formatter={(x) => [`RM ${x}`, "Sales a day"]} cursor={{ fill: "var(--surface-2)" }} />
-                        <Bar dataKey="sales" radius={[8, 8, 0, 0]} isAnimationActive animationDuration={700}>{data.map((_, k) => <Cell key={k} fill={k === 0 ? "var(--ink-3)" : b.verdict === "worse" ? "var(--critical)" : "var(--good)"} fillOpacity={k === 0 ? 0.5 : 0.9} />)}</Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div>
+                    <BarChart data={data} x={(d) => String(d.name)} height={130} maxBar={60} dashed label="Sales a day before and after the boost"
+                      series={[{ key: "sales", name: "Sales a day", color: (_d, k) => (k === 0 ? "var(--ink-3)" : b.verdict === "worse" ? "var(--critical)" : "var(--good)"), opacity: (_d, k) => (k === 0 ? 0.5 : 0.9) }]}
+                      tip={(d) => <p className="text-ink-2">RM {String(d.sales)} a day</p>} />
                   </div>
                 </div>
                 <details className="border-t border-line">
@@ -84,7 +77,7 @@ export function LogBoard({ batches, saved, rangeLabel }: { batches: LogBatch[]; 
                   </ul>
                 </details>
               </div>
-            </motion.li>
+            </li>
           );
         })}
       </ol>

@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { swr } from "@/lib/swr";
@@ -40,8 +41,23 @@ export async function loadCreatorRows(opts: { range?: { start: string; end: stri
     concat_ws('|', (select max(last_success_at)::text from tt_sync_state where dataset not like 'shopee\\_%'), (select sum(n_tup_ins + n_tup_upd + n_tup_del) from pg_stat_user_tables where relname in ('tt_affiliate_order_lines', 'tt_videos', 'tt_sample_requests', 'tt_orders'))) as s
     from (select to_char(now() at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') as d) todayKL`);
   const key = opts.range ? `${opts.range.start}..${opts.range.end}` : "all";
-  const value = await swr(cache, key, { local: st.l, sync: st.s }, () => computeCreatorRows(opts));
+  const value = await swr(cache, key, { local: st.l, sync: st.s }, () => computeCreatorRows(opts, `${st.l}#${st.s}`));
   return withOwners(value);
+}
+
+/**
+ * The parts that do not depend on the chosen dates (samples, requests, videos, names…) are kept while the data has not changed,
+ * so choosing another date range only re-runs the four queries that do. `key` changes with every sync and every staff record.
+ */
+let staticMemo: { key: string; parts: Map<string, Promise<unknown>> } | null = null;
+function staticPart(key: string) {
+  if (!staticMemo || staticMemo.key !== key || process.env.SWR_OFF === "1") staticMemo = { key, parts: new Map() };
+  const parts = staticMemo.parts;
+  return <T>(name: string, run: () => Promise<T>): Promise<T> => {
+    let p = parts.get(name) as Promise<T> | undefined;
+    if (!p) { p = run(); parts.set(name, p); p.catch(() => parts.delete(name)); }
+    return p;
+  };
 }
 
 /** Who looks after each creator changes often and changes no number, so it is read fresh each time instead of rebuilding everything. */
@@ -50,7 +66,8 @@ async function withOwners(v: Loaded): Promise<Loaded> {
   return { ...v, all: v.all.map((r) => { const o = owners.get(r.username); return r.extra && (r.extra.ownerId ?? null) === (o?.user_id ?? null) && (r.extra.ownerName ?? null) === (o?.name ?? null) ? r : r.extra ? { ...r, extra: { ...r.extra, ownerId: o?.user_id ?? null, ownerName: o?.name ?? null } } : r; }) };
 }
 
-async function computeCreatorRows(opts: { range?: { start: string; end: string } }): Promise<Loaded> {
+async function computeCreatorRows(opts: { range?: { start: string; end: string } }, dataKey = ""): Promise<Loaded> {
+  await ensureAffLines();
   await refreshProductKeys(); // which of the 13 products every listing is (automatic), so no screen shows raw TikTok titles
   const [refRow] = await rows<{ d: string | null }>(sql`select to_char(max(${kd("created_at")}), 'YYYY-MM-DD') as d from tt_affiliate_order_lines`);
   const ref = refRow?.d ?? null;
@@ -63,50 +80,67 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
   const D = kd("tl.created_at");
   const refD = ref ?? "1970-01-01";
 
+  const memo = staticPart(`${dataKey}|${ref}`);
   const [csales, psales, weekly, vidsC, vidsP, livesC, samples, reqs, contact, owners, doneRows, names, firsts, vidsU] = await Promise.all([
+    // Orders are counted in one pass: lines are first rolled up per order, then the orders are counted (no "count distinct", which sorts the whole table once per count).
     rows<{ creator: string; gmv_all: number; gmv28: number; prev28: number; ov: number; ol: number; last: string | null }>(sql`
-      select tl.creator,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")}), 0)::float8 as gmv_all,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${D} between ${s28 ?? refD}::date and ${refD}::date), 0)::float8 as gmv28,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${D} between ${p28s ?? refD}::date and ${p28e ?? refD}::date), 0)::float8 as prev28,
-        (count(distinct tl.order_id) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Video'))::int as ov,
-        (count(distinct tl.order_id) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Livestream'))::int as ol,
-        to_char(max(${D}) filter (where tl.valid), 'YYYY-MM-DD') as last
-      from ${TL} where tl.creator is not null group by tl.creator`),
+      select o.creator,
+        coalesce(sum(o.g_all), 0)::float8 as gmv_all, coalesce(sum(o.g28), 0)::float8 as gmv28, coalesce(sum(o.p28), 0)::float8 as prev28,
+        (count(*) filter (where o.v))::int as ov, (count(*) filter (where o.l))::int as ol,
+        to_char(max(o.last), 'YYYY-MM-DD') as last
+      from (
+        select tl.creator, tl.order_id,
+          sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")}) as g_all,
+          sum(tl.pay) filter (where tl.valid and ${D} between ${s28 ?? refD}::date and ${refD}::date) as g28,
+          sum(tl.pay) filter (where tl.valid and ${D} between ${p28s ?? refD}::date and ${p28e ?? refD}::date) as p28,
+          bool_or(tl.valid and ${R("tl.created_at")} and tl.content_type = 'Video') as v,
+          bool_or(tl.valid and ${R("tl.created_at")} and tl.content_type = 'Livestream') as l,
+          max(${D}) filter (where tl.valid) as last
+        from ${TL} where tl.creator is not null group by tl.creator, tl.order_id
+      ) o group by o.creator`),
     rows<{ creator: string; pid: string; ov: number; ol: number; ot: number; gv: number; gl: number; gmv: number; gmv28: number; prev28: number; gmv90: number }>(sql`
-      select tl.creator, tl.pk as pid,
-        (count(distinct tl.order_id) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Video'))::int as ov,
-        (count(distinct tl.order_id) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Livestream'))::int as ol,
-        (count(distinct tl.order_id) filter (where tl.valid and ${R("tl.created_at")}))::int as ot,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Video'), 0)::float8 as gv,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Livestream'), 0)::float8 as gl,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")}), 0)::float8 as gmv,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${D} between ${s28 ?? refD}::date and ${refD}::date), 0)::float8 as gmv28,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${D} between ${p28s ?? refD}::date and ${p28e ?? refD}::date), 0)::float8 as prev28,
-        coalesce(sum(tl.pay) filter (where tl.valid and ${D} between ${l90 ?? refD}::date and ${refD}::date), 0)::float8 as gmv90
-      from ${TL} where tl.creator is not null group by tl.creator, tl.pk`),
-    rows<{ creator: string; w: number; g: number }>(sql`
+      select o.creator, o.pk as pid,
+        (count(*) filter (where o.v))::int as ov, (count(*) filter (where o.l))::int as ol, (count(*) filter (where o.a))::int as ot,
+        coalesce(sum(o.gv), 0)::float8 as gv, coalesce(sum(o.gl), 0)::float8 as gl, coalesce(sum(o.gmv), 0)::float8 as gmv,
+        coalesce(sum(o.g28), 0)::float8 as gmv28, coalesce(sum(o.p28), 0)::float8 as prev28, coalesce(sum(o.g90), 0)::float8 as gmv90
+      from (
+        select tl.creator, tl.pk, tl.order_id,
+          bool_or(tl.valid and ${R("tl.created_at")} and tl.content_type = 'Video') as v,
+          bool_or(tl.valid and ${R("tl.created_at")} and tl.content_type = 'Livestream') as l,
+          bool_or(tl.valid and ${R("tl.created_at")}) as a,
+          sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Video') as gv,
+          sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")} and tl.content_type = 'Livestream') as gl,
+          sum(tl.pay) filter (where tl.valid and ${R("tl.created_at")}) as gmv,
+          sum(tl.pay) filter (where tl.valid and ${D} between ${s28 ?? refD}::date and ${refD}::date) as g28,
+          sum(tl.pay) filter (where tl.valid and ${D} between ${p28s ?? refD}::date and ${p28e ?? refD}::date) as p28,
+          sum(tl.pay) filter (where tl.valid and ${D} between ${l90 ?? refD}::date and ${refD}::date) as g90
+        from ${TL} where tl.creator is not null group by tl.creator, tl.pk, tl.order_id
+      ) o group by o.creator, o.pk`),
+    memo("weekly", () => rows<{ creator: string; w: number; g: number }>(sql`
       select tl.creator, floor((${refD}::date - ${D}) / 7)::int as w, coalesce(sum(tl.pay) filter (where tl.valid), 0)::float8 as g
-      from ${TL} where tl.creator is not null and ${D} between ${w8 ?? refD}::date and ${refD}::date group by 1, 2`),
-    rows<{ creator: string; n: number; n28: number; last: string | null }>(sql`
+      from ${TL} where tl.creator is not null and ${D} between ${w8 ?? refD}::date and ${refD}::date group by 1, 2`)),
+
+    memo("vidsC", () => rows<{ creator: string; n: number; n28: number; last: string | null }>(sql`
       select v.creator, count(*)::int as n,
         (count(*) filter (where ${kd("v.posted_at")} between ${s28 ?? refD}::date and ${refD}::date))::int as n28,
         to_char(max(${kd("v.posted_at")}), 'YYYY-MM-DD') as last
-      from tt_videos v where v.creator is not null group by v.creator`),
+      from tt_videos v where v.creator is not null group by v.creator`)),
+
     rows<{ creator: string; pid: string; n: number; n28: number; last: string | null }>(sql`
       select v.creator, ${sql.raw(PK_LISTING("p->>'id'"))} as pid, (count(distinct v.video_id) filter (where ${R("v.posted_at")}))::int as n,
         (count(distinct v.video_id) filter (where ${kd("v.posted_at")} between ${s28 ?? refD}::date and ${refD}::date))::int as n28,
         to_char(max(${kd("v.posted_at")}) filter (where ${R("v.posted_at")}), 'YYYY-MM-DD') as last
       from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) as p
       where v.creator is not null and p->>'id' is not null and ${sql.raw(PK_LISTING("p->>'id'"))} <> 'excluded' group by v.creator, 2`),
-    rows<{ creator: string; n: number; n28: number; last: string | null }>(sql`
+    memo("livesC", () => rows<{ creator: string; n: number; n28: number; last: string | null }>(sql`
       select l.creator, count(*)::int as n,
         (count(*) filter (where ${kd("l.started_at")} between ${s28 ?? refD}::date and ${refD}::date))::int as n28,
         to_char(max(${kd("l.started_at")}), 'YYYY-MM-DD') as last
-      from tt_lives l where l.creator is not null group by l.creator`),
+      from tt_lives l where l.creator is not null group by l.creator`)),
+
     // Samples per creator × product (one of the 13). A sample counts as "posted" when the creator posted a video that links that product,
     // or sold that product, after it was sent – this also works for old samples, because orders reach back further than the video list.
-    rows<{ creator: string; pid: string; given: { sku: string; on: string; d: boolean }[] | null; sent: number; waiting: number; not_posted: number; posted: number }>(sql`
+    memo("samples", () => rows<{ creator: string; pid: string; given: { sku: string; on: string; d: boolean }[] | null; sent: number; waiting: number; not_posted: number; posted: number }>(sql`
       select x.creator, x.pk as pid,
         jsonb_agg(jsonb_build_object('sku', x.sku_code, 'on', x.given_on, 'd', x.delivered) order by x.given_on) filter (where x.sku_code is not null) as given,
         count(*)::int as sent,
@@ -134,27 +168,34 @@ async function computeCreatorRows(opts: { range?: { start: string; end: string }
             where r.creator is not null and ${sql.raw(hasOrderSql("r"))} and ${sql.raw(SAMPLE_SHIPPED_SQL)} and coalesce(upper(o.status), '') <> 'CANCELLED'
           ) z where z.pk <> 'excluded'
         ) y
-      ) x group by x.creator, x.pk`),
-    rows<{ creator: string; nickname: string | null; followers: number | null; gmv: number | null; fulfil: number | null; open: number }>(sql`
+      ) x group by x.creator, x.pk`)),
+
+    memo("reqs", () => rows<{ creator: string; nickname: string | null; followers: number | null; gmv: number | null; fulfil: number | null; open: number }>(sql`
       select distinct on (r.creator) r.creator, r.nickname, r.followers::float8::bigint::int as followers, r.creator_gmv::float8 as gmv, r.fulfilment_pct::float8 as fulfil,
         (select count(*) from tt_sample_requests q where q.creator = r.creator and not coalesce(${sql.raw(hasOrderSql("q"))}, false) and q.is_approvable and coalesce(upper(q.status), '') !~ '(REJECT|EXPIRE|CANCEL|APPROVED)')::int as open
-      from tt_sample_requests r where r.creator is not null order by r.creator, coalesce(r.synced_at, r.first_seen_at) desc`),
-    rows<{ username: string; phone: string | null; approach: string | null }>(sql`select username, phone, approach from creators`),
-    rows<{ username: string; user_id: string | null; name: string | null }>(sql`select o.username, o.user_id, u.name from creator_owners o left join users u on u.id = o.user_id`),
-    rows<{ username: string; action: string; pid: string | null; d: string }>(sql`
+      from tt_sample_requests r where r.creator is not null order by r.creator, coalesce(r.synced_at, r.first_seen_at) desc`)),
+
+    memo("contact", () => rows<{ username: string; phone: string | null; approach: string | null }>(sql`select username, phone, approach from creators`)),
+
+    memo("owners", () => rows<{ username: string; user_id: string | null; name: string | null }>(sql`select o.username, o.user_id, u.name from creator_owners o left join users u on u.id = o.user_id`)),
+
+    memo("doneRows", () => rows<{ username: string; action: string; pid: string | null; d: string }>(sql`
       select username, details->>'action' as action, nullif(details->>'productId', '') as pid, to_char(max(at at time zone 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') as d
-      from staff_events where kind = 'contacted' and reverted_at is null and details ? 'action' group by 1, 2, 3`),
+      from staff_events where kind = 'contacted' and reverted_at is null and details ? 'action' group by 1, 2, 3`)),
+
     // Everyone we know by name, even with no sales yet.
-    rows<{ c: string }>(sql`
+    memo("names", () => rows<{ c: string }>(sql`
       select creator as c from tt_affiliate_order_lines where creator is not null union select creator from tt_sample_requests where creator is not null
       union select creator from tt_videos where creator is not null union select creator from tt_lives where creator is not null
-      union select username from creators where source = 'manual' union select username from creator_owners`),
+      union select username from creators where source = 'manual' union select username from creator_owners`)),
+
     // The first day we see any real activity (an order, a video or a LIVE). Sample requests do not count: their dates are when we first synced them.
-    rows<{ creator: string; d: string }>(sql`
+    memo("firsts", () => rows<{ creator: string; d: string }>(sql`
       select creator, to_char(min(d), 'YYYY-MM-DD') as d from (
         select creator, ${kd("created_at")} as d from tt_affiliate_order_lines where creator is not null
         union all select creator, ${kd("posted_at")} from tt_videos where creator is not null and posted_at is not null
-        union all select creator, ${kd("started_at")} from tt_lives where creator is not null and started_at is not null) x group by creator`),
+        union all select creator, ${kd("started_at")} from tt_lives where creator is not null and started_at is not null) x group by creator`)),
+
     // Videos per product = TikTok's video list plus every video that produced a sale (orders reach back further than the list).
     rows<{ creator: string; pid: string; n: number; sold_only: number }>(sql`
       with listed as (

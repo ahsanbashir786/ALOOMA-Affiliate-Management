@@ -16,8 +16,8 @@ const num = async (p, label) => Number((await p.locator("[data-testid=exec-kpis]
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error") errs.push(m.text().slice(0, 160)); });
   await login(p, "manager@test.local");
   await p.goto(BASE + "/execution"); await p.waitForSelector("[data-testid=task-row]");
-  ok(await p.getByRole("link", { name: "Execution Plan" }).first().waitFor({ state: "visible", timeout: 10000 }).then(() => true).catch(() => false), "menu: Execution Plan is in the sidebar");
-  ok((await p.getByRole("heading", { name: "Execution Plan" }).count()) === 1, "page: titled Execution Plan");
+  ok(await p.getByRole("link", { name: "Actions" }).first().waitFor({ state: "visible", timeout: 10000 }).then(() => true).catch(() => false) && /tab=plan/.test(p.url()), "menu: the plan lives in Actions › By Product (the old address lands there)");
+  ok((await p.getByRole("heading", { name: "Actions" }).count()) === 1, "page: titled Actions");
   const groups = await p.locator("[data-testid=group]").count();
   ok(groups >= 3, `list: grouped by product (${groups} groups)`);
   const rows = await p.locator("[data-testid=task-row]").count();

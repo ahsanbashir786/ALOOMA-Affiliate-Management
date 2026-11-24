@@ -430,3 +430,14 @@ aside[aria-label="Main menu"] nav::-webkit-scrollbar {
   box-shadow: 0 0 8px var(--brand);
   animation: nav-progress 8s ease-out forwards;
 }
+
+/* A screen that is loading the next one fades a little, so it never looks frozen. */
+body[data-nav-pending] main { opacity: 0.55; transition: opacity 0.15s ease-out 0.12s; pointer-events: none; }
+main { transition: opacity 0.2s ease-out; }
+
+/* Gentle entrance for cards and rows (replaces an animation library: plain CSS, nothing extra to download). */
+@keyframes anim-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes anim-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+[data-anim] { animation: anim-in 0.25s ease-out both; }
+.anim-grow { transform-origin: left; animation: anim-grow 0.5s ease-out both; }
+@media (prefers-reduced-motion: reduce) { [data-anim], .anim-grow { animation: none; } }

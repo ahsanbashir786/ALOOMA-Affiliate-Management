@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { dayKL, fmtDayLabel, addDaysISO, daysBetweenISO, weekStartISO } from "@/lib/time";
@@ -36,6 +37,7 @@ export type CreatorProfile = {
 
 /** Everything the creator profile page shows, from the TikTok sync. null when we have never seen this creator. */
 export async function getCreatorProfile(username: string): Promise<CreatorProfile | null> {
+  await ensureAffLines();
   const { all, ref } = await loadCreatorRows();
   const row = all.find((r) => r.username === username);
   if (!row) return null;

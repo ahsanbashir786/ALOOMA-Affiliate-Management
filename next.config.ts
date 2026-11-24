@@ -13,11 +13,6 @@ const nextConfig: NextConfig = {
     },
   },
   serverExternalPackages: ["exceljs", "postgres"],
-  async redirects() {
-    return [
-      { source: "/actions", destination: "/today", permanent: false },
-    ];
-  },
 };
 
 export default nextConfig;

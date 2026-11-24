@@ -2253,3 +2253,26 @@ insert into roles (key, name, description, is_admin) values
 
 insert into role_permissions (role_id, permission)
 select r.id, p from roles r, unnest(array['execution','creators','products','ads','stock','profit','sync','users','settings']) p where r.is_admin;
+
+-- Mirrors migrations/0044_aff_lines.sql
+create table if not exists tt_aff_lines (
+  order_id text not null,
+  sku_id text not null,
+  creator text,
+  product_id text,
+  seller_sku text,
+  sku_name text,
+  content_id text,
+  created_at timestamptz,
+  day date,
+  content_type text not null,
+  pay numeric not null,
+  qty integer not null,
+  comm numeric not null,
+  valid boolean not null,
+  primary key (order_id, sku_id)
+);
+create index if not exists tt_aff_lines_day on tt_aff_lines (day);
+create index if not exists tt_aff_lines_creator_day on tt_aff_lines (creator, day);
+create index if not exists tt_aff_lines_product_day on tt_aff_lines (product_id, day);
+create index if not exists tt_aff_lines_content on tt_aff_lines (content_id);

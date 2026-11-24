@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { swr } from "@/lib/swr";
@@ -65,6 +66,7 @@ export async function analyseProducts(range?: { start: string; end: string }): P
 }
 
 async function compute(period: Period, ref: string | null): Promise<Analysis> {
+  await ensureAffLines();
   await refreshProductKeys();
   const spanStart = period.prevStart < addDaysISO(period.end, -(WEEKS * 7 - 1)) ? period.prevStart : addDaysISO(period.end, -(WEEKS * 7 - 1));
   const D = kd("tl.created_at");

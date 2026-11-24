@@ -8,7 +8,29 @@ import { skuFamily, suggestListing, type Families } from "./suggest";
  * `product_map` (automatic; nobody edits it). Run whenever the Creators data is rebuilt, so a new listing or a better rule applies at once.
  * A listing that cannot be recognised has no row and shows as "Unmapped product" (last in every list).
  */
+let classifiedAt: string | null = null;
+
+/** Changes whenever a listing, an order line, a sample request or the product map changes: the things the answer depends on. */
+async function inputsStamp(): Promise<string> {
+  const [r] = await rows<{ s: string }>(sql`select concat_ws('|',
+    (select count(*) from tt_skus), (select max(synced_at)::text from tt_skus),
+    (select count(*) from tt_affiliate_order_lines), (select max(synced_at)::text from tt_affiliate_order_lines),
+    (select count(*) from tt_sample_requests), (select max(synced_at)::text from tt_sample_requests),
+    (select count(*) from product_map), (select max(updated_at)::text from product_map)) as s`);
+  return r?.s ?? "";
+}
+let running: Promise<void> | null = null;
+
+/** Runs the full scan only when new TikTok data has arrived since the last one (it reads every order line). */
 export async function refreshProductKeys(): Promise<void> {
+  const stamp = await inputsStamp();
+  if (stamp === classifiedAt && process.env.SWR_OFF !== "1") return;
+  if (running) return running;
+  running = scanProductKeys().then(() => { classifiedAt = stamp; }).finally(() => { running = null; });
+  return running;
+}
+
+async function scanProductKeys(): Promise<void> {
   const [titles, fams, have] = await Promise.all([
     rows<{ product_id: string; title: string | null }>(sql`
       select i.product_id, coalesce((select max(product_title) from tt_skus k where k.product_id = i.product_id), (select max(product_title) from tt_sample_requests r where r.product_id = i.product_id)) as title

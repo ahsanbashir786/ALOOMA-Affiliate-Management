@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { refreshPlanAfterSync } from "@/lib/execution/refresh";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { connectionInfo, tiktokConfig } from "./client";
 import { adsConfig, adsConnectionInfo } from "@/lib/tiktok-ads/client";
 import { adsSchedulerDue, clearAdsInterrupted, getAdsSyncSettings, runAdsAll, type AdsDeps } from "@/lib/tiktok-ads/sync";
@@ -43,7 +44,8 @@ export function startScheduler() {
   const g = globalThis as unknown as { __ttScheduler?: boolean };
   if (g.__ttScheduler) return;
   g.__ttScheduler = true;
-  const tick = () => { schedulerTick().then((r) => (r === "ran" ? refreshPlanAfterSync() : undefined)).catch(() => {}); };
+  // After a sync: prepare the order lines for the screens once (so no visitor waits for it), then refresh the plan.
+  const tick = () => { schedulerTick().then(async (r) => { if (r === "ran") { await ensureAffLines().catch(() => {}); await refreshPlanAfterSync(); } }).catch(() => {}); };
   // A restart kills any sync in progress; clear its "running" marks first so the screen never waits for work that no longer exists.
   clearInterrupted().catch(() => {});
   clearAdsInterrupted().catch(() => {});

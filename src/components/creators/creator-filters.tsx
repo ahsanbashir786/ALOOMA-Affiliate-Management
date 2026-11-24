@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowDownUp, ChevronDown, Download, Search, SlidersHorizontal, X } from "lucide-react";
 import { Input, Select } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
+import { startNav } from "@/components/shell/nav-progress";
 import { href } from "@/lib/url";
 import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/creators/status";
 import { CREATOR_SORTS } from "@/lib/creators/params";
@@ -44,7 +45,7 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
     for (const k of Object.keys(next)) if (next[k] === (DEFAULTS as Record<string, string>)[k]) next[k] = "";
     return href(path, next);
   };
-  const go = (patch: Partial<CreatorFilterValues>) => start(() => router.replace(urlFor(patch), { scroll: false }));
+  const go = (patch: Partial<CreatorFilterValues>) => { const to = urlFor(patch); startNav(to); start(() => router.replace(to, { scroll: false })); };
   const exportHref = href("/api/creators/export", Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v === (DEFAULTS as Record<string, string>)[k] ? "" : v])));
   const dirty = Object.entries(values).some(([k, v]) => !["sort", "from", "to", "samples"].includes(k) && v !== "") || values.samples !== "all";
   const chip = (active: boolean) => cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13.5px] font-medium transition-colors", active ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-ink-2 hover:bg-surface-2");

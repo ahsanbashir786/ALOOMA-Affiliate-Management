@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { kd, TL } from "@/lib/creators/sql";
@@ -28,6 +29,7 @@ const url = (creator: string, id: string, kind: "video" | "live") => (kind === "
 
 /** Lifetime sales per creator and product, from the whole order history (not only the last two periods). Cached until the data or the day changes. */
 export async function loadHistory(a: Analysis): Promise<History> {
+  await ensureAffLines();
   const key = `${a.ref}|${a.period.start}|${a.products.reduce((n, p) => n + p.metrics.sales.now + p.metrics.sales.prev, 0).toFixed(2)}`;
   if (cache?.key === key) return cache.value;
   const D = kd("tl.created_at");

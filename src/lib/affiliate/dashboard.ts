@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { cached } from "@/lib/swr";
@@ -81,6 +82,7 @@ async function weekly(end: string): Promise<Week[]> {
 }
 
 export async function loadDashboard(range?: { start: string; end: string }): Promise<Dashboard | null> {
+  await ensureAffLines();
   const { all, ref } = await loadCreatorRows();
   if (!ref) return null;
   const window = resolveWindow(range, ref);

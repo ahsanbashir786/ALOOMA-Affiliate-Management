@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { startNav } from "@/components/shell/nav-progress";
 import { PRESETS, fmtDay, makeRange, presetDates, type RangeKey } from "@/lib/range";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -96,7 +97,9 @@ function Picker({ today, rangeKey, from, to, label, mode, presets, compare, test
     else if (key === "custom") { q.set("range", "custom"); q.set("from", draft.from!); q.set("to", draft.to); } else q.set("range", key);
     setOpen(false);
     const qs = q.toString();
-    router.push(qs ? `${path}?${qs}` : path, { scroll: false });
+    const to = qs ? `${path}?${qs}` : path;
+    startNav(to);
+    router.push(to, { scroll: false });
   };
   const preview = draft ? makeRange(key, draft.from, draft.to) : null;
   const left = addMonths(view, 0), right = addMonths(view, 1);

@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Check, ChevronDown, Copy, KeyRound, Search, UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,7 +34,7 @@ export function RescueBoard({ data }: { data: RescueData }) {
       <section className="grid gap-3 sm:grid-cols-3" aria-label="Totals">
         {[["Videos Locked", nfmt(data.totalVideos), KeyRound], ["Sales They Made In Ads", rm(data.totalRevenue), UserCheck], ["Creators To Ask", nfmt(data.creators.length), UserCheck]].map(([l, v, Icon], i) => {
           const I = Icon as typeof KeyRound;
-          return <motion.div key={String(l)} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }} className="rounded-2xl border border-critical/25 bg-gradient-to-br from-critical-soft to-surface p-4"><I className="size-5 text-critical" /><p className="tnum mt-1 text-[28px] leading-none font-semibold text-ink" data-testid={i === 1 ? "ads-rescue-sales" : undefined}>{String(v)}</p><p className="mt-1 text-[12.5px] font-medium text-ink-2">{String(l)}</p></motion.div>;
+          return <div data-anim key={String(l)} style={{ animationDelay: `${Math.round((i * 0.06) * 1000)}ms` }} className="rounded-2xl border border-critical/25 bg-gradient-to-br from-critical-soft to-surface p-4"><I className="size-5 text-critical" /><p className="tnum mt-1 text-[28px] leading-none font-semibold text-ink" data-testid={i === 1 ? "ads-rescue-sales" : undefined}>{String(v)}</p><p className="mt-1 text-[12.5px] font-medium text-ink-2">{String(l)}</p></div>;
         })}
       </section>
       <div className="flex flex-wrap items-center gap-3">
@@ -47,18 +46,18 @@ export function RescueBoard({ data }: { data: RescueData }) {
         <div className="grid place-items-center rounded-2xl border border-dashed border-line-strong bg-surface px-6 py-16 text-center" data-testid="ads-empty-state"><span className="grid size-14 place-items-center rounded-2xl bg-good-soft text-good"><Check className="size-7" /></span><p className="mt-3 text-[16px] font-semibold text-ink">No locked videos with sales</p></div>
       ) : (
         <ul className="space-y-2.5">
-          <AnimatePresence initial={false}>
+          <>
             {list.slice(0, 100).map((c) => {
               const isOpen = open === c.creator, title = c.videos.map((v) => v.title || `Video ${v.creativeId.slice(-8)}`);
               return (
-                <motion.li key={c.creator} layout="position" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="overflow-hidden rounded-2xl border border-line bg-surface" data-testid="ads-rescue-creator">
+                <li data-anim key={c.creator} className="overflow-hidden rounded-2xl border border-line bg-surface" data-testid="ads-rescue-creator">
                   <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <button type="button" onClick={() => setOpen(isOpen ? null : c.creator)} aria-expanded={isOpen} aria-label="Show videos" className="grid size-8 place-items-center rounded-lg hover:bg-surface-2"><ChevronDown className={cn("size-4 transition-transform", isOpen && "rotate-180")} /></button>
                     <Person name={c.creator} size={38} />
                     <div className="min-w-0 flex-1 basis-48">
                       {c.creator === "Creator not known" ? <p className="font-semibold text-ink">{c.creator}</p> : <Link href={`/creators/${encodeURIComponent(c.creator)}`} className="font-semibold text-ink hover:text-brand hover:underline">@{c.creator}</Link>}
                       <p className="text-[12.5px] text-ink-3">{c.videos.length} locked video{c.videos.length === 1 ? "" : "s"} · {nfmt(c.orders)} orders · ROI {roiFmt(c.roi)}</p>
-                      <div className="mt-1.5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-surface-2" title="Sales compared with the top creator"><motion.span initial={{ width: 0 }} animate={{ width: `${Math.max(3, (c.revenue / max) * 100)}%` }} className="block h-full rounded-full bg-critical/70" /></div>
+                      <div className="mt-1.5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-surface-2" title="Sales compared with the top creator"><span style={{ width: `${Math.max(3, (c.revenue / max) * 100)}%` }} className="anim-grow block h-full rounded-full bg-critical/70" /></div>
                     </div>
                     <p className="tnum text-right text-[18px] font-semibold text-ink">{rm(c.revenue)}<span className="block text-[11.5px] font-normal text-ink-3">sales locked</span></p>
                     <div className="flex items-center gap-2">
@@ -67,9 +66,9 @@ export function RescueBoard({ data }: { data: RescueData }) {
                       <button type="button" disabled={busy} data-testid="ads-rescue-asked" onClick={() => start(async () => { await markAuthAsked(c.creator, c.videos.length); router.refresh(); })} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white hover:bg-brand-strong disabled:opacity-60"><UserCheck className="size-4" />{c.askedAt ? "Asked Again" : "Mark As Asked"}</button>
                     </div>
                   </div>
-                  <AnimatePresence initial={false}>
+                  <>
                     {isOpen && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-line bg-surface-2/40">
+                      <div data-anim className="overflow-hidden border-t border-line bg-surface-2/40">
                         <ul className="divide-y divide-line">
                           {c.videos.map((v) => (
                             <li key={v.creativeId} className="flex flex-wrap items-center gap-3 px-5 py-2.5 text-[13px]">
@@ -79,13 +78,13 @@ export function RescueBoard({ data }: { data: RescueData }) {
                             </li>
                           ))}
                         </ul>
-                      </motion.div>
+                      </div>
                     )}
-                  </AnimatePresence>
-                </motion.li>
+                  </>
+                </li>
               );
             })}
-          </AnimatePresence>
+          </>
         </ul>
       )}
       <p className="flex items-center gap-1.5 text-[12.5px] text-ink-3">Locked by TikTok<InfoTip>These videos are locked by TikTok (status Authorization needed). Only the creator can authorize them again. This page never sends anything: copy the message and send it yourself, then press Mark As Asked.</InfoTip></p>

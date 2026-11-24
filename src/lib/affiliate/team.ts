@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { cached } from "@/lib/swr";
@@ -30,6 +31,7 @@ export async function loadTeam(): Promise<Team | null> {
 }
 
 async function compute(ref: string): Promise<Team> {
+  await ensureAffLines();
   const today = todayKL();
   const since = addDaysISO(today, -LOOKBACK);
   const ev = await rows<{ id: number; username: string; kind: string; at: string; user_id: string | null; name: string | null; details: Record<string, unknown> | null; reverted: boolean; synthetic: boolean }>(sql`

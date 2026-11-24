@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
 import { createColumnHelper, flexRender, getCoreRowModel, getPaginationRowModel, getSortedRowModel, useReactTable, type SortingState } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, CalendarCheck, Check, ChevronLeft, ChevronRight, Copy, Flame, Gem, KeyRound, Rocket, Sparkles, Telescope, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -86,23 +85,23 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
           const n = l.key === "best" ? counts.stopped + counts.gem + counts.underfed + counts.explore : counts[l.key as GroupKey];
           const on = view === l.key;
           return (
-            <motion.button key={l.key} type="button" onClick={() => setView(l.key)} data-testid={`ads-group-${l.key}`} aria-pressed={on} title={l.key === "best" ? "The strongest videos from the four groups to the right" : GROUP[l.key as GroupKey].about}
-              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+            <button data-anim key={l.key} type="button" onClick={() => setView(l.key)} data-testid={`ads-group-${l.key}`} aria-pressed={on} title={l.key === "best" ? "The strongest videos from the four groups to the right" : GROUP[l.key as GroupKey].about}
+                style={{ animationDelay: `${Math.round((i * 0.05) * 1000)}ms` }}  
               className={cn("flex flex-col items-start gap-1 rounded-2xl border bg-gradient-to-br p-4 text-left", l.tint, on ? cn("border-transparent ring-2", l.ring) : "border-line")}>
               <l.icon className="size-5 text-ink-2" />
               <span className="tnum text-[26px] leading-none font-semibold text-ink">{nfmt(n)}</span>
               <span className="text-[12.5px] font-medium text-ink-2">{l.label}</span>
-            </motion.button>
+            </button>
           );
         })}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} whileHover={{ y: -2 }} className="sm:col-span-2 xl:col-span-1">
+        <div data-anim style={{ animationDelay: `${250}ms` }} className="sm:col-span-2 xl:col-span-1">
           <Link href="/ads?tab=rescue" data-testid="ads-group-rescue" title={GROUP.rescue.about} className="flex h-full flex-col items-start gap-1 rounded-2xl border border-critical/30 bg-gradient-to-br from-critical-soft to-surface p-4 text-left">
             <KeyRound className="size-5 text-critical" />
             <span className="tnum text-[26px] leading-none font-semibold text-ink">{nfmt(counts.rescue)}</span>
             <span className="text-[12.5px] font-medium text-ink-2">Authorization Rescue</span>
             {rescue.revenue > 0 && <span className="tnum text-[12px] text-critical">{rm(rescue.revenue)} sales locked</span>}
           </Link>
-        </motion.div>
+        </div>
       </section>
       <section aria-label="Not for boosting" className="flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-[13px] font-medium text-ink-3">Do not boost</span>
@@ -114,13 +113,13 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
 
       {/* ───── the map ───── */}
       {list.length > 0 && (
-        <motion.section key={view + "map"} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl border border-line bg-surface p-4" aria-label="Map of the videos">
+        <section data-anim key={view + "map"} className="rounded-2xl border border-line bg-surface p-4" aria-label="Map of the videos">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <h2 className="text-[15px] font-semibold text-ink">{view === "best" ? "Best Picks" : GROUP[view].label} <span className="font-normal text-ink-3">· {nfmt(total)} video{total === 1 ? "" : "s"}</span></h2>
             <p className="text-[12.5px] text-ink-3">{mode === "ads" ? "Top left is the golden corner: good ROI from little money. Click a bubble to pick it." : "Videos never used in ads. Top right sells and gets views on its own. Click a bubble to pick it."}</p>
           </div>
           <BoostMap rows={list} picked={new Set(picked.keys())} onToggle={toggle} mode={mode} />
-        </motion.section>
+        </section>
       )}
 
       <form method="get" className="grid gap-3 rounded-2xl border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto] lg:items-end" data-testid="ads-filters">
@@ -157,19 +156,19 @@ export function PicksBoard({ byGroup, best, counts, start, rules, autoRoi, accou
                   ))}
                 </thead>
                 <tbody>
-                  <AnimatePresence initial={false}>
+                  <>
                     {rows.map((row) => {
                       const on = picked.has(row.original.key);
                       return (
-                        <motion.tr key={row.original.key} layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} data-testid="ads-row" className={cn("border-b border-line", on ? "bg-brand-soft/60" : "hover:bg-surface-2/50")}>
+                        <tr data-anim key={row.original.key} data-testid="ads-row" className={cn("border-b border-line", on ? "bg-brand-soft/60" : "hover:bg-surface-2/50")}>
                           {row.getVisibleCells().map((c) => {
                             const num = (c.column.columnDef.meta as { num?: boolean } | undefined)?.num;
                             return <td key={c.id} className={cn("py-3 pr-3 align-top", c.column.id === "pick" ? "px-4" : "", num ? "tnum text-right" : "")}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>;
                           })}
-                        </motion.tr>
+                        </tr>
                       );
                     })}
-                  </AnimatePresence>
+                  </>
                 </tbody>
               </table>
             </div>

@@ -3,6 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+const EVENT = "app:navigate";
+/** Call just before a programmatic router.push/replace (date picker, filters), so the bar and the fade show at once. */
+export function startNav(href: string) {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(EVENT, { detail: href }));
+}
+
 /** A thin bar at the top as soon as a menu or link is clicked, until the new screen has opened. A screen that takes a moment never looks frozen. */
 function Bar() {
   const path = usePathname();
@@ -22,9 +28,19 @@ function Bar() {
       if (`${u.pathname}?${u.searchParams.toString()}` === here) return; // same screen: nothing will load
       setClick({ href, from: here });
     };
+    const manual = (e: Event) => {
+      const href = String((e as CustomEvent<string>).detail ?? "");
+      const u = new URL(href || "/", window.location.origin);
+      if (`${u.pathname}?${u.searchParams.toString()}` !== here) setClick({ href, from: here });
+    };
     document.addEventListener("click", click, true);
-    return () => document.removeEventListener("click", click, true);
+    window.addEventListener(EVENT, manual);
+    return () => { document.removeEventListener("click", click, true); window.removeEventListener(EVENT, manual); };
   }, [here]);
+  // While the next screen is on its way, the current one fades a little: it is clearly busy, never frozen.
+  useEffect(() => {
+    if (pending) document.body.setAttribute("data-nav-pending", "1"); else document.body.removeAttribute("data-nav-pending");
+  }, [pending]);
   // Never leave the bar up for ever.
   useEffect(() => {
     if (!pending) return;

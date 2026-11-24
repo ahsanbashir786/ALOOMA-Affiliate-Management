@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureAffLines } from "@/lib/creators/aff-lines";
 import { sql } from "drizzle-orm";
 import { rows } from "@/lib/sql";
 import { cached } from "@/lib/swr";
@@ -38,6 +39,7 @@ export async function loadContent(): Promise<Content | null> {
 }
 
 async function compute(ref: string): Promise<Content> {
+  await ensureAffLines();
   const d = kd("tl.created_at");
   const a14 = addDaysISO(ref, -13), b14s = addDaysISO(ref, -27), b14e = addDaysISO(ref, -14), a28 = addDaysISO(ref, -27), p28s = addDaysISO(ref, -55);
   const [vids, split, v] = await Promise.all([

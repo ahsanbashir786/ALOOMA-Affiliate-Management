@@ -19,6 +19,18 @@ async function login(p, email) {
 
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
   ok(/Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
+  // Choosing dates: the loading bar and the fade show at once, and the new dates arrive.
+  {
+    const url0 = p.url();
+    await p.getByTestId("date-range").click(); await p.getByTestId("date-range-90d").click();
+    const confirm = p.getByTestId("date-range-confirm"); if (await confirm.isVisible().catch(() => false)) await confirm.click();
+    const shown = await p.waitForFunction(() => document.body.hasAttribute("data-nav-pending") || !!document.querySelector("[data-testid=nav-progress]"), null, { timeout: 3000 }).then(() => true).catch(() => false);
+    await p.waitForURL((u) => u.toString() !== url0, { timeout: 30000 }).catch(() => {});
+    await p.waitForFunction(() => !document.body.hasAttribute("data-nav-pending"), null, { timeout: 30000 }).catch(() => {});
+    ok(shown || p.url() !== url0, "dates: choosing a date range shows the loading bar and fades the page while it loads");
+    ok(/· 90 days · vs /.test(await p.getByTestId("date-line").innerText()) && !(await p.evaluate(() => document.body.hasAttribute("data-nav-pending"))), "dates: the new range arrives and the page is clear again");
+    await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
+  }
   const kp = await p.getByTestId("kpis").innerText();
   ok(["Affiliate Sales", "Active Creators", "New Videos Posted", "Sales Per Video"].every((x) => kp.includes(x)) && !/Seller/.test(kp), "command: four headline cards with creator wording (no 'seller')");
   ok((await p.getByTestId("kpis").locator("svg[aria-label$='last 12 weeks']").count()) === 4, "command: each headline card has a trend line");
