@@ -289,6 +289,14 @@ async function login(p, email) {
     ok(/Approval History/.test(ht) && /Test Owner/.test(ht) && /TikTok Seller Center/.test(ht), "outreach: approval history shows approvals from this app (with the name) and from TikTok Seller Center");
     await p.goto(BASE + "/affiliate/outreach?stage=history&d=app", { waitUntil: "networkidle" });
     ok((await p.locator("[data-testid=history-rows] li").count()) >= 1 && !/TikTok Seller Center/.test(await p.getByTestId("history").locator("ul").innerText()), "outreach: approval history filters to this app only");
+    await p.goto(BASE + "/affiliate/outreach?stage=history", { waitUntil: "networkidle" });
+    const all0 = await p.locator("[data-testid=history-rows] li").count();
+    await p.getByTestId("history-search").fill("test owner");
+    await p.waitForSelector("[data-testid=history-found]", { timeout: 20000 });
+    const hit = await p.locator("[data-testid=history-rows] li").count();
+    ok(hit >= 1 && hit < all0 && /Test Owner/.test(await p.getByTestId("history").locator("ul").innerText()) && /q=test/.test(p.url()), `outreach: one search box finds by approver name (${hit} of ${all0})`);
+    await p.getByTestId("history-search").fill(rq.creator + " approved"); await p.waitForTimeout(1500); await p.waitForLoadState("networkidle");
+    ok((await p.getByTestId("history").locator("ul").innerText()).includes(rq.creator), "outreach: the search combines words (creator + approved)");
     await db`delete from staff_events where details->>'e2e' = 'true' and details->>'applicationId' = ${rq.id}`;
     await db.end();
   }

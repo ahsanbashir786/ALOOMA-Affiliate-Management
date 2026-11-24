@@ -7,6 +7,7 @@ import { hasSyncedData } from "@/lib/creators/load";
 import { loadOutreach, loadOutreachPeriod, type SampleCard } from "@/lib/affiliate/outreach-load";
 import { parseRange } from "@/lib/creators/params";
 import { DatesPicker } from "@/components/ui/range-picker";
+import { UrlSearch } from "@/components/ui/url-search";
 import { PIPELINE, type PipelineKey } from "@/lib/affiliate/outreach";
 import { addDaysISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
@@ -108,7 +109,10 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
   ];
   const fMax = Math.max(1, f.requested);
   const dview = one(sp.d) ?? "";
-  const decisions = per.decisions.filter((d) => (dview === "approved" ? d.approved : dview === "rejected" ? !d.approved : dview === "app" ? d.source === "app" : dview === "tiktok" ? d.source === "tiktok" : true));
+  // One search across everything in a row: creator, product, approved/rejected, this app/TikTok, who, and the date. Every word must match.
+  const words = (one(sp.q) ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  const textOf = (d: (typeof per.decisions)[number]) => [d.creator, `@${d.creator}`, d.product, d.approved ? "approved" : "rejected", d.source === "app" ? `this app ${d.by ?? ""}` : "tiktok seller center", fmtDayLabel(d.day), d.day].join(" ").toLowerCase();
+  const decisions = per.decisions.filter((d) => (dview === "approved" ? d.approved : dview === "rejected" ? !d.approved : dview === "app" ? d.source === "app" : dview === "tiktok" ? d.source === "tiktok" : true) && words.every((w) => textOf(d).includes(w)));
   const byPerson = new Map<string, number>();
   for (const d of per.decisions) { const k = d.source === "app" ? d.by ?? "Unknown" : "TikTok Seller Center"; byPerson.set(k, (byPerson.get(k) ?? 0) + 1); }
   const writeReason = !o.flags.connected ? "TikTok Shop is not connected." : !o.flags.write ? "TikTok has not granted the approve permission yet (seller.affiliate_collaboration.write). Reconnect TikTok in Settings after switching it on in Partner Center." : o.flags.reviewOn ? "On: approvals go to TikTok and cannot be undone." : "Off: the system only reads until the owner switches this on.";
@@ -185,12 +189,14 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
         <Card data-testid="history">
           <CardHeader title="Approval History" description="Every sample request approved or rejected in your chosen dates. From This App shows who pressed the button. From TikTok means it was decided in TikTok Seller Center; its time is when our sync first saw it (marked ≈ when only the shipping date is known)." />
           <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
+            <UrlSearch placeholder="Search creator, product, approved, TikTok, a name…" testId="history-search" />
             {([["", "All"], ["approved", "Approved"], ["rejected", "Rejected"], ["app", "From This App"], ["tiktok", "From TikTok"]] as const).map(([k, label]) => (
-              <Link key={k || "all"} href={href("/affiliate/outreach", { ...keep, stage: "history", d: k || undefined })} scroll={false} aria-current={dview === k ? "page" : undefined} className={cn("inline-flex h-8 items-center rounded-full border px-3 text-[13px] font-medium", dview === k ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>{label}</Link>
+              <Link key={k || "all"} href={href("/affiliate/outreach", { ...keep, stage: "history", d: k || undefined, q: one(sp.q) || undefined })} scroll={false} aria-current={dview === k ? "page" : undefined} className={cn("inline-flex h-8 items-center rounded-full border px-3 text-[13px] font-medium", dview === k ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>{label}</Link>
             ))}
             <span className="ml-auto flex flex-wrap gap-2 text-[12.5px] text-ink-3">{[...byPerson].map(([k, n]) => <span key={k} className="rounded-full bg-surface-2 px-2.5 py-0.5"><b className="text-ink-2">{k}</b> {n}</span>)}</span>
           </div>
-          {decisions.length === 0 ? <p className="px-5 py-10 text-center text-[14px] text-ink-3">No approvals or rejections in these dates.</p> : (
+          {words.length > 0 && <p className="px-5 pb-2 text-[12.5px] text-ink-3" data-testid="history-found">{decisions.length.toLocaleString("en-MY")} of {per.decisions.length.toLocaleString("en-MY")} match “{one(sp.q)}”</p>}
+          {decisions.length === 0 ? <p className="px-5 py-10 text-center text-[14px] text-ink-3">{words.length ? "Nothing matches this search in these dates." : "No approvals or rejections in these dates."}</p> : (
             <ul data-testid="history-rows">
               {decisions.map((d) => (
                 <li key={d.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 border-t border-line px-5 py-2.5 text-[13.5px] sm:grid-cols-[110px_minmax(160px,1fr)_minmax(160px,1fr)_120px_minmax(150px,auto)]">
