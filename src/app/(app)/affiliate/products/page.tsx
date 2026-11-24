@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Hourglass, Package, TrendingDown, TrendingUp, Users, UsersRound, Video, Wallet, Wrench } from "lucide-react";
+import { ArrowDownUp, ChevronRight, Package, UsersRound, Wallet, Wrench } from "lucide-react";
 import { ChangePill, StatTile } from "@/components/ui/stat-tile";
 import { TAG_ICON } from "@/components/ui/icon-set";
 import { gate } from "@/lib/gate";
@@ -20,6 +20,7 @@ import { BUCKETS } from "@/lib/products/diagnose";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Products" };
+const GRID = "lg:grid-cols-[minmax(220px,1.6fr)_minmax(120px,0.9fr)_120px_90px_100px_90px_100px]";
 const TAGS = ["Growing", "Steady", "Slipping", "Dying"] as const;
 const SORTS = [{ key: "order", label: "Your Order" }, { key: "sales", label: "Biggest Sales" }, { key: "drop", label: "Biggest Drop" }, { key: "growth", label: "Biggest Growth" }] as const;
 const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "");
@@ -47,7 +48,6 @@ export default async function AffiliateProductsPage({ searchParams }: { searchPa
   const sellersAll = all.map((p) => p.metrics.creators.now);
   const tag = TAGS.find((t) => t === raw.tag) ?? (raw.tag === "Fragile" ? "Fragile" : "");
   const countTag = (t: string) => rows.filter((r) => (t === "Fragile" ? r.p.diagnosis.fragile === true : r.p.diagnosis.tag === t)).length;
-  const slipping = countTag("Slipping") + countTag("Dying");
   let list = rows.filter((r) => !tag || (tag === "Fragile" ? r.p.diagnosis.fragile === true : r.p.diagnosis.tag === tag));
   if (sort === "sales") list = [...list].sort((x, y) => y.p.metrics.sales.now - x.p.metrics.sales.now);
   if (sort === "drop") list = [...list].sort((x, y) => pctOf(x.p.metrics.sales.now, x.p.metrics.sales.prev) - pctOf(y.p.metrics.sales.now, y.p.metrics.sales.prev));
@@ -66,72 +66,85 @@ export default async function AffiliateProductsPage({ searchParams }: { searchPa
         actions={<PeriodPicker from={raw.from ?? ""} to={raw.to ?? ""} today={todayKL()} keep={{ tag: tag, sort: sort === "order" ? "" : sort }} />}
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3" data-testid="prod-kpis">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="prod-kpis">
         <StatTile icon={Wallet} tone="good" label="Affiliate Sales" value={`RM ${fmtCompact(total.now)}`} change={<ChangePill now={total.now} before={total.prev} />} note="this period" />
-        <StatTile icon={TrendingUp} tone="good" valueTone="good" label="Growing" value={countTag("Growing")} note="up 15% or more" href={hrefFor({ tag: "Growing" })} />
-        <StatTile icon={TrendingDown} tone="critical" valueTone={slipping ? "critical" : undefined} label="Slipping Or Dying" value={slipping} note="need attention" href={hrefFor({ tag: slipping && countTag("Dying") ? "Dying" : "Slipping" })} />
-        <StatTile icon={Hourglass} tone="warn" valueTone={countTag("Fragile") ? "warn" : undefined} label="Fragile" value={countTag("Fragile")} note="live on old videos" href={hrefFor({ tag: "Fragile" })} />
         <StatTile icon={Wrench} tone="critical" valueTone={need ? "critical" : undefined} label="Products Needing Work" value={need} note="sales fell, cause known" />
         <StatTile icon={UsersRound} tone="warn" label="Short Of Creators" value={rows.filter((r) => fewCreators(r.p.metrics.creators.now, sellersAll)).length} note="far fewer sellers" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Show" data-testid="prod-tags">
-        <Link href={hrefFor({ tag: undefined })} className={chip(!tag)} aria-current={!tag ? "page" : undefined}>All <span className="tnum ml-1.5 opacity-80">{rows.length}</span></Link>
-        {[...TAGS, "Fragile" as const].map((t) => { const I = TAG_ICON[t]; return <Link key={t} href={hrefFor({ tag: t })} className={chip(tag === t)} aria-current={tag === t ? "page" : undefined}>{I && <I className="mr-1 size-3.5" aria-hidden />}{t} <span className="tnum ml-1.5 opacity-80">{countTag(t)}</span></Link>; })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sort">
-        {SORTS.map((s) => <Link key={s.key} href={hrefFor({ sort: s.key === "order" ? undefined : s.key })} className={chip(sort === s.key)} aria-current={sort === s.key ? "page" : undefined}>{s.label}</Link>)}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Show" data-testid="prod-tags">
+          <Link href={hrefFor({ tag: undefined })} className={chip(!tag)} aria-current={!tag ? "page" : undefined}>All <span className="tnum ml-1.5 opacity-80">{rows.length}</span></Link>
+          {[...TAGS, "Fragile" as const].map((t) => { const I = TAG_ICON[t]; return <Link key={t} href={hrefFor({ tag: t })} className={chip(tag === t)} aria-current={tag === t ? "page" : undefined}>{I && <I className="mr-1 size-3.5" aria-hidden />}{t} <span className="tnum ml-1.5 opacity-80">{countTag(t)}</span></Link>; })}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" role="group" aria-label="Sort">
+          <span className="inline-flex items-center gap-1 text-ink-3"><ArrowDownUp className="size-3.5" />Sort</span>
+          {SORTS.map((x) => <Link key={x.key} href={hrefFor({ sort: x.key === "order" ? undefined : x.key })} aria-current={sort === x.key ? "page" : undefined} className={sort === x.key ? "font-semibold text-brand" : "text-ink-2 hover:text-brand"}>{x.label}</Link>)}
+        </div>
       </div>
 
       <Card>
         {list.length === 0 && <EmptyState title="No Products Here" description="Choose another filter to see more." />}
+        {list.length > 0 && (
+          <div className={cn("hidden gap-x-4 border-b border-line px-5 py-2.5 text-[12.5px] font-medium text-ink-3 lg:grid", GRID)} data-testid="prod-head">
+            <span>Product</span><span>Sales</span><span>12 Weeks</span><span>Creators</span><span>New Videos</span><span title="Share of new videos with 3+ orders in 14 days">Converting</span><span />
+          </div>
+        )}
         <ul data-testid="prod-rows">
           {list.map(({ p, v }) => {
             const m = p.metrics;
             const few = fewCreators(m.creators.now, sellersAll);
             const dMax = v.moves ? Math.max(1, ...v.moves.map((x) => Math.abs(x.effect))) : 1;
+            const top = v.moves ? [...v.moves].sort((x, y) => Math.abs(y.effect) - Math.abs(x.effect))[0] : null;
+            const diff = (now: number | null, prev: number | null) => (now == null || prev == null || now === prev ? null : <span className={cn("ml-1 text-[12px] font-medium", now > prev ? "text-good" : "text-critical")}>{now > prev ? "+" : "−"}{Math.abs(now - prev)}</span>);
             return (
-              <li key={p.key} data-testid="prod-row" className="grid grid-cols-1 gap-x-5 gap-y-3 border-b border-line px-5 py-4 last:border-b-0 lg:grid-cols-[minmax(200px,1.1fr)_minmax(250px,1.4fr)_minmax(230px,1.3fr)]">
-                <div>
-                  <p className="text-[15px] font-semibold text-ink"><OpenProductButton pkey={p.key} label={p.name} className="text-left hover:text-brand" /></p>
-                  <p className="mt-1 flex flex-wrap items-center gap-2"><TagBadge tag={p.diagnosis.tag} /><HealthChip fragile={p.diagnosis.fragile} oldPct={p.diagnosis.oldShare} />{few && <Badge tone="warn">Short Of Creators</Badge>}</p>
-                  <p className="tnum mt-2 text-[18px] font-semibold text-ink">{fmtRM(m.sales.now)} <Delta now={m.sales.now} prev={m.sales.prev} className="align-middle" /></p>
-                  <p className="tnum text-[12.5px] text-ink-3">{m.creators.now} creators sold it{m.videosPosted.now != null ? ` · ${m.videosPosted.now} videos posted` : ""}{m.salesPerNewVideo.now != null ? ` · ${fmtRM(m.salesPerNewVideo.now)} per new video` : ""} · {p.orders.now.toLocaleString("en-MY")} orders</p>
-                  {p.diagnosis.tag !== "No Sales" && (
-                    <>
-                      <div className="mt-2.5 flex items-center gap-3"><div className="min-w-0 flex-1"><MixBar b={m.buckets.now} /></div><div className="w-24 shrink-0"><Sparkline values={p.weekly.map((w) => w.b.new + w.b.recent + w.b.old + w.b.veryold + w.b.live + w.b.other)} tone={p.diagnosis.tag === "Growing" ? "good" : p.diagnosis.tag === "Slipping" ? "warn" : p.diagnosis.tag === "Dying" ? "critical" : "brand"} label="Weekly sales, last 12 weeks" /></div></div>
-                      <dl className="mt-2.5 grid grid-cols-3 gap-2 text-[12.5px]">
-                        <div><dt className="flex items-center gap-1 text-ink-3"><Users className="size-3.5" />Creators</dt><dd className="tnum text-[14px] font-semibold text-ink">{m.creators.now}<span className={cn("ml-1 text-[12px] font-medium", m.creators.now >= m.creators.prev ? "text-good" : "text-critical")}>{m.creators.now === m.creators.prev ? "" : `${m.creators.now > m.creators.prev ? "+" : "−"}${Math.abs(m.creators.now - m.creators.prev)}`}</span></dd></div>
-                        <div><dt className="flex items-center gap-1 text-ink-3"><Video className="size-3.5" />New Videos</dt><dd className="tnum text-[14px] font-semibold text-ink">{m.videosPosted.now ?? "–"}{m.videosPosted.now != null && m.videosPosted.prev != null && m.videosPosted.now !== m.videosPosted.prev && <span className={cn("ml-1 text-[12px] font-medium", m.videosPosted.now >= m.videosPosted.prev ? "text-good" : "text-critical")}>{m.videosPosted.now > m.videosPosted.prev ? "+" : "−"}{Math.abs(m.videosPosted.now - m.videosPosted.prev)}</span>}</dd></div>
-                        <div title="Share of new videos that made 3 or more orders within 14 days"><dt className="text-ink-3">Converting</dt><dd className="tnum text-[14px] font-semibold text-ink">{p.newContent.now.rate == null ? "–" : p.newContent.now.rate > 0 && p.newContent.now.rate < 1 ? "<1%" : `${Math.round(p.newContent.now.rate)}%`}</dd></div>
-                      </dl>
-                    </>
-                  )}
+              <li key={p.key} data-testid="prod-row" className="border-b border-line last:border-b-0">
+                <div className={cn("grid grid-cols-2 items-center gap-x-4 gap-y-2 px-5 pt-3.5 lg:grid", GRID)}>
+                  <div className="col-span-2 min-w-0 lg:col-span-1">
+                    <p className="truncate text-[15px] font-semibold text-ink"><OpenProductButton pkey={p.key} label={p.name} className="text-left hover:text-brand" /></p>
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5"><TagBadge tag={p.diagnosis.tag} /><HealthChip fragile={p.diagnosis.fragile} oldPct={p.diagnosis.oldShare} />{few && <Badge tone="warn">Short Of Creators</Badge>}</p>
+                  </div>
+                  <div className="tnum"><p className="text-[16px] font-semibold text-ink">{fmtRM(m.sales.now)}</p><p className="text-[12px]"><Delta now={m.sales.now} prev={m.sales.prev} /> <span className="text-ink-3">· {p.orders.now.toLocaleString("en-MY")} orders</span></p></div>
+                  <div className="w-full max-w-[120px]">{p.diagnosis.tag !== "No Sales" && <Sparkline values={p.weekly.map((w) => w.b.new + w.b.recent + w.b.old + w.b.veryold + w.b.live + w.b.other)} tone={p.diagnosis.tag === "Growing" ? "good" : p.diagnosis.tag === "Slipping" ? "warn" : p.diagnosis.tag === "Dying" ? "critical" : "brand"} label="Weekly sales, last 12 weeks" />}</div>
+                  <p className="tnum text-[14px] font-semibold text-ink"><span className="mr-1 text-[12px] font-normal text-ink-3 lg:hidden">Creators</span>{m.creators.now}{diff(m.creators.now, m.creators.prev)}</p>
+                  <p className="tnum text-[14px] font-semibold text-ink"><span className="mr-1 text-[12px] font-normal text-ink-3 lg:hidden">New Videos</span>{m.videosPosted.now ?? "–"}{diff(m.videosPosted.now, m.videosPosted.prev)}</p>
+                  <p className="tnum text-[14px] font-semibold text-ink"><span className="mr-1 text-[12px] font-normal text-ink-3 lg:hidden">Converting</span>{p.newContent.now.rate == null ? "–" : p.newContent.now.rate > 0 && p.newContent.now.rate < 1 ? "<1%" : `${Math.round(p.newContent.now.rate)}%`}</p>
+                  <div className="col-span-2 lg:col-span-1 lg:text-right"><Link href={href("/affiliate/actions", { product: p.key, lever: v.lever ?? undefined })} className="inline-flex h-8 items-center rounded-lg border border-brand bg-brand/10 px-3 text-[13px] font-semibold text-brand hover:bg-brand hover:text-white">Actions</Link></div>
                 </div>
-                <div>
-                  {v.moves ? (
-                    <ul className="space-y-1.5" aria-label="What moved sales">
-                      {v.moves.map((x) => (
-                        <li key={x.key} className="grid grid-cols-[120px_1fr_80px] items-center gap-2 text-[12.5px]">
-                          <span className="text-ink-2">{x.label}</span>
-                          <span className="relative h-3.5 rounded bg-surface-2"><span className={cn("absolute top-0 h-full rounded", x.effect >= 0 ? "bg-good/70" : "bg-critical/70")} style={{ width: `${(Math.abs(x.effect) / dMax) * 50}%`, [x.effect >= 0 ? "left" : "right"]: "50%" }} /><span className="absolute inset-y-0 left-1/2 w-px bg-line" /></span>
-                          <span className={cn("tnum text-right font-semibold", x.effect >= 0 ? "text-good" : "text-critical")}>{rmShort(x.effect)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : <p className="text-[12.5px] text-ink-3">The split needs the video count for both periods, which is not available for these dates.</p>}
-                </div>
-                <div>
-                  <p className="text-[13.5px] leading-snug text-ink" data-testid="prod-headline">{v.headline}</p>
-                  {p.diagnosis.reasons[0] && <p className="mt-1.5 flex items-start gap-2 text-[13px] leading-snug text-ink-2"><span className={cn("mt-1.5 size-2 shrink-0 rounded-full", p.diagnosis.reasons[0].tone === "good" ? "bg-good" : p.diagnosis.reasons[0].tone === "bad" ? "bg-critical" : p.diagnosis.reasons[0].tone === "warn" ? "bg-warn" : "bg-ink-3")} />{p.diagnosis.reasons[0].text}</p>}
-                  <p className="mt-2 flex flex-wrap gap-2 text-[13px]">
-                    <Link href={href("/affiliate/actions", { product: p.key, lever: v.lever ?? undefined })} className="inline-flex items-center rounded-full border border-brand bg-brand/10 px-2.5 py-0.5 font-semibold text-brand hover:bg-brand hover:text-white">Actions For This Product</Link>
-                    <Link href={href("/creators", { product: p.key })} className="inline-flex items-center rounded-full border border-line px-2.5 py-0.5 font-medium text-ink-2 hover:bg-surface-2">Its Creators</Link>
-                    <Link href={href("/affiliate/content", { product: p.key })} className="inline-flex items-center rounded-full border border-line px-2.5 py-0.5 font-medium text-ink-2 hover:bg-surface-2">Its Videos</Link>
-                    <Link href={href(`/products/${p.key}`, {})} className="inline-flex items-center rounded-full border border-line px-2.5 py-0.5 font-medium text-ink-2 hover:bg-surface-2">Full Analysis</Link>
-                  </p>
-                </div>
+                <details className="group px-5 pt-1.5 pb-3">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-[13px] text-ink-2 [&::-webkit-details-marker]:hidden">
+                    <ChevronRight className="size-4 shrink-0 text-ink-3 transition-transform group-open:rotate-90" />
+                    {top && <span className={cn("tnum shrink-0 rounded-full px-2 py-0.5 text-[12px] font-semibold", top.effect >= 0 ? "bg-good-soft text-good" : "bg-critical-soft text-critical")}>{top.label} {rmShort(top.effect)}</span>}
+                    <span className="min-w-0 truncate" data-testid="prod-headline">{v.headline}</span>
+                  </summary>
+                  <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-4 rounded-xl bg-surface-2/60 p-4 lg:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-[12.5px] font-semibold text-ink-2">What moved sales</p>
+                      {v.moves ? (
+                        <ul className="space-y-1.5" aria-label="What moved sales">
+                          {v.moves.map((x) => (
+                            <li key={x.key} className="grid grid-cols-[120px_1fr_80px] items-center gap-2 text-[12.5px]">
+                              <span className="text-ink-2">{x.label}</span>
+                              <span className="relative h-3.5 rounded bg-surface"><span className={cn("absolute top-0 h-full rounded", x.effect >= 0 ? "bg-good/70" : "bg-critical/70")} style={{ width: `${(Math.abs(x.effect) / dMax) * 50}%`, [x.effect >= 0 ? "left" : "right"]: "50%" }} /><span className="absolute inset-y-0 left-1/2 w-px bg-line" /></span>
+                              <span className={cn("tnum text-right font-semibold", x.effect >= 0 ? "text-good" : "text-critical")}>{rmShort(x.effect)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-[12.5px] text-ink-3">Needs the video count for both periods, not available for these dates.</p>}
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[12.5px] font-semibold text-ink-2">Where sales came from (video age)</p>
+                      {p.diagnosis.tag !== "No Sales" && <MixBar b={m.buckets.now} />}
+                      {p.diagnosis.reasons[0] && <p className="mt-2 flex items-start gap-2 text-[13px] leading-snug text-ink-2"><span className={cn("mt-1.5 size-2 shrink-0 rounded-full", p.diagnosis.reasons[0].tone === "good" ? "bg-good" : p.diagnosis.reasons[0].tone === "bad" ? "bg-critical" : p.diagnosis.reasons[0].tone === "warn" ? "bg-warn" : "bg-ink-3")} />{p.diagnosis.reasons[0].text}</p>}
+                      <p className="tnum mt-2 text-[12px] text-ink-3">{m.salesPerNewVideo.now != null ? `${fmtRM(m.salesPerNewVideo.now)} per new video` : ""}</p>
+                      <p className="mt-3 flex flex-wrap gap-2 text-[13px]">
+                        <Link href={href("/creators", { product: p.key })} className="inline-flex items-center rounded-full border border-line bg-surface px-2.5 py-0.5 font-medium text-ink-2 hover:text-brand">Its Creators</Link>
+                        <Link href={href("/affiliate/content", { product: p.key })} className="inline-flex items-center rounded-full border border-line bg-surface px-2.5 py-0.5 font-medium text-ink-2 hover:text-brand">Its Videos</Link>
+                        <Link href={href(`/products/${p.key}`, {})} className="inline-flex items-center rounded-full border border-line bg-surface px-2.5 py-0.5 font-medium text-ink-2 hover:text-brand">Full Analysis</Link>
+                      </p>
+                    </div>
+                  </div>
+                </details>
               </li>
             );
           })}

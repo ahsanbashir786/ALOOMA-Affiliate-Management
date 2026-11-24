@@ -185,8 +185,8 @@ async function login(p, email) {
   ok(prodRows >= 5, `products: one row per product (${prodRows})`);
   const heads = await p.locator("[data-testid=prod-headline]").allInnerTexts();
   ok(heads.length === prodRows && heads.every((h) => h.trim().length > 10), "products: every product has a plain reason");
-  const firstKey = (await p.locator("[data-testid=prod-row] a", { hasText: "Actions For This Product" }).first().getAttribute("href")).match(/product=([^&]+)/)[1];
-  await p.locator("[data-testid=prod-row] a", { hasText: "Actions For This Product" }).first().click(); await p.waitForURL(/affiliate\/actions/); await p.waitForSelector("[data-testid=product-filter]", { timeout: 20000 }).catch(() => {});
+  const firstKey = (await p.locator("[data-testid=prod-row] a", { hasText: /^Actions$/ }).first().getAttribute("href")).match(/product=([^&]+)/)[1];
+  await p.locator("[data-testid=prod-row] a", { hasText: /^Actions$/ }).first().click(); await p.waitForURL(/affiliate\/actions/); await p.waitForSelector("[data-testid=product-filter]", { timeout: 20000 }).catch(() => {});
   ok(/product=/.test(p.url()) && (await p.getByTestId("product-filter").count()) === 1, "products: opens Actions for that product only");
   const prodNames = await p.locator("[data-testid=action-row] p.text-\\[13\\.5px\\]").allInnerTexts();
   ok(prodNames.length === 0 || new Set(prodNames.map((x) => x.trim())).size === 1, `products: Actions shows only that product (${[...new Set(prodNames.map((x) => x.trim()))].join(", ")})`);
@@ -202,7 +202,11 @@ async function login(p, email) {
   const tagsTxt = await p.getByTestId("prod-tags").innerText();
   ok(["Growing", "Steady", "Slipping", "Dying", "Fragile"].every((t) => tagsTxt.includes(t)), "products: tag filters Growing, Steady, Slipping, Dying and Fragile are here");
   const firstRow = await p.locator("[data-testid=prod-row]").first().innerText();
-  ok(/Creators/.test(firstRow) && /New Videos/.test(firstRow) && /Converting/.test(firstRow) && /orders/.test(firstRow), "products: each product shows Creators, New Videos, Converting and orders");
+  const headTxt = await p.getByTestId("prod-head").innerText();
+  ok(["Creators", "New Videos", "Converting", "Sales"].every((x) => headTxt.includes(x)) && /orders/.test(firstRow), "products: one clean row per product: sales and orders, trend, creators, new videos, converting");
+  await p.locator("[data-testid=prod-row] details summary").first().click();
+  const opened = await p.locator("[data-testid=prod-row] details").first().innerText();
+  ok(/What moved sales/.test(opened) && /Its Creators/.test(opened) && /Full Analysis/.test(opened) && /video age/i.test(opened), "products: a click opens the why (three levers, video age) and the links; nothing is lost");
   ok((await p.locator("[data-testid=prod-row] svg").count()) >= prodRows, "products: mix bar and weekly trend are drawn");
   await p.goto(BASE + "/affiliate/products?tag=Fragile", { waitUntil: "networkidle" });
   const fragN = await p.locator("[data-testid=prod-row]").count();
