@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { STAGE_ICON } from "@/components/ui/icon-set";
+import { Clapperboard, Gauge, UsersRound, Wallet } from "lucide-react";
+
+const KPI_ICON = { sales: Wallet, creators: UsersRound, videos: Clapperboard, perVideo: Gauge } as const;
 import { Sparkline } from "@/components/viz/sparkline";
 import { BUCKET_COLOR, bucketLabel } from "@/components/products/ui";
 import type { Bucket } from "@/lib/products/diagnose";
@@ -12,15 +16,16 @@ import { cn, fmtCompact } from "@/lib/utils";
 const compact = (n: number) => fmtCompact(n);
 
 /** A headline number with its change against the last period and a 12-week trend line. */
-export function KpiCard({ label, value, now, before, values, money, testId }: { label: string; value: string; now: number; before: number; values: number[]; money?: boolean; testId?: string }) {
+export function KpiCard({ label, value, now, before, values, money, testId, icon, tone = "brand" }: { label: string; value: string; now: number; before: number; values: number[]; money?: boolean; testId?: string; icon?: keyof typeof KPI_ICON; tone?: "brand" | "good" }) {
+  const Icon = icon ? KPI_ICON[icon] : null;
   const p = before > 0 ? (now - before) / before : null;
   const up = p != null && p > 0, flat = p == null || Math.abs(p) < 0.005;
   return (
-    <div className="rounded-2xl border border-line bg-surface px-4 pt-3.5 pb-2.5" data-testid={testId}>
-      <p className="text-[13px] font-medium text-ink-3">{label}</p>
+    <div className="rounded-2xl border border-line bg-surface px-4 pt-3.5 pb-2.5 shadow-xs" data-testid={testId}>
+      <p className="flex items-center gap-2 text-[13px] font-medium text-ink-3">{Icon && <span className={cn("flex size-7 items-center justify-center rounded-lg", tone === "good" ? "bg-good-soft text-good" : "bg-brand-soft text-brand")}><Icon className="size-4" /></span>}{label}</p>
       <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
         <span className="tnum text-[26px] leading-tight font-semibold tracking-tight text-ink">{value}</span>
-        {!flat && <span className={cn("tnum text-[12.5px] font-semibold", up ? "text-good" : "text-critical")}>{up ? "▲" : "▼"} {Math.abs(Math.round(p! * 100))}%</span>}
+        {!flat && <span className={cn("tnum rounded-full px-1.5 py-0.5 text-[11.5px] font-semibold", up ? "bg-good-soft text-good" : "bg-critical-soft text-critical")}>{up ? "▲" : "▼"} {Math.abs(Math.round(p! * 100))}%</span>}
         {flat && p != null && <span className="text-[12.5px] text-ink-3">no change</span>}
       </p>
       <p className="tnum text-[12px] text-ink-3">before: {money ? `RM ${compact(before)}` : Math.round(before).toLocaleString("en-MY")}</p>
@@ -151,8 +156,8 @@ export function Funnel({ rows }: { rows: FunnelRow[] }) {
     <ul className="space-y-0.5" data-testid="funnel">
       {rows.map((r) => (
         <li key={r.key}>
-          <Link href={r.href} title={r.help} data-stage={r.key} className="group grid grid-cols-[190px_1fr_56px] items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2">
-            <span className="min-w-0"><span className="block truncate text-[13px] font-medium text-ink">{r.label}</span><span className="block truncate text-[11.5px] text-ink-3">{r.sub || "\u00a0"}</span></span>
+          <Link href={r.href} title={r.help} data-stage={r.key} className="group grid grid-cols-[220px_1fr_56px] items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2">
+            <span className="flex min-w-0 items-center gap-2.5">{(() => { const I = STAGE_ICON[r.key]; return I ? <span className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "color-mix(in oklab, " + BAR[r.tone] + " 14%, transparent)", color: BAR[r.tone] }}><I className="size-4" /></span> : null; })()}<span className="min-w-0"><span className="block truncate text-[13px] font-medium text-ink">{r.label}</span><span className="block truncate text-[11.5px] text-ink-3">{r.sub || "\u00a0"}</span></span></span>
             <span className="h-3.5 rounded-full bg-surface-2 group-hover:bg-surface">
               <span className="block h-full rounded-full" style={{ width: `${r.count == null ? 0 : Math.max(2.5, Math.sqrt(r.count / max) * 100)}%`, background: BAR[r.tone], opacity: 0.9 }} />
             </span>

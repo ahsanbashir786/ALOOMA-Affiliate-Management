@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Package, Users, Video } from "lucide-react";
+import { Hourglass, Package, TrendingDown, TrendingUp, Users, UsersRound, Video, Wallet, Wrench } from "lucide-react";
+import { ChangePill, StatTile } from "@/components/ui/stat-tile";
+import { TAG_ICON } from "@/components/ui/icon-set";
 import { gate } from "@/lib/gate";
 import { hasSyncedData } from "@/lib/creators/load";
 import { parseRange } from "@/lib/creators/params";
@@ -15,7 +17,7 @@ import { Delta, HealthChip, Legend, MixBar, TagBadge } from "@/components/produc
 import { Sparkline } from "@/components/viz/sparkline";
 import { InfoTip } from "@/components/ui/info-tip";
 import { BUCKETS } from "@/lib/products/diagnose";
-import { cn, fmtRM } from "@/lib/utils";
+import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Products" };
 const TAGS = ["Growing", "Steady", "Slipping", "Dying"] as const;
@@ -64,18 +66,18 @@ export default async function AffiliateProductsPage({ searchParams }: { searchPa
         actions={<PeriodPicker from={raw.from ?? ""} to={raw.to ?? ""} today={todayKL()} keep={{ tag: tag, sort: sort === "order" ? "" : sort }} />}
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" data-testid="prod-kpis">
-        <div className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">Affiliate Sales</p><p className="tnum text-[24px] leading-tight font-semibold tracking-tight text-ink">{fmtRM(total.now)}</p><p><Delta now={total.now} prev={total.prev} /></p></div>
-        <Link href={hrefFor({ tag: "Growing" })} className="rounded-2xl border border-line bg-surface px-4 py-3.5 hover:bg-surface-2"><p className="text-[13px] font-medium text-ink-3">Growing</p><p className="tnum text-[24px] leading-tight font-semibold tracking-tight text-good">{countTag("Growing")}</p><p className="text-[12.5px] text-ink-3">selling 15% more or better</p></Link>
-        <Link href={hrefFor({ tag: slipping && countTag("Dying") ? "Dying" : "Slipping" })} className="rounded-2xl border border-line bg-surface px-4 py-3.5 hover:bg-surface-2"><p className="text-[13px] font-medium text-ink-3">Slipping Or Dying</p><p className={cn("tnum text-[24px] leading-tight font-semibold tracking-tight", slipping ? "text-critical" : "text-ink")}>{slipping}</p><p className="text-[12.5px] text-ink-3">need your attention</p></Link>
-        <Link href={hrefFor({ tag: "Fragile" })} className="rounded-2xl border border-line bg-surface px-4 py-3.5 hover:bg-surface-2"><p className="text-[13px] font-medium text-ink-3">Fragile</p><p className={cn("tnum text-[24px] leading-tight font-semibold tracking-tight", countTag("Fragile") ? "text-warn" : "text-ink")}>{countTag("Fragile")}</p><p className="text-[12.5px] text-ink-3">depend on videos over 30 days old</p></Link>
-        <div className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">Products Needing Work</p><p className={cn("tnum text-[24px] leading-tight font-semibold tracking-tight", need ? "text-critical" : "text-ink")}>{need}</p><p className="text-[12.5px] text-ink-3">sales fell and one of the three explains why</p></div>
-        <div className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">Short Of Creators</p><p className="tnum text-[24px] leading-tight font-semibold tracking-tight text-ink">{rows.filter((r) => fewCreators(r.p.metrics.creators.now, sellersAll)).length}</p><p className="text-[12.5px] text-ink-3">far fewer sellers than the rest</p></div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3" data-testid="prod-kpis">
+        <StatTile icon={Wallet} tone="good" label="Affiliate Sales" value={`RM ${fmtCompact(total.now)}`} change={<ChangePill now={total.now} before={total.prev} />} note="this period" />
+        <StatTile icon={TrendingUp} tone="good" valueTone="good" label="Growing" value={countTag("Growing")} note="up 15% or more" href={hrefFor({ tag: "Growing" })} />
+        <StatTile icon={TrendingDown} tone="critical" valueTone={slipping ? "critical" : undefined} label="Slipping Or Dying" value={slipping} note="need attention" href={hrefFor({ tag: slipping && countTag("Dying") ? "Dying" : "Slipping" })} />
+        <StatTile icon={Hourglass} tone="warn" valueTone={countTag("Fragile") ? "warn" : undefined} label="Fragile" value={countTag("Fragile")} note="live on old videos" href={hrefFor({ tag: "Fragile" })} />
+        <StatTile icon={Wrench} tone="critical" valueTone={need ? "critical" : undefined} label="Products Needing Work" value={need} note="sales fell, cause known" />
+        <StatTile icon={UsersRound} tone="warn" label="Short Of Creators" value={rows.filter((r) => fewCreators(r.p.metrics.creators.now, sellersAll)).length} note="far fewer sellers" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Show" data-testid="prod-tags">
         <Link href={hrefFor({ tag: undefined })} className={chip(!tag)} aria-current={!tag ? "page" : undefined}>All <span className="tnum ml-1.5 opacity-80">{rows.length}</span></Link>
-        {[...TAGS, "Fragile" as const].map((t) => <Link key={t} href={hrefFor({ tag: t })} className={chip(tag === t)} aria-current={tag === t ? "page" : undefined}>{t} <span className="tnum ml-1.5 opacity-80">{countTag(t)}</span></Link>)}
+        {[...TAGS, "Fragile" as const].map((t) => { const I = TAG_ICON[t]; return <Link key={t} href={hrefFor({ tag: t })} className={chip(tag === t)} aria-current={tag === t ? "page" : undefined}>{I && <I className="mr-1 size-3.5" aria-hidden />}{t} <span className="tnum ml-1.5 opacity-80">{countTag(t)}</span></Link>; })}
       </div>
 
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sort">

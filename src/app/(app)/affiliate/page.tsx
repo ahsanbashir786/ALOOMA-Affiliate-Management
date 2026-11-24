@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { gate } from "@/lib/gate";
 import { hasSyncedData } from "@/lib/creators/load";
 import { loadDashboard } from "@/lib/affiliate/dashboard";
@@ -11,15 +11,10 @@ import { one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { DatesPicker } from "@/components/ui/range-picker";
 import { AgeStack, Funnel, KpiCard, SalesVideosChart, type FunnelRow } from "@/components/affiliate/charts";
-import { cn, fmtCompact, fmtRM } from "@/lib/utils";
+import { fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Command" };
 
-const STATUS = {
-  good: { text: "Good", cls: "bg-good-soft text-good", dot: "bg-good" },
-  watch: { text: "Watch", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
-  problem: { text: "Problem", cls: "bg-critical-soft text-critical", dot: "bg-critical" },
-} as const;
 
 export default async function CommandPage({ searchParams }: { searchParams: Promise<SP> }) {
   const { denied } = await gate("creators", "Command");
@@ -63,10 +58,10 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
       </p>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="kpis">
-        <KpiCard testId="kpi-sales" label="Affiliate Sales" value={fmtRM(now.sales)} now={now.sales} before={before.sales} values={series((x) => x.sales)} money />
-        <KpiCard testId="kpi-creators" label="Active Creators" value={now.creators.toLocaleString("en-MY")} now={now.creators} before={before.creators} values={series((x) => x.creators)} />
-        <KpiCard testId="kpi-videos" label="New Videos Posted" value={now.videos.toLocaleString("en-MY")} now={now.videos} before={before.videos} values={series((x) => x.videos)} />
-        <KpiCard testId="kpi-perVideo" label="Sales Per Video" value={fmtRM(now.videos ? now.sales / now.videos : 0)} now={now.videos ? now.sales / now.videos : 0} before={before.videos ? before.sales / before.videos : 0} values={series((x) => (x.videos ? x.sales / x.videos : 0))} money />
+        <KpiCard icon="sales" tone="good" testId="kpi-sales" label="Affiliate Sales" value={fmtRM(now.sales)} now={now.sales} before={before.sales} values={series((x) => x.sales)} money />
+        <KpiCard icon="creators" testId="kpi-creators" label="Active Creators" value={now.creators.toLocaleString("en-MY")} now={now.creators} before={before.creators} values={series((x) => x.creators)} />
+        <KpiCard icon="videos" testId="kpi-videos" label="New Videos Posted" value={now.videos.toLocaleString("en-MY")} now={now.videos} before={before.videos} values={series((x) => x.videos)} />
+        <KpiCard icon="perVideo" testId="kpi-perVideo" label="Sales Per Video" value={fmtRM(now.videos ? now.sales / now.videos : 0)} now={now.videos ? now.sales / now.videos : 0} before={before.videos ? before.sales / before.videos : 0} values={series((x) => (x.videos ? x.sales / x.videos : 0))} money />
       </div>
 
       <Card>

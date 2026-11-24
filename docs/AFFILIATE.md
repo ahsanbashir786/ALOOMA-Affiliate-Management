@@ -108,3 +108,9 @@ Team and the Today strip count the same events: creators contacted from Actions 
 - Menu (Affiliates): Command, Outreach, Creators, Products, Content, Actions, Team. "Affiliate Data" is now **Creators**.
 - `/execution` redirects to Actions › By Product. `/products` redirects to Products (tag, sort and dates kept). The product detail page `/products/[key]` stays.
 - Permissions keep their keys. Products opens with `creators` or `products`; Actions with `creators` or `execution` (a role with only `execution` sees By Product). The system opens on Command.
+
+## Look and feel: read at a glance
+
+- Every page header carries its menu icon. Long explanations sit behind ⓘ, never as paragraphs.
+- Headline numbers use one tile (`StatTile`): icon, short label, the number, a ▲▼ change pill, a few words or ⓘ, optional trend line.
+- One icon per idea (`src/components/ui/icon-set.ts`): stages (Creators strip, Command funnel), next steps (Chase, Push, Reward…), work kinds (creator, product action, video), video lists (heating, fading, stopped, ready) and product tags.

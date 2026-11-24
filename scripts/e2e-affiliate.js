@@ -21,7 +21,7 @@ async function login(p, email) {
   ok(/Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
   const kp = await p.getByTestId("kpis").innerText();
   ok(["Affiliate Sales", "Active Creators", "New Videos Posted", "Sales Per Video"].every((x) => kp.includes(x)) && !/Seller/.test(kp), "command: four headline cards with creator wording (no 'seller')");
-  ok((await p.getByTestId("kpis").locator("svg").count()) === 4, "command: each headline card has a trend line");
+  ok((await p.getByTestId("kpis").locator("svg[aria-label$='last 12 weeks']").count()) === 4, "command: each headline card has a trend line");
   const sv = p.getByTestId("sales-videos-chart");
   ok((await sv.count()) === 1 && (await sv.locator("rect").count()) >= 12 && (await sv.locator("path").count()) >= 2, "command: the weekly sales line and new-video bars are drawn");
   ok((await p.getByTestId("age-stack").locator("rect").count()) > 0 && /New Videos|Very Old Videos/.test(await p.getByTestId("age-stack").innerText()), "command: sales by video age are drawn, with a legend");
@@ -249,7 +249,7 @@ async function login(p, email) {
   ok(/Off/.test(await p.getByTestId("review-status").innerText()) || /not granted|not connected/i.test(await p.getByTestId("review-status").innerText()), "outreach: approving and rejecting start switched off (or blocked)");
   ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 0 && /Your Own Affiliates/.test(await p.getByTestId("more-samples").innerText()) && /From TikTok Affiliate Portal/.test(await p.getByTestId("tiktok-card").innerText()), "outreach: own affiliates and TikTok are two separate sections, and waiting requests are not on the Suggested page");
   ok((await p.getByTestId("tiktok-unavailable").count()) === 1 || (await p.getByTestId("tiktok-creators").count()) === 1, "outreach: TikTok's list is shown, or says plainly why it is not available");
-  ok((await p.getByTestId("rules").count()) === 1 && /Creator level 5 or higher/.test(await p.getByTestId("rules").innerText()) && /Home Supplies/.test(await p.getByTestId("rules").innerText()) && /Muslim Fashion/.test(await p.getByTestId("rules").innerText()), "outreach: your rules (level 5 or higher and the six categories) are shown");
+  ok((await p.getByTestId("rules").count()) === 1 && /Level 5\+/.test(await p.getByTestId("rules").innerText()) && /Home Supplies/.test(await p.getByTestId("rules").innerText()) && /Muslim Fashion/.test(await p.getByTestId("rules").innerText()), "outreach: your rules (level 5 or higher and the six categories) are shown");
   ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
   await p.goto(BASE + "/affiliate/outreach?stage=requested", { waitUntil: "networkidle" });
   ok((await p.getByTestId("fit-filter").count()) === 1 && /Eligible/.test(await p.getByTestId("fit-filter").innerText()) && /Not Checked/.test(await p.getByTestId("fit-filter").innerText()), "outreach: waiting requests can be filtered by eligibility");

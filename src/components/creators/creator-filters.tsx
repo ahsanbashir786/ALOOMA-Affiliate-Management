@@ -9,6 +9,9 @@ import { href } from "@/lib/url";
 import { ACTION_HINT, type CreatorAction, type CreatorStatus } from "@/lib/creators/status";
 import { CREATOR_SORTS } from "@/lib/creators/params";
 import { TIERS } from "@/lib/creators/score";
+import { ACTION_ICON } from "@/components/ui/icon-set";
+
+const AIcon = ({ a }: { a: string }) => { const I = ACTION_ICON[a]; return I ? <I className="size-3.5" aria-hidden /> : null; };
 
 export type CreatorFilterValues = { q: string; samples: string; product: string; status: string; stage: string; action: string; type: string; wa: string; contact: string; owner: string; tier: string; sort: string; from: string; to: string };
 type Props = {
@@ -112,7 +115,7 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
             <span className="text-[13px] font-medium text-ink-3">Needs No Work</span>
             {actions.filter((a) => QUIET_ACTIONS.includes(a.key) && (a.count > 0 || values.action === a.key)).map((a) => (
               <button key={a.key} type="button" className={chip(values.action === a.key)} aria-pressed={values.action === a.key} onClick={() => go({ action: values.action === a.key ? "" : a.key })} title={ACTION_HINT[a.key]}>
-                {a.key} <span className="tnum opacity-80">{a.count}</span>
+                <AIcon a={a.key} />{a.key} <span className="tnum opacity-80">{a.count}</span>
               </button>
             ))}
           </span>}
@@ -128,7 +131,7 @@ export function CreatorFilters({ values, products, actions, todo, statuses, staf
           </button>
           {actions.filter((a) => !QUIET_ACTIONS.includes(a.key) && (a.count > 0 || values.action === a.key)).map((a) => (
             <button key={a.key} type="button" className={chip(values.action === a.key)} aria-pressed={values.action === a.key} onClick={() => go({ action: values.action === a.key ? "" : a.key })} title={ACTION_HINT[a.key]}>
-              {a.key} <span className="tnum opacity-80">{a.count}</span>
+              <AIcon a={a.key} />{a.key} <span className="tnum opacity-80">{a.count}</span>
             </button>
           ))}
         </div>

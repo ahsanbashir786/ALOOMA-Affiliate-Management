@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Check, Users } from "lucide-react";
+import { CalendarDays, Check, CheckCircle2, Clapperboard, Gauge, Hourglass, ListTodo, Package, Sparkles, Sun, UserRound, Users, Video, Wallet } from "lucide-react";
+import { StatTile } from "@/components/ui/stat-tile";
+import { KIND_ICON } from "@/components/ui/icon-set";
 import { can } from "@/lib/auth";
 import { gate } from "@/lib/gate";
 import { loadPlan, openTaskCount, syncPlan } from "@/lib/execution/plan";
@@ -25,6 +27,7 @@ import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 export const metadata: Metadata = { title: "Actions" };
 const SIZE = 40;
 const VIEWS = [{ key: "todo", label: "To Do" }, { key: "waiting", label: "Waiting For Result" }, { key: "held", label: "New Creators (Held)" }] as const;
+const LEVER_ICON = { creators: Users, content: Clapperboard, quality: Sparkles } as const;
 const LEVER_TONE: Record<Lever, "brand" | "good" | "warn"> = { creators: "brand", content: "good", quality: "warn" };
 
 function Row({ i, period }: { i: Item; period: string }) {
@@ -47,7 +50,7 @@ function Row({ i, period }: { i: Item; period: string }) {
         <p className="text-[13.5px] font-medium text-ink">{i.product && i.pid ? <OpenProductButton pkey={i.pid} label={i.product} className="text-left hover:text-brand" /> : i.product || "No product yet"}</p>
         <p className="text-[12.5px] leading-snug text-ink-3">{i.reason}{i.days != null ? ` · ${i.status === "Quiet" ? "last sale" : "sample sent"} ${i.days} days ago` : ""}</p>
       </div>
-      <div><Badge tone={LEVER_TONE[i.lever]}>{LEVER_LABEL[i.lever]}</Badge></div>
+      <div><Badge tone={LEVER_TONE[i.lever]}>{(() => { const L = LEVER_ICON[i.lever]; return <L className="mr-1 inline size-3.5" />; })()}{LEVER_LABEL[i.lever]}</Badge></div>
       <p className="tnum text-[14px] font-semibold text-ink lg:text-right" title="Sales (28 days) this could bring: an estimate from numbers we measured">{i.expected > 0 ? `≈ ${fmtRM(i.expected)}` : "–"}</p>
     </li>
   );
@@ -56,16 +59,16 @@ function Row({ i, period }: { i: Item; period: string }) {
 type TabKey = "today" | "creators" | "plan";
 function Tabs({ tab, today, creators, plan }: { tab: TabKey; today: number; creators: number; plan: { open: number; overdue: number } }) {
   const items = [
-    { key: "today", label: "Today", n: today, sub: "everything to do, biggest sales first", href: "/affiliate/actions" },
-    { key: "creators", label: "By Creator", n: creators, sub: "one next step for each creator", href: "/affiliate/actions?tab=creators" },
-    { key: "plan", label: "By Product", n: plan.open, sub: plan.overdue ? `${plan.overdue} overdue` : "planned actions with owners", href: "/affiliate/actions?tab=plan" },
+    { key: "today", icon: Sun, label: "Today", n: today, sub: "everything to do, biggest sales first", href: "/affiliate/actions" },
+    { key: "creators", icon: UserRound, label: "By Creator", n: creators, sub: "one next step for each creator", href: "/affiliate/actions?tab=creators" },
+    { key: "plan", icon: Package, label: "By Product", n: plan.open, sub: plan.overdue ? `${plan.overdue} overdue` : "planned actions with owners", href: "/affiliate/actions?tab=plan" },
   ] as const;
   return (
     <nav aria-label="Actions views" className="flex flex-wrap gap-3" data-testid="actions-tabs">
       {items.map((t) => (
         <Link key={t.key} href={t.href} aria-current={t.key === tab ? "page" : undefined} data-tab={t.key}
           className={cn("min-w-[210px] rounded-2xl border px-4 py-2.5", t.key === tab ? "border-brand/40 bg-brand-soft" : "border-line bg-surface hover:bg-surface-2")}>
-          <p className={cn("text-[13.5px] font-semibold", t.key === tab ? "text-brand" : "text-ink")}>{t.label} <span className="tnum ml-1 text-[13px] font-medium text-ink-3">{t.n.toLocaleString("en-MY")}</span></p>
+          <p className={cn("flex items-center gap-1.5 text-[13.5px] font-semibold", t.key === tab ? "text-brand" : "text-ink")}><t.icon className="size-4" />{t.label} <span className="tnum ml-1 text-[13px] font-medium text-ink-3">{t.n.toLocaleString("en-MY")}</span></p>
           <p className="text-[12px] text-ink-3">{t.sub}</p>
         </Link>
       ))}
@@ -82,7 +85,7 @@ function TaskRow({ w }: { w: Extract<WorkItem, { kind: "task" }> }) {
       <div className="min-w-0"><p className="text-[14.5px] font-semibold text-ink">{t.productName ? <OpenProductButton pkey={t.productKey} label={t.productName} className="text-left hover:text-brand" /> : "Product"}</p><p className="text-[12px] text-ink-3">{t.creators ? `${t.creators.toLocaleString("en-MY")} creators · ${t.contacted} contacted` : "no creator list"}</p></div>
       <div><Link href={`/affiliate/actions?tab=plan&task=${t.id}`} className="inline-flex items-center rounded-full border border-brand bg-brand/10 px-2.5 py-0.5 text-[13px] font-semibold text-brand hover:bg-brand hover:text-white">Open The Action</Link></div>
       <div className="min-w-0"><p className="text-[13.5px] font-medium text-ink">{t.title}</p><p className="text-[12.5px] text-ink-3">{t.dueOn ? (t.overdueDays > 0 ? <span className="font-semibold text-critical">Overdue {t.overdueDays} day{t.overdueDays === 1 ? "" : "s"}</span> : `Due ${fmtDayLabel(t.dueOn)}`) : "No due date"}</p></div>
-      <div><Badge tone="neutral">Product Action</Badge></div>
+      <div><Badge tone="neutral"><Package className="mr-1 inline size-3.5" />Product Action</Badge></div>
       <p className="tnum text-[14px] font-semibold text-ink lg:text-right">{t.impact > 0 ? `≈ ${fmtRM(t.impact)}` : "–"}</p>
     </li>
   );
@@ -95,7 +98,7 @@ function VideoWorkRow({ w }: { w: Extract<WorkItem, { kind: "video" }> }) {
       <div className="min-w-0">{v.creator ? <OpenPanelButton username={v.creator} className="truncate text-left text-[14.5px] font-semibold text-brand hover:underline" /> : <span className="text-[14.5px] text-ink-3">Unknown creator</span>}<p className="text-[12px] text-ink-3">{v.cls === "fading" ? "Fading video" : "Stopped selling"}</p></div>
       <div>{v.creator && <OpenPanelButton username={v.creator} label="Ask For A Fresh Video" className="inline-flex items-center rounded-full border border-brand bg-brand/10 px-2.5 py-0.5 text-[13px] font-semibold text-brand hover:bg-brand hover:text-white" />}</div>
       <div className="min-w-0"><p className="line-clamp-2 text-[13.5px] font-medium text-ink"><OpenVideoButton id={v.id} label={v.title || "Untitled video"} className="text-left hover:text-brand" /></p><p className="text-[12.5px] text-ink-3">{v.product ? `${v.product} · ` : ""}{w.why}</p></div>
-      <div><Badge tone="warn">Video</Badge></div>
+      <div><Badge tone="warn"><Video className="mr-1 inline size-3.5" />Video</Badge></div>
       <p className="tnum text-[14px] font-semibold text-ink lg:text-right" title="Sales (14 days) at risk: measured from this video's own sales">{w.value > 0 ? `≈ ${fmtRM(w.value)}` : "–"}</p>
     </li>
   );
@@ -132,12 +135,6 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
     const period = `Last 28 days to ${fmtDayLabel(work.ref)}`;
     const e = work.eff;
     const staff = can(user, "users") ? await staffList() : [];
-    const kpis = [
-      { label: "Done Today", value: String(e.doneToday), sub: "contacts and actions finished" },
-      { label: "Last 7 Days", value: String(e.last7), sub: `${(e.last7 / 7).toFixed(1)} a day` },
-      { label: "Daily Average", value: e.avg14.toFixed(1), sub: "over the last 14 days" },
-      { label: "Left To Do", value: work.items.length.toLocaleString("en-MY"), sub: e.daysToClear != null ? `about ${e.daysToClear.toLocaleString("en-MY")} days at this pace` : "no pace yet: nothing done in 14 days" },
-    ];
     const qs = (extra: Record<string, string | number | undefined>) => href("/affiliate/actions", { kind: kind || undefined, ...extra });
     return (
       <div className="space-y-6">
@@ -145,13 +142,16 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
         <Tabs tab="today" today={todayN} creators={queue.todo.length} plan={planCount} />
         <p className="-mt-2 text-[13px] text-ink-3" data-testid="handler-line">{work.handler ? <>All work is handled by <b className="text-ink-2">{work.handler.name}</b>. Their numbers are below. </> : <>No one is chosen yet, so the numbers are for everyone. </>}<Link href="/affiliate/team" className="font-semibold text-brand hover:underline">See Results In Team</Link></p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="today-kpis">
-          {kpis.map((k) => (<div key={k.label} className="rounded-2xl border border-line bg-surface px-4 py-3.5"><p className="text-[13px] font-medium text-ink-3">{k.label}</p><p className="tnum mt-0.5 text-[26px] leading-tight font-semibold tracking-tight text-ink">{k.value}</p><p className="text-[12.5px] text-ink-3">{k.sub}</p></div>))}
+          <StatTile icon={CheckCircle2} tone="good" label="Done Today" value={String(e.doneToday)} note="contacts and actions finished" spark={e.byDay.map((x) => x.n)} sparkTone="good" />
+          <StatTile icon={CalendarDays} tone="brand" label="Last 7 Days" value={String(e.last7)} note={`${(e.last7 / 7).toFixed(1)} a day`} />
+          <StatTile icon={Gauge} tone="brand" label="Daily Average" value={e.avg14.toFixed(1)} note="over the last 14 days" />
+          <StatTile icon={ListTodo} tone="warn" label="Left To Do" value={work.items.length.toLocaleString("en-MY")} note={e.daysToClear != null ? `≈ ${e.daysToClear.toLocaleString("en-MY")} days at this pace` : "no pace yet"} />
         </div>
         {work.guard.high && <div className="rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner"><b>Chase idle samples first.</b> {(work.guard.notPosted + work.guard.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales, so new creators are held back ({queue.held.length.toLocaleString("en-MY")} waiting).</div>}
         <Card>
           <nav aria-label="Kind" className="flex flex-wrap gap-2 border-b border-line px-5 py-3" data-testid="kind-chips">
-            {[{ key: "", label: "All", n: work.items.length }, ...(["creator", "task", "video"] as const).map((k) => ({ key: k as string, label: KIND_LABEL[k], n: counts[k] }))].map((c) => (
-              <Link key={c.key || "all"} href={href("/affiliate/actions", { kind: c.key || undefined })} scroll={false} aria-current={c.key === kind ? "page" : undefined} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", c.key === kind ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>{c.label}<span className="tnum text-[12px] text-ink-3">{c.n.toLocaleString("en-MY")}</span></Link>
+            {[{ key: "", label: "All", n: work.items.length, icon: ListTodo }, ...(["creator", "task", "video"] as const).map((k) => ({ key: k as string, label: KIND_LABEL[k], n: counts[k], icon: KIND_ICON[k] }))].map((c) => (
+              <Link key={c.key || "all"} href={href("/affiliate/actions", { kind: c.key || undefined })} scroll={false} aria-current={c.key === kind ? "page" : undefined} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", c.key === kind ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}><c.icon className="size-3.5" />{c.label}<span className="tnum text-[12px] text-ink-3">{c.n.toLocaleString("en-MY")}</span></Link>
             ))}
           </nav>
           {slice.length === 0 ? <div className="px-5 py-12 text-center text-[14px] text-ink-3"><Check className="mx-auto mb-2 size-5 text-good" />Nothing left to do right now.</div> : (
@@ -194,18 +194,10 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
       <Tabs tab="creators" today={todayN} creators={queue.todo.length} plan={planCount} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="action-kpis">
-        {[
-          { label: "To Do", value: queue.todo.length.toLocaleString("en-MY"), sub: `creators ready to work${queue.held.length ? ` · +${queue.held.length.toLocaleString("en-MY")} held` : ""}` },
-          { label: "Done Today", value: String(doneToday), sub: "contacted today" },
-          { label: "Waiting For Result", value: queue.waiting.length.toLocaleString("en-MY"), sub: `contacted in the last ${WAIT_DAYS} days` },
-          { label: "Possible Sales", value: upside > 0 ? `≈ RM ${fmtCompact(upside)}` : "–", sub: "if the To Do list works (estimate)" },
-        ].map((k) => (
-          <div key={k.label} className="rounded-2xl border border-line bg-surface px-4 py-3.5">
-            <p className="text-[13px] font-medium text-ink-3">{k.label}</p>
-            <p className="tnum mt-0.5 text-[26px] leading-tight font-semibold tracking-tight text-ink">{k.value}</p>
-            <p className="text-[12.5px] text-ink-3">{k.sub}</p>
-          </div>
-        ))}
+        <StatTile icon={ListTodo} tone="brand" label="To Do" value={queue.todo.length.toLocaleString("en-MY")} note={`ready to work${queue.held.length ? ` · +${queue.held.length.toLocaleString("en-MY")} held` : ""}`} />
+        <StatTile icon={CheckCircle2} tone="good" label="Done Today" value={String(doneToday)} note="contacted today" />
+        <StatTile icon={Hourglass} tone="neutral" label="Waiting For Result" value={queue.waiting.length.toLocaleString("en-MY")} note={`contacted in the last ${WAIT_DAYS} days`} />
+        <StatTile icon={Wallet} tone="good" label="Possible Sales" value={upside > 0 ? `≈ RM ${fmtCompact(upside)}` : "–"} note="estimate, if the list works" />
       </div>
 
       {guard.high && (

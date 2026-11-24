@@ -2,6 +2,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NAV } from "@/components/shell/nav";
 import { InfoTip } from "./info-tip";
 
 export function Card({
@@ -40,18 +41,25 @@ export function CardHeader({
   );
 }
 
+/** The menu icon for a screen title, so every page shows the same picture as its menu item. */
+const PAGE_ICON = new Map(NAV.flatMap((g) => g.items).map((i) => [i.label, i.icon] as const));
+
 export function PageHeader({
   title,
   description,
   actions,
+  icon,
 }: {
   title: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
 }) {
+  const Icon = icon ?? PAGE_ICON.get(title);
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-      <div>
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+      <div className="flex min-w-0 items-center gap-3">
+        {Icon && <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand" aria-hidden>{React.createElement(Icon, { className: "size-5" })}</span>}
         <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink">{title}{description && <InfoTip label={`About ${title}`}>{description}</InfoTip>}</h1>
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

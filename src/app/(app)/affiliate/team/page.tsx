@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { CalendarDays, CheckCircle2, Hourglass, PhoneCall, Target, Users } from "lucide-react";
+import { StatTile } from "@/components/ui/stat-tile";
+import { ACTION_ICON } from "@/components/ui/icon-set";
 import { gate } from "@/lib/gate";
 import { hasSyncedData } from "@/lib/creators/load";
 import { loadTeam } from "@/lib/affiliate/team";
@@ -14,6 +16,7 @@ export const metadata: Metadata = { title: "Team" };
 const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "");
 const pp = (n: number | null) => (n == null ? "–" : `${sign(n)}${Math.abs(Math.round(n))} points`);
 const pc = (n: number | null) => (n == null ? "–" : `${sign(n)}${Math.abs(Math.round(n))}%`);
+const LOG_ICON: Record<string, React.ComponentType<{ className?: string }>> = { task_done: CheckCircle2, contacted: PhoneCall, promised: CalendarDays, needs_help: Target, paused: Hourglass, note: Users };
 const KIND: Record<string, string> = { contacted: "Contacted", task_done: "Product Action Done", promised: "Promise Recorded", rescheduled: "Moved A Date", needs_help: "Needs Help", paused: "Paused", resumed: "Resumed", note: "Note" };
 
 export default async function TeamPage() {
@@ -36,19 +39,11 @@ export default async function TeamPage() {
       <PageHeader title="Team" description={`What the team is doing, live, and whether it brings sales. Each contact is judged ${WINDOW} days later: the creator's sales in the ${WINDOW} days from the contact against the ${WINDOW} days before, set against creators nobody contacted over the same days. Work done shows at once; results fill in as the days pass.`} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" data-testid="team-kpis">
-        {[
-          { label: "Contacted Today", value: String(t.activity.today), sub: "live" },
-          { label: "Contacted This Week", value: String(t.activity.week), sub: "last 7 days" },
-          { label: "Actions Done This Week", value: String(t.activity.actionsDoneWeek), sub: `${t.activity.actionsDoneToday} today · product actions marked Done` },
-          { label: "Waiting For Result", value: String(t.activity.waiting), sub: `creators inside the ${WINDOW} days` },
-          { label: "Effect Of The Work", value: o.lift == null ? "Not yet" : pp(o.lift), sub: o.lift == null ? `needs a contact that is ${WINDOW} days old` : "against creators nobody contacted" },
-        ].map((k) => (
-          <div key={k.label} className="rounded-2xl border border-line bg-surface px-4 py-3.5">
-            <p className="text-[13px] font-medium text-ink-3">{k.label}</p>
-            <p className={cn("tnum mt-0.5 text-[26px] leading-tight font-semibold tracking-tight", k.label === "Effect Of The Work" && o.lift != null && (o.lift >= 0 ? "text-good" : "text-critical") || "text-ink")}>{k.value}</p>
-            <p className="text-[12.5px] text-ink-3">{k.sub}</p>
-          </div>
-        ))}
+        <StatTile icon={PhoneCall} tone="brand" label="Contacted Today" value={String(t.activity.today)} note="live" />
+        <StatTile icon={CalendarDays} tone="brand" label="Contacted This Week" value={String(t.activity.week)} note="last 7 days" />
+        <StatTile icon={CheckCircle2} tone="good" label="Actions Done This Week" value={String(t.activity.actionsDoneWeek)} note={`${t.activity.actionsDoneToday} today`} />
+        <StatTile icon={Hourglass} tone="neutral" label="Waiting For Result" value={String(t.activity.waiting)} note={`inside the ${WINDOW} days`} />
+        <StatTile icon={Target} tone={o.lift == null ? "neutral" : o.lift >= 0 ? "good" : "critical"} valueTone={o.lift == null ? undefined : o.lift >= 0 ? "good" : "critical"} label="Effect Of The Work" value={o.lift == null ? "Not yet" : pp(o.lift)} note={o.lift == null ? `after ${WINDOW} days` : "vs creators not contacted"} />
       </div>
 
       <Card data-testid="team-people">
@@ -95,7 +90,7 @@ export default async function TeamPage() {
               <li key={l.key} className={cn("grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 border-t border-line py-2.5 text-[13.5px] sm:grid-cols-[150px_150px_1fr_220px]", l.reverted && "text-ink-3 line-through")}>
                 <span className="tnum text-ink-3" title={fmtDateTimeKL(l.at)}>{fmtDayLabel(l.day)}</span>
                 <span className="font-medium text-ink">{l.who}</span>
-                <span className="min-w-0 truncate"><span className="text-ink-2">{KIND[l.kind] ?? l.kind}{l.action ? ` · ${l.action}` : ""}</span> {l.creator ? <OpenPanelButton username={l.creator} className="font-semibold text-brand hover:underline" /> : null}{l.product ? <span className="text-ink-3"> · {l.product}</span> : null}</span>
+                <span className="min-w-0 truncate"><span className="inline-flex items-center gap-1 text-ink-2">{(() => { const I = LOG_ICON[l.kind] ?? (l.action ? ACTION_ICON[l.action] : undefined); return I ? <I className="size-3.5 shrink-0" aria-hidden /> : null; })()}{KIND[l.kind] ?? l.kind}{l.action ? ` · ${l.action}` : ""}</span> {l.creator ? <OpenPanelButton username={l.creator} className="font-semibold text-brand hover:underline" /> : null}{l.product ? <span className="text-ink-3"> · {l.product}</span> : null}</span>
                 <span className="tnum text-right text-[12.5px] sm:text-left">
                   {l.reverted ? <Badge tone="neutral">Undone</Badge> : l.before == null ? "" : l.complete ? <span className="text-ink-2">{fmtRM(l.before)} → <b className="text-ink">{fmtRM(l.after ?? 0)}</b></span> : <span className="text-ink-3">{(l.seen ?? 0) <= 0 ? "just contacted, results follow" : `day ${l.seen} of ${WINDOW}: ${fmtRM(l.after ?? 0)} so far`}</span>}
                 </span>

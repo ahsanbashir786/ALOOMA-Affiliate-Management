@@ -8,7 +8,7 @@ export const PIPELINE = [
   { key: "approved", label: "Approved", help: "You approved it. The sample has not been shipped yet." },
   { key: "shipped", label: "Shipped", help: "On the way to the creator." },
   { key: "delivered", label: "Delivered", help: "The creator has it. Nothing posted yet." },
-  { key: "posted", label: "Posted", help: "The creator posted. From here they continue in Creator Lifecycle." },
+  { key: "posted", label: "Posted", help: "The creator posted. From here they continue in Creators." },
 ] as const;
 export type PipelineKey = (typeof PIPELINE)[number]["key"];
 

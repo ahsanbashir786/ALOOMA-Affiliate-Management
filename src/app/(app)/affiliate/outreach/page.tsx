@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clapperboard, PackageOpen, Send, ShieldCheck, Sparkles, Star, Tag, Truck, Users } from "lucide-react";
 import { gate } from "@/lib/gate";
 import { can } from "@/lib/auth";
 import { hasSyncedData } from "@/lib/creators/load";
@@ -16,6 +16,7 @@ import { ReviewSwitch } from "@/components/affiliate/review-switch";
 import { FindCreators } from "@/components/affiliate/find-creators";
 import { CheckEligibility } from "@/components/affiliate/check-eligibility";
 import { STATUS_LABEL } from "@/lib/affiliate/eligibility";
+import { InfoTip } from "@/components/ui/info-tip";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Outreach" };
@@ -60,6 +61,8 @@ function Card1({ s, enabled, canReview }: { s: SampleCard; enabled: boolean; can
   );
 }
 
+const PIPE_ICON = { suggested: Sparkles, requested: Send, approved: CheckCircle2, shipped: Truck, delivered: PackageOpen, posted: Clapperboard } as const;
+
 export default async function OutreachPage({ searchParams }: { searchParams: Promise<SP> }) {
   const { user, denied } = await gate("creators", "Outreach");
   if (denied) return denied;
@@ -85,13 +88,13 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Outreach" description="How creators come in: suggestions, a sample request, your decision, then shipping, delivery and the first post. After the first post they continue in Creator Lifecycle. Existing creators come first: fix samples that have not sold before paying for new ones." />
+      <PageHeader title="Outreach" description="How creators come in: suggestions, a sample request, your decision, then shipping, delivery and the first post. After the first post they continue in Creators. Existing creators come first: fix samples that have not sold before paying for new ones." />
 
       <nav aria-label="Pipeline" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" data-testid="pipeline">
         {PIPELINE.map((p, i) => (
           <Link key={p.key} href={href("/affiliate/outreach", { stage: p.key === "suggested" ? undefined : p.key })} title={p.help} aria-current={p.key === stage ? "page" : undefined}
             className={cn("relative rounded-2xl border px-4 py-3 transition-colors", p.key === stage ? "border-brand/40 bg-brand-soft" : "border-line bg-surface hover:bg-surface-2")}>
-            <p className="flex items-center justify-between text-[12.5px] font-medium text-ink-3">{p.label}{i < PIPELINE.length - 1 && <ArrowRight className="hidden size-3.5 lg:block" />}</p>
+            <p className="flex items-center justify-between text-[12.5px] font-medium text-ink-3"><span className="flex items-center gap-1.5">{(() => { const I = PIPE_ICON[p.key]; return <I className={cn("size-4", p.key === stage ? "text-brand" : "text-ink-3")} />; })()}{p.label}</span>{i < PIPELINE.length - 1 && <ArrowRight className="hidden size-3.5 lg:block" />}</p>
             <p className={cn("tnum text-[24px] leading-tight font-semibold", p.key === stage ? "text-brand" : "text-ink")}>{o.counts[p.key].toLocaleString("en-MY")}</p>
           </Link>
         ))}
@@ -106,7 +109,7 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
       <Card data-testid="review-card">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
           <div>
-            <p className="text-[14px] font-semibold text-ink">Approving And Rejecting On TikTok</p>
+            <p className="flex items-center gap-2 text-[14px] font-semibold text-ink"><CheckCircle2 className="size-4 text-brand" />Approving And Rejecting On TikTok</p>
             <p className="text-[12.5px] text-ink-3" data-testid="review-status">
               {!o.flags.connected ? "TikTok Shop is not connected." : !o.flags.write ? "TikTok has not granted the approve permission yet (seller.affiliate_collaboration.write). Reconnect TikTok in Settings after switching it on in Partner Center." : o.flags.reviewOn ? "On. Approvals go to TikTok and cannot be undone." : "Off. The system only reads until the owner switches this on."}
             </p>
@@ -117,11 +120,14 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
 
       <Card data-testid="rules">
         <div className="px-5 py-3.5 text-[13.5px]">
-          <p className="font-semibold text-ink">Your Rules For Inviting Or Approving</p>
-          <p className="mt-1 text-ink-2">Creator level <b>{o.rules.level} or higher</b> and main categories in: <b>{o.rules.categories.join(", ")}</b>.</p>
+          <p className="flex items-center gap-2 font-semibold text-ink"><ShieldCheck className="size-4 text-brand" />Your Rules For Inviting Or Approving<InfoTip label="About the rules">Anything else TikTok shows (recommended tag, promotion score, shop ratings, how often they post after a sample) only helps order the list; it never makes a creator eligible. Where TikTok does not show a level, the creator is marked Not Sure, not rejected.</InfoTip></p>
+          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-ink-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-0.5 text-[12.5px] font-semibold text-brand"><Star className="size-3.5" />Level {o.rules.level}+</span>
+            <span className="text-ink-3">and</span>
+            {o.rules.categories.map((c) => <span key={c} className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-0.5 text-[12.5px] font-medium text-ink-2"><Tag className="size-3.5 text-ink-3" />{c}</span>)}
+          </p>
           {o.rules.error && <p className="mt-1 text-[12.5px] text-warn" data-testid="rules-error">Your category list could not be matched in TikTok: {o.rules.error}</p>}
           {o.rules.missing.length > 0 && <p className="mt-1 text-[12.5px] text-warn">TikTok has no category called: {o.rules.missing.join(", ")}.</p>}
-          <p className="mt-1 text-[12px] text-ink-3">Anything else TikTok shows (recommended tag, promotion score, shop ratings, how often they post after a sample) only helps order the list; it never makes a creator eligible. Where TikTok does not show a level, the creator is marked Not Sure, not rejected.</p>
         </div>
       </Card>
 

@@ -7,6 +7,10 @@ import { loadContent, type VideoRow } from "@/lib/affiliate/content-load";
 import { CLASSES } from "@/lib/affiliate/content";
 import { fmtDayLabel } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
+import { ChangePill, StatTile } from "@/components/ui/stat-tile";
+import { InfoTip } from "@/components/ui/info-tip";
+import { VIDEO_ICON } from "@/components/ui/icon-set";
+import { Flame, PlayCircle, TrendingDown, Wallet } from "lucide-react";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { OpenPanelButton, OpenProductButton, OpenVideoButton } from "@/components/creators/open-panel-button";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
@@ -54,25 +58,16 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
   const cr = one(sp.creator) ?? "";
   const list = c.lists[tab].filter((v) => (!prod || v.pk === prod) && (!cr || v.creator === cr));
   const old30 = c.mix.filter((m) => m.key === "d60" || m.key === "d90" || m.key === "old").reduce((n, m) => n + m.share, 0);
-  const kpis = [
-    { label: "Sales From Videos And LIVE", value: `RM ${fmtCompact(c.sales.now)}`, sub: "last 28 days", change: <Change now={c.sales.now} before={c.sales.before} /> },
-    { label: "Videos Selling Now", value: c.videosSelling.toLocaleString("en-MY"), sub: "sold in the last 14 days" },
-    { label: "Heating Up", value: c.counts.heating.toLocaleString("en-MY"), sub: "catching on: boost now" },
-    { label: "Fading", value: c.counts.fading.toLocaleString("en-MY"), sub: "ask for fresh videos" },
-  ];
 
   return (
     <div className="space-y-6">
       <PageHeader title="Content" description={`Which videos are catching on, fading or finished, judged on their own sales: the last 14 days against the 14 days before, ending ${fmtDayLabel(c.ref)}. Videos GMV Max rates as worth boosting are matched here, so this screen and GMV Max agree.`} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="content-kpis">
-        {kpis.map((k) => (
-          <div key={k.label} className="rounded-2xl border border-line bg-surface px-4 py-3.5">
-            <p className="text-[13px] font-medium text-ink-3">{k.label}</p>
-            <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2"><span className="tnum text-[26px] leading-tight font-semibold tracking-tight text-ink">{k.value}</span>{k.change}</p>
-            <p className="text-[12.5px] text-ink-3">{k.sub}</p>
-          </div>
-        ))}
+        <StatTile icon={Wallet} tone="good" label="Sales From Videos And LIVE" value={`RM ${fmtCompact(c.sales.now)}`} note="last 28 days" change={<ChangePill now={c.sales.now} before={c.sales.before} />} />
+        <StatTile icon={PlayCircle} tone="brand" label="Videos Selling Now" value={c.videosSelling.toLocaleString("en-MY")} note="sold in the last 14 days" />
+        <StatTile icon={Flame} tone="good" label="Heating Up" value={c.counts.heating.toLocaleString("en-MY")} note="boost now" href="/affiliate/content" />
+        <StatTile icon={TrendingDown} tone="warn" label="Fading" value={c.counts.fading.toLocaleString("en-MY")} note="ask for fresh videos" href="/affiliate/content?tab=fading" />
       </div>
 
       <Card data-testid="age-mix">
@@ -94,11 +89,12 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
             {TABS.map((t) => (
               <Link key={t.key} href={href("/affiliate/content", { tab: t.key === "heating" ? undefined : t.key, product: prod || undefined, creator: cr || undefined })} scroll={false} title={t.help} aria-current={t.key === tab ? "page" : undefined}
                 className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium", t.key === tab ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
-                {t.label}<span className="tnum text-[12.5px] text-ink-3">{c.counts[t.key].toLocaleString("en-MY")}</span>
+                {(() => { const I = VIDEO_ICON[t.key]; return I ? <I className="size-4" aria-hidden /> : null; })()}{t.label}<span className="tnum text-[12.5px] text-ink-3">{c.counts[t.key].toLocaleString("en-MY")}</span>
               </Link>
             ))}
+            <InfoTip label="About this list">{TABS.find((t) => t.key === tab)!.help}</InfoTip>
           </nav>
-          <p className="text-[12.5px] text-ink-3">{prod ? <>Showing one product. <Link href={href("/affiliate/content", { tab: tab === "heating" ? undefined : tab, creator: cr || undefined })} className="font-semibold text-brand hover:underline">Show all products</Link>. </> : null}{cr ? <>Showing @{cr} only. <Link href={href("/affiliate/content", { tab: tab === "heating" ? undefined : tab, product: prod || undefined })} className="font-semibold text-brand hover:underline">Show all creators</Link>. </> : null}{TABS.find((t) => t.key === tab)!.help}</p>
+          <p className="text-[12.5px] text-ink-3">{prod ? <>Showing one product. <Link href={href("/affiliate/content", { tab: tab === "heating" ? undefined : tab, creator: cr || undefined })} className="font-semibold text-brand hover:underline">Show all products</Link>. </> : null}{cr ? <>Showing @{cr} only. <Link href={href("/affiliate/content", { tab: tab === "heating" ? undefined : tab, product: prod || undefined })} className="font-semibold text-brand hover:underline">Show all creators</Link>. </> : null}</p>
         </div>
         {list.length === 0 ? <p className="px-5 py-12 text-center text-[14px] text-ink-3">No videos here right now.</p> : (
           <ul data-testid="content-rows">

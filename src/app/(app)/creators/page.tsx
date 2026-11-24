@@ -28,37 +28,21 @@ import { TierBadge } from "@/components/creators/tier-badge";
 import { OwnerPicker } from "@/components/creators/owner-picker";
 import { BulkProvider, RowCheck, SelectAllPage } from "@/components/creators/bulk";
 import { Sparkline } from "@/components/viz/sparkline";
+import { StatTile, ChangePill } from "@/components/ui/stat-tile";
+import { STAGE_ICON } from "@/components/ui/icon-set";
+import { ListTodo, TrendingUp, UserX, Wallet } from "lucide-react";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
+
+function StageIcon({ stage }: { stage: string }) {
+  const I = STAGE_ICON[stage];
+  return I ? <I className="size-4 opacity-80" aria-hidden /> : null;
+}
 
 export const metadata: Metadata = { title: "Creators" };
 const SIZE = 50;
 const COLS = "lg:grid-cols-[250px_minmax(100px,1.2fr)_minmax(64px,0.7fr)_58px_72px_92px_104px_minmax(110px,1.1fr)_minmax(96px,0.9fr)]";
 const TONE: Record<CreatorStatus, "good" | "brand" | "warn" | "critical" | "neutral"> = { Winner: "good", Rising: "good", Steady: "neutral", Slipping: "warn", Quiet: "warn", Silent: "critical", Waiting: "neutral", Posted: "brand", New: "brand", Paused: "neutral" };
 /** Change between now and before, as a percentage and a number: "▲ 12% (+56)". `good` says whether going up is good news. */
-function Change({ now, before, good, unit = "", note }: { now: number; before: number | null; good: "up" | "down" | "neutral"; unit?: string; note?: string }) {
-  if (before == null) return null;
-  const abs = now - before;
-  if (abs === 0) return <span className="text-[12.5px] text-ink-3" title={note}>no change</span>;
-  const pct = before > 0 ? Math.round((abs / before) * 100) : null;
-  const up = abs > 0;
-  const tone = good === "neutral" ? "text-ink-2" : up === (good === "up") ? "text-good" : "text-critical";
-  const n = Math.abs(abs) >= 10000 ? fmtCompact(Math.abs(abs)) : Math.abs(abs).toLocaleString("en-MY");
-  return <span title={note} className={cn("tnum text-[12.5px] font-semibold", tone)}>{up ? "▲" : "▼"} {pct != null ? `${Math.abs(pct)}% ` : ""}({up ? "+" : "−"}{unit}{n})</span>;
-}
-
-/** A compact headline number that links to the table filtered to what it counts. */
-function Kpi({ label, value, sub, change, href: to, wide, hint }: { label: string; value: string; sub: string; change?: React.ReactNode; href: string; wide?: boolean; hint?: string }) {
-  return (
-    <Link href={to} title={hint} className={cn("rounded-2xl border border-line bg-surface px-4 py-3.5 transition-colors hover:bg-surface-2", wide && "col-span-2 lg:col-span-1")}>
-      <p className="text-[13px] font-medium text-ink-3">{label}</p>
-      <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-        <span className="tnum text-[26px] leading-tight font-semibold tracking-tight text-ink">{value}</span>
-        {change}
-      </p>
-      <p className="truncate text-[12.5px] text-ink-3">{sub}</p>
-    </Link>
-  );
-}
 const rmShort = (n: number) => (n <= 0 ? "–" : fmtRM(n));
 
 function Orders({ l }: { l: DirLine }) {
@@ -176,7 +160,6 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   const pages = Math.max(1, Math.ceil(dir.total / SIZE));
   await recordDailyCounts({ creators: ov.creators, sellers: ov.sellers28, todo: ov.todoLines, unowned: ov.unowned });
   const cmp = await countsToCompare();
-  const since = cmp ? `Change against ${fmtDayLabel(cmp.day)}.` : "We started saving this count today, so the change shows from tomorrow.";
   const goldN = ov.tiers.Gold;
 
   return (
@@ -188,11 +171,11 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Creators at a glance" data-testid="creator-kpis">
-        <Kpi label="Creators" value={ov.creators.toLocaleString("en-MY")} sub={`${goldN} Gold · ${ov.tiers.Silver} Silver`} change={ov.newCreators28 > 0 ? <span className="tnum text-[12.5px] font-semibold text-good">▲ (+{ov.newCreators28.toLocaleString("en-MY")} new)</span> : undefined} href="/creators?sort=recent" />
-        <Kpi label="Selling lately" value={ov.sellers28.toLocaleString("en-MY")} sub="sold in the last 28 days" change={<Change now={ov.sellers28} before={ov.sellersPrev} good="up" note="Creators who sold, against the 28 days before" />} href="/creators?sort=lately" />
-        <Kpi label="Sales, 28 days" value={`RM ${fmtCompact(ov.gmv28)}`} sub={ov.prev28 > 0 ? "vs the 28 days before" : "no earlier period yet"} change={<Change now={ov.gmv28} before={ov.prev28 > 0 ? ov.prev28 : null} good="up" unit="RM " note="Sales against the 28 days before" />} href="/creators?sort=lately" />
-        <Kpi label="Actions To Do" value={ov.todoLines.toLocaleString("en-MY")} sub={`${ov.todoCreators.toLocaleString("en-MY")} creators · ${ov.silentLines} silent`} hint={since} change={<Change now={ov.todoLines} before={cmp?.todo ?? null} good="down" note={since} />} href="/creators?action=todo" />
-        <Kpi label="Not owned" value={ov.unowned.toLocaleString("en-MY")} sub="nobody looks after them yet" hint={since} change={<Change now={ov.unowned} before={cmp?.unowned ?? null} good="down" note={since} />} href="/creators?owner=none" wide />
+        <StatTile icon={Users} label="Creators" value={ov.creators.toLocaleString("en-MY")} note={`${goldN} Gold · ${ov.tiers.Silver} Silver`} change={ov.newCreators28 > 0 ? <span className="tnum rounded-full bg-good-soft px-1.5 py-0.5 text-[11.5px] font-semibold text-good">+{ov.newCreators28.toLocaleString("en-MY")} new</span> : undefined} href="/creators?sort=recent" />
+        <StatTile icon={TrendingUp} tone="good" label="Selling (28 Days)" value={ov.sellers28.toLocaleString("en-MY")} note="sold in the last 28 days" change={<ChangePill now={ov.sellers28} before={ov.sellersPrev} />} href="/creators?sort=lately" />
+        <StatTile icon={Wallet} tone="good" label="Sales (28 Days)" value={`RM ${fmtCompact(ov.gmv28)}`} note="vs the 28 days before" change={<ChangePill now={ov.gmv28} before={ov.prev28 > 0 ? ov.prev28 : null} />} href="/creators?sort=lately" />
+        <StatTile icon={ListTodo} tone="warn" label="Actions To Do" value={ov.todoLines.toLocaleString("en-MY")} note={`${ov.todoCreators.toLocaleString("en-MY")} creators · ${ov.silentLines} silent`} change={<ChangePill now={ov.todoLines} before={cmp?.todo ?? null} good="down" />} href="/creators?action=todo" />
+        <StatTile icon={UserX} tone="neutral" label="No Owner" value={ov.unowned.toLocaleString("en-MY")} note="no one assigned" change={<ChangePill now={ov.unowned} before={cmp?.unowned ?? null} good="down" />} href="/creators?owner=none" className="col-span-2 lg:col-span-1" />
       </div>
 
       <nav aria-label="Stage" className="flex flex-wrap gap-2" data-testid="stage-strip">
@@ -200,7 +183,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
         {STAGES.filter((x) => STRIP_STAGES.includes(x.key) || opts.stage === x.key).map((x) => (
           <Link key={x.key} href={href("/creators", { ...pageFilters, stage: x.key, page: undefined })} scroll={false} title={x.help} aria-current={opts.stage === x.key ? "page" : undefined}
             className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium transition-colors", opts.stage === x.key ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>
-            {x.label}<span className="tnum text-[12.5px] text-ink-3">{dir.stageCounts[x.key].toLocaleString("en-MY")}</span>
+            <StageIcon stage={x.key} />{x.label}<span className="tnum text-[12.5px] text-ink-3">{dir.stageCounts[x.key].toLocaleString("en-MY")}</span>
           </Link>
         ))}
       </nav>

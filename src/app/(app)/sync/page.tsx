@@ -13,7 +13,7 @@ import { shopeeOverview } from "@/lib/shopee/sync";
 import { shopeeConfig, shopeeConnectionInfo } from "@/lib/shopee/client";
 import { TabLinks } from "@/components/ui/tab-links";
 import { one, type SP } from "@/lib/url";
-import { InfoTip } from "@/components/ui/info-tip";
+import { PageHeader } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Data Sync" };
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export default async function SyncPage({ searchParams }: PageProps<"/sync">) {
     return (
       <div className="space-y-6">
         <div className="space-y-3">
-          <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink">Data Sync<InfoTip>Shopee · orders, payments, returns, ads, wallet and stock. Read every 30 minutes once Shopee is connected.</InfoTip></h1>
+          <PageHeader title="Data Sync" description="Shopee · orders, payments, returns, ads, wallet and stock. Read every 30 minutes once Shopee is connected." />
           {tabs}
         </div>
         <ShopeeSyncBoard initial={ov} connected={conn.connected} configured={!!shopeeConfig()} canAdmin={can(user, "settings")} canRun={can(user, "sync")} canConnect={can(user, "settings")} />
@@ -48,7 +48,7 @@ export default async function SyncPage({ searchParams }: PageProps<"/sync">) {
     return (
       <div className="space-y-6">
         <div className="space-y-3">
-          <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-tight text-ink">Data Sync<InfoTip>TikTok Ads · GMV Max campaigns, creatives and daily results</InfoTip></h1>
+          <PageHeader title="Data Sync" description="TikTok Ads · GMV Max campaigns, creatives and daily results" />
           {tabs}
         </div>
         <AdsSyncBoard initial={ov} connected={conn.connected} configured={!!adsConfig()} canAdmin={can(user, "settings")} canRun={can(user, "sync")} canConnect={can(user, "settings")} serverNow={ov.now} />
@@ -59,7 +59,7 @@ export default async function SyncPage({ searchParams }: PageProps<"/sync">) {
   return (
     <div className="space-y-6">
       <div className="space-y-3">
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">Data Sync</h1>
+        <PageHeader title="Data Sync" description="TikTok Shop · affiliate orders, creators, videos, samples. Synced by itself." />
         {tabs}
         {conn.connected && <p className="text-[14px] text-ink-3">{[conn.shopName ?? conn.sellerName, conn.region].filter(Boolean).join(" · ")}</p>}
       </div>
