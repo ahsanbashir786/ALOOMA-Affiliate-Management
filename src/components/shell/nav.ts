@@ -11,7 +11,7 @@ export const NAV: NavGroup[] = [
     label: "Affiliates",
     items: [
       { href: "/affiliate", label: "Command", icon: Compass, perm: "creators" },
-      { href: "/affiliate/outreach", label: "Outreach", icon: Send, perm: "creators" },
+      { href: "/affiliate/outreach", label: "Creator Outreach", icon: Send, perm: "creators" },
       { href: "/creators", label: "Creators", icon: Users, perm: "creators" },
       { href: "/affiliate/products", label: "Products", icon: PackageSearch, perm: "creators", perms: ["creators", "products"] },
       { href: "/affiliate/content", label: "Content", icon: Clapperboard, perm: "creators" },

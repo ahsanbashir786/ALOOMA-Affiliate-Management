@@ -2276,3 +2276,17 @@ create index if not exists tt_aff_lines_day on tt_aff_lines (day);
 create index if not exists tt_aff_lines_creator_day on tt_aff_lines (creator, day);
 create index if not exists tt_aff_lines_product_day on tt_aff_lines (product_id, day);
 create index if not exists tt_aff_lines_content on tt_aff_lines (content_id);
+
+-- Mirrors migrations/0045_sample_decisions.sql
+alter table tt_sample_requests add column if not exists decided_at timestamptz;
+create or replace function tt_sample_requests_decided() returns trigger language plpgsql as $$
+begin
+  if new.decided_at is null
+     and upper(coalesce(new.status, '')) ~ '(APPROV|REJECT|DECLIN)'
+     and upper(coalesce(old.status, '')) !~ '(APPROV|REJECT|DECLIN)' then
+    new.decided_at := now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists tt_sample_requests_decided on tt_sample_requests;
+create trigger tt_sample_requests_decided before update on tt_sample_requests for each row execute function tt_sample_requests_decided();

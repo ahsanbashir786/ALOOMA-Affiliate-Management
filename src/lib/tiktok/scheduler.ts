@@ -57,6 +57,10 @@ export function startScheduler() {
   setInterval(shopeeTick, 5 * 60_000).unref?.();
   setTimeout(tick, 20_000);
   setTimeout(adsTick, 35_000);
+  // Creator Outreach: TikTok's suggested creators and eligibility checks, slowly, in the background (every 10 minutes).
+  const outreach = () => { import("@/lib/affiliate/outreach-bg").then((m) => m.outreachTick()).catch(() => {}); };
+  setTimeout(outreach, 90_000);
+  setInterval(outreach, 10 * 60_000).unref?.();
   setInterval(tick, 60_000).unref?.();
   setInterval(adsTick, 60_000).unref?.();
 }

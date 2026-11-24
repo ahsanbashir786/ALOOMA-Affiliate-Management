@@ -45,14 +45,52 @@ export function historyOf(r: DirRow | undefined): History {
   return { sales, sales28, samples: sampled.length, notPosted, noSale, selling, verdict, tone };
 }
 
-export type MoreSample = { username: string; sales28: number; sales: number; score: number | null; followers: number | null; sampledProducts: string[]; sellingProducts: string[]; neverSampled: string[]; why: string };
+export type Rec = { pid: string; product: string; pct: number; from: string; typical: number | null; sellers: number };
+export type MoreSample = { username: string; sales28: number; sales: number; score: number | null; followers: number | null; sampledProducts: string[]; sellingProducts: string[]; recs: Rec[]; why: string };
+
+const median = (xs: number[]) => { if (!xs.length) return null; const a = [...xs].sort((x, y) => x - y), m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+
+/**
+ * What to offer a creator next, from what other creators actually do: "of the creators who sell A, 62% also sell B", and what B
+ * typically sells for one creator in 28 days. Only products the creator neither sells nor was sent count. Pure (from the shared rows).
+ */
+export function offerNext(rows: DirRow[], minShare = 0.15, minSellers = 5): (r: DirRow, max?: number) => Rec[] {
+  const sold = new Map<string, Set<string>>(); // product -> creators who ever sold it
+  const recent = new Map<string, number[]>(); // product -> 28-day sales of each creator selling it now
+  for (const r of rows) for (const l of r.allLines) {
+    if (!l.pid || l.gmv <= 0) continue;
+    (sold.get(l.pid) ?? sold.set(l.pid, new Set()).get(l.pid)!).add(r.username);
+    if (l.gmv28 > 0) (recent.get(l.pid) ?? recent.set(l.pid, []).get(l.pid)!).push(l.gmv28);
+  }
+  const names = new Map(PRODUCTS.map((p) => [p.key as string, p.name]));
+  const typical = new Map([...recent].map(([k, xs]) => [k, median(xs)]));
+  return (r, max = 3) => {
+    const mine = new Set(r.allLines.filter((l) => l.pid && (l.gmv > 0)).map((l) => l.pid!));
+    const had = new Set(r.allLines.filter((l) => l.pid && (l.gmv > 0 || l.sampled)).map((l) => l.pid!));
+    const best = new Map<string, Rec>();
+    for (const a of mine) {
+      const aSellers = sold.get(a);
+      if (!aSellers || aSellers.size < minSellers) continue;
+      for (const [b, bSellers] of sold) {
+        if (had.has(b) || b === "unmapped") continue;
+        let both = 0; for (const u of aSellers) if (bSellers.has(u)) both++;
+        const pct = both / aSellers.size;
+        if (pct < minShare) continue;
+        const cur = best.get(b);
+        if (!cur || pct > cur.pct) best.set(b, { pid: b, product: names.get(b) ?? b, pct, from: names.get(a) ?? a, typical: typical.get(b) ?? null, sellers: bSellers.size });
+      }
+    }
+    return [...best.values()].sort((x, y) => y.pct - x.pct || (y.typical ?? 0) - (x.typical ?? 0)).slice(0, max);
+  };
+}
 
 /**
  * Your own good performers who could take another sample: selling now, nothing outstanding (no sample still unposted or on the way),
- * ranked by what they sell. Also lists the products they have never been sampled for, as the next thing to offer.
+ * ranked by what they sell. Each comes with what to offer next and why (see offerNext). All of them, not a top few: the screen pages them.
  */
-export function giveMoreSamples(rows: DirRow[], limit = 60): MoreSample[] {
+export function giveMoreSamples(rows: DirRow[], limit = Infinity): MoreSample[] {
   const names = new Map(PRODUCTS.map((p) => [p.key as string, p.name]));
+  const next = offerNext(rows);
   const out: MoreSample[] = [];
   for (const r of rows) {
     if (r.paused) continue;
@@ -63,12 +101,11 @@ export function giveMoreSamples(rows: DirRow[], limit = 60): MoreSample[] {
     if (!lines.some((l) => l.sampled)) continue; // not yet part of the sample programme: new-creator logic covers them
     const sampled = lines.filter((l) => l.sampled && l.pid).map((l) => l.pid!);
     const selling = lines.filter((l) => l.gmv28 > 0 && l.pid).map((l) => l.pid!);
-    const have = new Set(lines.filter((l) => l.pid).map((l) => l.pid!));
-    const never = PRODUCTS.map((p) => p.key as string).filter((k) => !have.has(k));
+    const recs = next(r);
     out.push({
       username: r.username, sales28: e.gmv28, sales: r.gmvAll, score: e.score ?? null, followers: e.followers,
-      sampledProducts: sampled.map((k) => names.get(k) ?? k), sellingProducts: selling.map((k) => names.get(k) ?? k), neverSampled: never.map((k) => names.get(k) ?? k).slice(0, 4),
-      why: `Sells RM ${Math.round(e.gmv28).toLocaleString("en-MY")} in 28 days${never.length ? `, never offered ${never.length} of your products` : ""}.`,
+      sampledProducts: sampled.map((k) => names.get(k) ?? k), sellingProducts: selling.map((k) => names.get(k) ?? k), recs,
+      why: `Sells RM ${Math.round(e.gmv28).toLocaleString("en-MY")} in 28 days.`,
     });
   }
   return out.sort((a, b) => b.sales28 - a.sales28 || b.sales - a.sales).slice(0, limit);

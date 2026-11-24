@@ -16,7 +16,7 @@ async function main() {
   await db.execute(sql`delete from settings where key = 'tt_category_roots'`);
   const calls: { url: string; body: string | undefined; method: string | undefined }[] = [];
   const now = Math.floor(Date.now() / 1000);
-  let mode: "ok" | "agency" | "market" = "ok";
+  let mode: "ok" | "agency" | "market" | "busy" = "ok";
   const fake = async (url: string, init?: RequestInit) => {
     const u = new URL(url); const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });
     if (u.pathname.endsWith("/token/get")) return json({ code: 0, data: { access_token: "AT", refresh_token: "RT", access_token_expire_in: now + 86400, refresh_token_expire_in: now + 86400 * 30, seller_name: "ALOOMA", seller_base_region: "MY", granted_scopes: [WRITE_SCOPE, MARKET_SCOPE] } });
@@ -28,6 +28,7 @@ async function main() {
       { id: "824328", parent_id: "0", local_name: "Muslim Fashion" }, { id: "600942", parent_id: "0", local_name: "Beauty & Personal Care" }, { id: "601352", parent_id: "0", local_name: "Fashion Accessories" },
       { id: "700000", parent_id: "0", local_name: "Phones & Electronics" }, { id: "851848", parent_id: "600001", local_name: "Bedding" }] } });
     if (/\/marketplace_creators\/(?!search$)[A-Za-z0-9_-]+$/.test(u.pathname)) return json({ code: 0, data: { creator: { username: "tyny", follower_count: 4900, category_ids: ["601450"], pps: "4.2", rating: "4.5", post_rate: "0.7", creator_profile: { creator_level: 3, sample_score: 80, is_official_recommend: false } } } });
+    if (u.pathname.endsWith("/marketplace_creators/search") && mode === "busy") return json({ code: 36009004, message: "Too many requests" });
     if (u.pathname.endsWith("/marketplace_creators/search")) return json({ code: 0, data: { creators: [{ creator_user_open_id: "OID1", username: "abc", nickname: "ABC", follower_count: 1200, gmv: { amount: "340" }, units_sold: 12 }], next_page_token: "NX" } });
     return json({ code: 1, message: "unknown" });
   };
@@ -74,6 +75,24 @@ async function main() {
   check("15 the profile is kept (level, categories, rating) so it need not be asked again", !!saved && saved.level === 3 && saved.category_ids[0] === "601450" && saved.rating === 4.5 && saved.has_profile === true);
   await db.execute(sql`delete from tt_creator_profiles where open_id = 'TESTOPENID_1234567'`);
   check("09 approving is OFF until the owner switches it on, and the switch holds", (await reviewEnabled()) === false && (await (async () => { await setReviewEnabled(true); const on = await reviewEnabled(); await setReviewEnabled(false); return on && !(await reviewEnabled()); })()));
+  // The suggested list is fetched in the background (several pages, kept), and a "too busy" keeps the last good list.
+  {
+    const bg = await import("../src/lib/affiliate/outreach-bg");
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fake as never;
+    try {
+      await db.execute(sql`delete from settings where key = 'market_suggestions'`);
+      const before = calls.filter((c) => new URL(c.url).pathname.endsWith("/marketplace_creators/search")).length;
+      const m1 = await bg.refreshMarket();
+      const pages = calls.filter((c) => new URL(c.url).pathname.endsWith("/marketplace_creators/search")).length - before;
+      check("16 TikTok's suggested creators are fetched page by page (up to 5), kept, and counted once each", m1.creators.length === 1 && pages === 5 && !!m1.at && !bg.marketDue(m1));
+      mode = "busy";
+      const m2 = await bg.refreshMarket();
+      check("17 when TikTok is busy, the last good list stays and the reason is noted", m2.creators.length === 1 && m2.at === m1.at && /busy/i.test(m2.error ?? ""));
+      check("18 the list is due again after 6 hours, but not within 15 minutes of a try", bg.marketDue({ ...m2, at: Date.now() - 7 * 3600_000, triedAt: Date.now() - 20 * 60_000 }) && !bg.marketDue({ ...m2, at: Date.now() - 7 * 3600_000, triedAt: Date.now() - 60_000 }));
+      mode = "ok";
+    } finally { globalThis.fetch = realFetch; await db.execute(sql`delete from settings where key = 'market_suggestions'`); }
+  }
   await disconnect();
   console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 }

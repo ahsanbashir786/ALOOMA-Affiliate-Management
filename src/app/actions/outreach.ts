@@ -1,12 +1,13 @@
 "use server";
 
+import { checkProfiles, profilesNeeded } from "@/lib/affiliate/outreach-bg";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { requirePermission, requireView } from "@/lib/auth";
 import { addEvent } from "@/lib/creators/workflow/events";
-import { fetchCreatorProfile, outreachScopes, preferredCategories, reviewEnabled, reviewSampleApplication, saveProfile, searchMarketplace, setReviewEnabled } from "@/lib/tiktok/outreach";
+import { outreachScopes, preferredCategories, reviewEnabled, reviewSampleApplication, searchMarketplace, setReviewEnabled } from "@/lib/tiktok/outreach";
 import { judgeCreators, type TikTokCreator } from "@/lib/affiliate/outreach-load";
 
 type R = { ok?: true; error?: string };
@@ -56,28 +57,13 @@ export async function findCreators(keyword: string, gmv: string[]): Promise<Find
   return judgeCreators(r.creators, prefs, r.fieldsSeen);
 }
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/**
- * Asks TikTok for the level, categories and scores of the creators whose sample requests are waiting and not checked yet (or checked over a week ago).
- * Fifteen at a time, one every half second, so the shared speed limit is not hit. Press again for the next fifteen.
- */
 export async function checkEligibility(): Promise<{ ok?: true; checked: number; left: number; error?: string }> {
   await requirePermission("creators");
   const sc = await outreachScopes();
   if (!sc.connected || !sc.market) return { checked: 0, left: 0, error: "TikTok has not granted the creator search permission yet." };
-  const need = async (limit: number) => (await q(sql`
-    select distinct r.creator_id as id from tt_sample_requests r
-    where r.is_approvable and r.creator_id is not null and (r.order_id is null or r.order_id ~ '^0*$')
-      and not exists (select 1 from tt_creator_profiles p where p.open_id = r.creator_id and p.checked_at > now() - interval '7 days') limit ${limit}`)).map((r) => String(r.id));
-  const ids = await need(15);
-  let checked = 0;
-  for (const id of ids) {
-    const r = await fetchCreatorProfile(id);
-    if (r.ok) { await saveProfile(id, r.profile); checked++; }
-    else if (r.busy) { return { checked, left: (await need(500)).length, error: "TikTok is busy right now. Wait a minute and press Check Eligibility again." }; }
-    else { await saveProfile(id, { username: null, followers: null, level: null, categoryIds: [], pps: null, rating: null, postRate: null, sampleScore: null, fulfilmentScore: null, officialRecommend: null, risingStar: null, blocked: null, invited90d: null, hasCollaborated: null, hasProfile: false }); checked++; }
-    await wait(450);
-  }
+  // The worker also does this by itself (a few every 10 minutes); this button only does the next fifteen now.
+  const r = await checkProfiles(15);
+  const left = (await profilesNeeded(500)).length;
   revalidatePath("/affiliate/outreach");
-  return { ok: true, checked, left: (await need(500)).length };
+  return r.busy ? { checked: r.checked, left, error: "TikTok is busy right now. The system keeps checking by itself; you can also press again in a minute." } : { ok: true, checked: r.checked, left };
 }

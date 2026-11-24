@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { giveMoreSamples, historyOf, readCreatorProfile, readMarketCreators, requestStage } from "@/lib/affiliate/outreach";
+import { giveMoreSamples, offerNext, historyOf, readCreatorProfile, readMarketCreators, requestStage } from "@/lib/affiliate/outreach";
 
 const f = (o: Record<string, unknown>) => ({ status: "PENDING", hasOrder: false, approvable: true, delivered: false, shipped: false, hasPost: false, orderCancelled: false, ...o }) as never;
 assert.equal(requestStage(f({})), "requested");
@@ -25,7 +25,14 @@ const more = giveMoreSamples([
   row("notsampled", [{ sampled: false }], { gmv28: 700 }), row("paused", [{}], { gmv28: 600 }, 500, true), row("quiet", [{ status: "Quiet", gmv28: 0 }], { gmv28: 0 }),
 ]);
 assert.deepEqual(more.map((m) => m.username), ["better", "good"], "best seller first; outstanding, unsampled, paused and quiet creators are left out");
-assert.ok(more[0].neverSampled.length > 0 && !more[0].neverSampled.includes("Mattress Protector · Waterproof"), "lists the products never offered");
+// What to offer next comes from what other creators do: 6 sellers of quilt, 4 of them also sell pillows (67%) -> offer pillows to a quilt seller.
+const pool = [...Array.from({ length: 6 }, (_, i) => row(`q${i}`, [{ pid: "quilt" }, ...(i < 4 ? [{ pid: "pillows", sampled: false, gmv28: 200 + i * 100 }] : [])]))];
+const recs = offerNext(pool)(row("me", [{ pid: "quilt" }]));
+assert.equal(recs[0]?.pid, "pillows", "offers the product most often sold alongside what the creator sells");
+assert.equal(Math.round((recs[0]?.pct ?? 0) * 100), 67, "with the share of creators who sell both");
+assert.equal(recs[0]?.typical, 350, "and the typical 28-day sales of that product for one creator (median)");
+assert.equal(offerNext(pool)(row("me2", [{ pid: "quilt" }, { pid: "pillows", gmv: 0, gmv28: 0 }])).length, 0, "a product already sampled is not offered again");
+assert.equal(offerNext(pool)(row("me3", [{ pid: "quilt" }, { pid: "pillows" }])).length, 0, "a product the creator already sells is not offered");
 
 const m = readMarketCreators({ creators: [{ creator_user_open_id: "oid1", username: "abc", nickname: "ABC", follower_count: "12000", gmv: { amount: "3400.5" }, units_sold: 80 }], next_page_token: "t2" });
 assert.deepEqual({ ...m.creators[0] }, { id: "oid1", username: "abc", nickname: "ABC", followers: 12000, gmv: 3400.5, units: 80, category: null, avgVideoViews: null, avgLiveViewers: null, region: null, avatar: null, level: null, categoryIds: [], pps: null, officialRecommend: null, risingStar: null, fastGrowing: null, blocked: null, hasCollaborated: null, invited90d: null });

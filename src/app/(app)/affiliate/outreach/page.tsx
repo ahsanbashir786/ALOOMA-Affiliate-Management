@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Clapperboard, PackageOpen, Send, ShieldCheck, Sparkles, Star, Tag, Truck, Users } from "lucide-react";
+import { ArrowRight, BellRing, CheckCircle2, Clapperboard, ExternalLink, Gift, History, PackageOpen, Send, ShieldCheck, Sparkles, Star, Tag, Truck, UserCheck, Users } from "lucide-react";
 import { gate } from "@/lib/gate";
 import { can } from "@/lib/auth";
 import { hasSyncedData } from "@/lib/creators/load";
-import { loadOutreach, type SampleCard } from "@/lib/affiliate/outreach-load";
+import { loadOutreach, loadOutreachPeriod, type SampleCard } from "@/lib/affiliate/outreach-load";
+import { parseRange } from "@/lib/creators/params";
+import { DatesPicker } from "@/components/ui/range-picker";
 import { PIPELINE, type PipelineKey } from "@/lib/affiliate/outreach";
-import { fmtDayLabel } from "@/lib/time";
+import { addDaysISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { OpenPanelButton } from "@/components/creators/open-panel-button";
@@ -19,14 +21,17 @@ import { STATUS_LABEL } from "@/lib/affiliate/eligibility";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Outreach" };
+export const metadata: Metadata = { title: "Creator Outreach" };
+const MORE_PAGE = 20;
+const FIT_RANK = { eligible: 0, unknown: 1, unchecked: 2, not: 3 } as const;
+const pct = (a: number, b: number) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "–");
 const KEYS = PIPELINE.map((p) => p.key) as string[];
 const TONE = { good: "good", warn: "warn", bad: "critical", neutral: "neutral" } as const;
 
 function Card1({ s, enabled, canReview }: { s: SampleCard; enabled: boolean; canReview: boolean }) {
   const h = s.history;
   return (
-    <li className="grid grid-cols-1 gap-x-5 gap-y-2 border-t border-line px-5 py-4 lg:grid-cols-[minmax(200px,1fr)_minmax(220px,1.3fr)_minmax(230px,1fr)]" data-testid="sample-card">
+    <li className={cn("grid grid-cols-1 gap-x-5 gap-y-2 border-t border-line px-5 py-4 lg:grid-cols-[minmax(200px,1fr)_minmax(220px,1.3fr)_minmax(230px,1fr)]", s.verdict?.status === "eligible" && "border-l-4 border-l-good bg-good-soft/30", s.verdict?.status === "not" && "opacity-70")} data-testid="sample-card" data-fit={s.verdict?.status ?? "unchecked"}>
       <div className="flex min-w-0 items-start gap-3">
         <Avatar name={s.creator} size={38} />
         <div className="min-w-0">
@@ -37,17 +42,16 @@ function Card1({ s, enabled, canReview }: { s: SampleCard; enabled: boolean; can
         </div>
       </div>
       <div>
-        <Badge tone={TONE[h.tone]}>{h.tone === "good" ? "Proven" : h.tone === "bad" ? "Check First" : h.tone === "warn" ? "Unproven" : "New"}</Badge>
-        <p className="mt-1 text-[13px] leading-snug text-ink-2">{h.verdict}</p>
-        <p className="tnum mt-1 text-[12px] text-ink-3">{h.samples} samples before · {h.selling} selling · lifetime sales {fmtRM(h.sales)}</p>
-        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]" data-testid="eligibility">
+        <p className="flex flex-wrap items-center gap-1.5 text-[12px]" data-testid="eligibility">
           {s.verdict ? (
             <>
-              <span className={cn("rounded-full px-2 py-0.5 font-semibold", s.verdict.status === "eligible" ? "bg-good-soft text-good" : s.verdict.status === "not" ? "bg-critical-soft text-critical" : "bg-surface-2 text-ink-2")}>{STATUS_LABEL[s.verdict.status]}</span>
+              <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12.5px] font-semibold", s.verdict.status === "eligible" ? "bg-good text-white" : s.verdict.status === "not" ? "bg-critical-soft text-critical" : "bg-surface-2 text-ink-2")}>{s.verdict.status === "eligible" ? <ShieldCheck className="size-3.5" /> : null}{s.verdict.status === "eligible" ? "Meets Your Rules" : STATUS_LABEL[s.verdict.status]}</span>
               <span className="text-ink-3">{(s.verdict.status === "eligible" ? s.verdict.good : s.verdict.reasons).slice(0, 3).join(" · ")}</span>
             </>
-          ) : <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3">Not checked yet</span>}
+          ) : <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3" title="The system checks the level and categories with TikTok by itself, a few every 10 minutes">Checking soon</span>}
         </p>
+        <p className="mt-1.5 flex items-center gap-1.5 text-[13px] leading-snug text-ink-2"><Badge tone={TONE[h.tone]}>{h.tone === "good" ? "Proven" : h.tone === "bad" ? "Check First" : h.tone === "warn" ? "Unproven" : "New"}</Badge>{h.verdict}</p>
+        <p className="tnum mt-1 text-[12px] text-ink-3">{h.samples} samples before · {h.selling} selling · lifetime sales {fmtRM(h.sales)}</p>
       </div>
       <div>
         {s.stage === "requested" ? (
@@ -55,7 +59,7 @@ function Card1({ s, enabled, canReview }: { s: SampleCard; enabled: boolean; can
             {s.daysLeft != null && <p className={cn("mb-2 text-[12.5px] font-semibold", s.daysLeft <= 2 ? "text-critical" : "text-ink-3")}>{s.daysLeft <= 0 ? "Expires today" : `${s.daysLeft} days left to decide`}</p>}
             <ReviewButtons id={s.id} creator={s.creator} product={s.product} enabled={enabled} canReview={canReview} warn={s.verdict?.status === "not" ? s.verdict.reasons.join("; ") : undefined} />
           </>
-        ) : <p className="text-[13px] text-ink-3">{s.stage === "approved" ? "Waiting for the shipment." : s.stage === "shipped" ? "On the way to the creator." : s.stage === "delivered" ? "Delivered. Waiting for a post." : "Posted. Continues in Creator Lifecycle."}</p>}
+        ) : <p className="text-[13px] text-ink-3">{s.stage === "approved" ? "Waiting for the shipment." : s.stage === "shipped" ? "On the way to the creator." : s.stage === "delivered" ? "Delivered. Waiting for a post." : "Posted. Continues in Creators."}</p>}
       </div>
     </li>
   );
@@ -64,97 +68,187 @@ function Card1({ s, enabled, canReview }: { s: SampleCard; enabled: boolean; can
 const PIPE_ICON = { suggested: Sparkles, requested: Send, approved: CheckCircle2, shipped: Truck, delivered: PackageOpen, posted: Clapperboard } as const;
 
 export default async function OutreachPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { user, denied } = await gate("creators", "Outreach");
+  const { user, denied } = await gate("creators", "Creator Outreach");
   if (denied) return denied;
   if (!(await hasSyncedData())) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Outreach" />
+        <PageHeader title="Creator Outreach" />
         <Card><EmptyState icon={<Users className="size-5" />} title="No TikTok data yet" description="Run Data Sync first. Sample requests appear here as soon as they are synced." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
       </div>
     );
   }
   const sp = await searchParams;
-  const o = await loadOutreach();
+  const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));
+  const today = todayKL();
+  const range = parseRange(raw) ?? { start: addDaysISO(today, -29), end: today };
+  const [o, per] = await Promise.all([loadOutreach(), loadOutreachPeriod(range)]);
   if (!o) return null;
-  const stage = (KEYS.includes(one(sp.stage) ?? "") ? one(sp.stage) : "suggested") as PipelineKey;
+  const view = one(sp.stage) === "history" ? "history" : ((KEYS.includes(one(sp.stage) ?? "") ? one(sp.stage) : "suggested") as PipelineKey);
+  const stage = view === "history" ? "suggested" : view;
   const canReview = can(user, "approve_samples");
   const isOwner = can(user, "settings") && !user.readOnly;
   const def = PIPELINE.find((p) => p.key === stage)!;
   const g = o.guard;
+  const keep = { from: raw.from || undefined, to: raw.to || undefined };
   const fit = (stage === "requested" ? one(sp.fit) ?? "" : "") as "" | "eligible" | "not" | "unknown" | "unchecked";
   const all = stage === "suggested" ? [] : o.samples[stage as Exclude<PipelineKey, "suggested">];
-  const list = fit ? all.filter((c) => (fit === "unchecked" ? !c.verdict : c.verdict?.status === fit)) : all;
+  // Requests that meet your rules come first, then the ones still to check; within each, the ones expiring first.
+  const ordered = stage === "requested" ? [...all].sort((a, b) => FIT_RANK[a.verdict?.status ?? "unchecked"] - FIT_RANK[b.verdict?.status ?? "unchecked"]) : all;
+  const list = fit ? ordered.filter((c) => (fit === "unchecked" ? !c.verdict : c.verdict?.status === fit)) : ordered;
+  const mp = Math.max(1, Number(one(sp.mp)) || 1), mPages = Math.max(1, Math.ceil(o.more.length / MORE_PAGE));
+  const moreRows = o.more.slice((mp - 1) * MORE_PAGE, mp * MORE_PAGE);
+  const f = per.funnel;
+  const steps = [
+    { k: "requested", label: "Sample Requested", n: f.requested, rate: null as string | null, rateLabel: "" },
+    { k: "approved", label: "Approved", n: f.approved, rate: pct(f.approved, f.requested), rateLabel: "Approval rate" },
+    { k: "delivered", label: "Delivered", n: f.delivered, rate: pct(f.delivered, f.approved), rateLabel: "Delivered" },
+    { k: "posted", label: "Posted Content", n: f.posted, rate: pct(f.posted, f.delivered), rateLabel: "Post rate" },
+    { k: "sold", label: "Generated Sales", n: f.sold, rate: pct(f.sold, f.posted), rateLabel: "Sales rate" },
+  ];
+  const fMax = Math.max(1, f.requested);
+  const dview = one(sp.d) ?? "";
+  const decisions = per.decisions.filter((d) => (dview === "approved" ? d.approved : dview === "rejected" ? !d.approved : dview === "app" ? d.source === "app" : dview === "tiktok" ? d.source === "tiktok" : true));
+  const byPerson = new Map<string, number>();
+  for (const d of per.decisions) { const k = d.source === "app" ? d.by ?? "Unknown" : "TikTok Seller Center"; byPerson.set(k, (byPerson.get(k) ?? 0) + 1); }
+  const writeReason = !o.flags.connected ? "TikTok Shop is not connected." : !o.flags.write ? "TikTok has not granted the approve permission yet (seller.affiliate_collaboration.write). Reconnect TikTok in Settings after switching it on in Partner Center." : o.flags.reviewOn ? "On: approvals go to TikTok and cannot be undone." : "Off: the system only reads until the owner switches this on.";
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Outreach" description="How creators come in: suggestions, a sample request, your decision, then shipping, delivery and the first post. After the first post they continue in Creators. Existing creators come first: fix samples that have not sold before paying for new ones." />
+    <div className="space-y-5">
+      <PageHeader title="Creator Outreach" description="How creators come in: suggestions, a sample request, your decision, then shipping, delivery and the first post. After the first post they continue in Creators. Existing creators come first: fix samples that have not sold before paying for new ones."
+        actions={<>
+          <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium text-ink-2" data-testid="review-card" title={writeReason}>
+            Approve Samples Here
+            {isOwner && o.flags.write ? <ReviewSwitch on={o.flags.reviewOn} /> : <Badge tone={o.flags.reviewOn && o.flags.write ? "good" : "neutral"}>{o.flags.reviewOn && o.flags.write ? "On" : "Off"}</Badge>}
+            <span className="sr-only" data-testid="review-status">{writeReason}</span>
+          </span>
+          <DatesPicker from={raw.from ?? ""} to={raw.to ?? ""} today={today} emptyLabel="Last 30 Days" />
+        </>} />
 
-      <nav aria-label="Pipeline" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" data-testid="pipeline">
+      <div className="-mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-ink-3" data-testid="rules">
+        <span className="inline-flex items-center gap-1 font-semibold text-ink-2"><ShieldCheck className="size-3.5 text-brand" />Your Rules</span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 font-semibold text-brand"><Star className="size-3" />Level {o.rules.level}+</span>
+        <span className="inline-flex items-center gap-1">
+          <Tag className="size-3.5" />{o.rules.categories.length} Categories
+          <InfoTip label="Your categories">
+            <ul className="space-y-0.5">{o.rules.categories.map((c) => <li key={c}>{c}</li>)}</ul>
+            <p className="mt-2 text-ink-3">Anything else TikTok shows (recommended tag, promotion score, ratings) only orders the list; it never makes a creator eligible. Where TikTok does not show a level, the creator is marked Not Sure, not rejected.</p>
+            {(o.rules.error || o.rules.missing.length > 0) && <p className="mt-2 text-warn" data-testid="rules-error">{o.rules.error ? `Could not read TikTok's category list: ${o.rules.error}` : `TikTok has no category called: ${o.rules.missing.join(", ")}.`}</p>}
+          </InfoTip>
+        </span>
+        <span className="sr-only">{o.rules.categories.join(", ")}</span>
+        <span className="text-ink-3">· {fmtDayLabel(range.start)} – {fmtDayLabel(range.end)}</span>
+      </div>
+
+      <nav aria-label="Pipeline" className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" data-testid="pipeline">
         {PIPELINE.map((p, i) => (
-          <Link key={p.key} href={href("/affiliate/outreach", { stage: p.key === "suggested" ? undefined : p.key })} title={p.help} aria-current={p.key === stage ? "page" : undefined}
-            className={cn("relative rounded-2xl border px-4 py-3 transition-colors", p.key === stage ? "border-brand/40 bg-brand-soft" : "border-line bg-surface hover:bg-surface-2")}>
-            <p className="flex items-center justify-between text-[12.5px] font-medium text-ink-3"><span className="flex items-center gap-1.5">{(() => { const I = PIPE_ICON[p.key]; return <I className={cn("size-4", p.key === stage ? "text-brand" : "text-ink-3")} />; })()}{p.label}</span>{i < PIPELINE.length - 1 && <ArrowRight className="hidden size-3.5 lg:block" />}</p>
-            <p className={cn("tnum text-[24px] leading-tight font-semibold", p.key === stage ? "text-brand" : "text-ink")}>{o.counts[p.key].toLocaleString("en-MY")}</p>
+          <Link key={p.key} href={href("/affiliate/outreach", { ...keep, stage: p.key === "suggested" ? undefined : p.key })} title={p.help} aria-current={p.key === view ? "page" : undefined}
+            className={cn("relative rounded-2xl border px-4 py-3 transition-colors", p.key === view ? "border-brand/40 bg-brand-soft" : "border-line bg-surface hover:bg-surface-2")}>
+            <p className="flex items-center justify-between text-[12.5px] font-medium text-ink-3"><span className="flex items-center gap-1.5">{(() => { const I = PIPE_ICON[p.key]; return <I className={cn("size-4", p.key === view ? "text-brand" : "text-ink-3")} />; })()}{p.label}</span>{i < PIPELINE.length - 1 && <ArrowRight className="hidden size-3.5 lg:block" />}</p>
+            <p className={cn("tnum text-[24px] leading-tight font-semibold", p.key === view ? "text-brand" : "text-ink")}>{o.counts[p.key].toLocaleString("en-MY")}</p>
           </Link>
         ))}
+        <Link href={href("/affiliate/outreach", { ...keep, stage: "history" })} aria-current={view === "history" ? "page" : undefined} data-testid="history-tab"
+          className={cn("rounded-2xl border px-4 py-3 transition-colors", view === "history" ? "border-brand/40 bg-brand-soft" : "border-line bg-surface hover:bg-surface-2")}>
+          <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink-3"><History className={cn("size-4", view === "history" ? "text-brand" : "text-ink-3")} />Approval History</p>
+          <p className={cn("tnum text-[24px] leading-tight font-semibold", view === "history" ? "text-brand" : "text-ink")}>{per.decisions.length.toLocaleString("en-MY")}</p>
+        </Link>
       </nav>
 
       {g.high && (
-        <div className="rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner">
-          <b>Chase idle samples first.</b> {(g.notPosted + g.noSale).toLocaleString("en-MY")} samples already sent have not turned into sales. Think twice before approving many new ones. <Link href="/creators?stage=notposted" className="font-semibold text-brand hover:underline">See them</Link>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-warn/50 bg-warn-soft px-4 py-3 text-[13.5px] text-ink" data-testid="guard-banner">
+          <b className="inline-flex items-center gap-1.5"><BellRing className="size-4 text-warn" />Chase idle samples first</b>
+          <span>{(g.notPosted + g.noSale).toLocaleString("en-MY")} samples sent are not selling yet:</span>
+          <Link href="/creators?status=Silent" className="font-semibold text-brand hover:underline" data-testid="guard-notposted">{g.notPosted.toLocaleString("en-MY")} delivered, not posted</Link>
+          <span className="text-ink-3">·</span>
+          <Link href="/creators?status=Posted" className="font-semibold text-brand hover:underline" data-testid="guard-nosale">{g.noSale.toLocaleString("en-MY")} posted, no sale</Link>
+          <InfoTip label="How this is counted">Counted per creator and product (one creator can hold several samples): a sample delivered with nothing posted after 14 days, or posted with no sale yet. The warning shows when these are a quarter or more of all samples sent. Each link opens exactly these samples in Creators.</InfoTip>
         </div>
       )}
 
-      <Card data-testid="review-card">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-          <div>
-            <p className="flex items-center gap-2 text-[14px] font-semibold text-ink"><CheckCircle2 className="size-4 text-brand" />Approving And Rejecting On TikTok</p>
-            <p className="text-[12.5px] text-ink-3" data-testid="review-status">
-              {!o.flags.connected ? "TikTok Shop is not connected." : !o.flags.write ? "TikTok has not granted the approve permission yet (seller.affiliate_collaboration.write). Reconnect TikTok in Settings after switching it on in Partner Center." : o.flags.reviewOn ? "On. Approvals go to TikTok and cannot be undone." : "Off. The system only reads until the owner switches this on."}
-            </p>
+      <Card data-testid="funnel-card">
+        <CardHeader title="Outreach Conversion" description="Sample requests made in your chosen dates, and how far they got: approved, delivered, posted, and sold the product. From your own data. Each rate is against the step before." action={<span className="tnum text-[12.5px] text-ink-3">{fmtDayLabel(range.start)} – {fmtDayLabel(range.end)} · sales {fmtRM(f.sales)}</span>} />
+        <ul className="space-y-1.5 px-5 pb-5" data-testid="funnel">
+          {steps.map((st) => (
+            <li key={st.k} className="grid grid-cols-[96px_1fr] items-center gap-3 sm:grid-cols-[150px_1fr]">
+              <span className="text-right">{st.rate ? <><b className="tnum block text-[16px] leading-tight text-ink">{st.rate}</b><span className="text-[11.5px] text-ink-3">{st.rateLabel}</span></> : <span className="text-[11.5px] text-ink-3">start</span>}</span>
+              <span className="relative overflow-hidden rounded-lg bg-surface-2">
+                <span className="absolute inset-y-0 left-0 rounded-lg bg-brand/20" style={{ width: `${Math.max(1.5, (st.n / fMax) * 100)}%` }} />
+                <span className="relative flex items-center justify-between px-3 py-2.5 text-[13.5px]"><span className="font-medium text-ink">{st.label}</span><b className="tnum text-ink">{st.n.toLocaleString("en-MY")}</b></span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      {view === "history" ? (
+        <Card data-testid="history">
+          <CardHeader title="Approval History" description="Every sample request approved or rejected in your chosen dates. From This App shows who pressed the button. From TikTok means it was decided in TikTok Seller Center; its time is when our sync first saw it (marked ≈ when only the shipping date is known)." />
+          <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
+            {([["", "All"], ["approved", "Approved"], ["rejected", "Rejected"], ["app", "From This App"], ["tiktok", "From TikTok"]] as const).map(([k, label]) => (
+              <Link key={k || "all"} href={href("/affiliate/outreach", { ...keep, stage: "history", d: k || undefined })} scroll={false} aria-current={dview === k ? "page" : undefined} className={cn("inline-flex h-8 items-center rounded-full border px-3 text-[13px] font-medium", dview === k ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>{label}</Link>
+            ))}
+            <span className="ml-auto flex flex-wrap gap-2 text-[12.5px] text-ink-3">{[...byPerson].map(([k, n]) => <span key={k} className="rounded-full bg-surface-2 px-2.5 py-0.5"><b className="text-ink-2">{k}</b> {n}</span>)}</span>
           </div>
-          {isOwner ? <ReviewSwitch on={o.flags.reviewOn} /> : <Badge tone={o.flags.reviewOn ? "good" : "neutral"}>{o.flags.reviewOn ? "On" : "Off"}</Badge>}
-        </div>
-      </Card>
-
-      <Card data-testid="rules">
-        <div className="px-5 py-3.5 text-[13.5px]">
-          <p className="flex items-center gap-2 font-semibold text-ink"><ShieldCheck className="size-4 text-brand" />Your Rules For Inviting Or Approving<InfoTip label="About the rules">Anything else TikTok shows (recommended tag, promotion score, shop ratings, how often they post after a sample) only helps order the list; it never makes a creator eligible. Where TikTok does not show a level, the creator is marked Not Sure, not rejected.</InfoTip></p>
-          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-ink-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-0.5 text-[12.5px] font-semibold text-brand"><Star className="size-3.5" />Level {o.rules.level}+</span>
-            <span className="text-ink-3">and</span>
-            {o.rules.categories.map((c) => <span key={c} className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-0.5 text-[12.5px] font-medium text-ink-2"><Tag className="size-3.5 text-ink-3" />{c}</span>)}
-          </p>
-          {o.rules.error && <p className="mt-1 text-[12.5px] text-warn" data-testid="rules-error">Your category list could not be matched in TikTok: {o.rules.error}</p>}
-          {o.rules.missing.length > 0 && <p className="mt-1 text-[12.5px] text-warn">TikTok has no category called: {o.rules.missing.join(", ")}.</p>}
-        </div>
-      </Card>
-
-      {stage === "suggested" ? (
+          {decisions.length === 0 ? <p className="px-5 py-10 text-center text-[14px] text-ink-3">No approvals or rejections in these dates.</p> : (
+            <ul data-testid="history-rows">
+              {decisions.map((d) => (
+                <li key={d.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 border-t border-line px-5 py-2.5 text-[13.5px] sm:grid-cols-[110px_minmax(160px,1fr)_minmax(160px,1fr)_120px_minmax(150px,auto)]">
+                  <span className="tnum text-ink-3">{d.approx ? "≈ " : ""}{fmtDayLabel(d.day)}</span>
+                  <OpenPanelButton username={d.creator} className="truncate text-left font-semibold text-brand hover:underline" />
+                  <span className="text-ink-2">{d.product}</span>
+                  <span><Badge tone={d.approved ? "good" : "critical"}>{d.approved ? "Approved" : "Rejected"}</Badge></span>
+                  <span className="inline-flex items-center gap-1.5 text-ink-2">{d.source === "app" ? <><UserCheck className="size-3.5 text-brand" />{d.by ?? "This App"}</> : <><ExternalLink className="size-3.5 text-ink-3" />TikTok Seller Center</>}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : stage === "suggested" ? (
         <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
           <Card data-testid="more-samples">
-            <CardHeader title="Your Own Affiliates" description="Creators already in your system who sell now and have nothing outstanding (no sample still unposted or on the way), best sellers first. Good candidates for another sample. The right-hand text lists products you have never offered them." />
+            <CardHeader title="Your Own Affiliates" description="Creators already selling for you with nothing outstanding (no sample still unposted or on the way), best sellers first. Each comes with what to offer next, from what other creators actually do: the share of creators selling the same product who also sell this one, and what it typically sells for one creator in 28 days. Creators TikTok shows outside your rules are left out." />
             <p className="px-5 pb-2 text-[12.5px] text-ink-3">From your own data · {o.more.length.toLocaleString("en-MY")} creators</p>
             {o.more.length === 0 ? <p className="px-5 pb-6 text-[13.5px] text-ink-3">Nobody qualifies right now.</p> : (
               <ul>
-                {o.more.slice(0, 20).map((m) => (
-                  <li key={m.username} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 border-t border-line px-5 py-3 text-[13.5px] sm:grid-cols-[minmax(150px,1fr)_100px_minmax(180px,1.3fr)]">
-                    <div className="min-w-0"><OpenPanelButton username={m.username} className="truncate text-left font-semibold text-brand hover:underline" /><p className="text-[12px] text-ink-3">{m.followers != null ? `${fmtCompact(m.followers)} followers` : ""}</p></div>
-                    <p className="tnum font-semibold text-ink">{fmtRM(m.sales28)}<span className="block text-[12px] font-normal text-ink-3">28 days</span></p>
-                    <p className="col-span-2 text-[12.5px] leading-snug text-ink-3 sm:col-span-1">{m.neverSampled.length ? `Not offered yet: ${m.neverSampled.join(", ")}` : "Offered everything"}</p>
+                {moreRows.map((m) => (
+                  <li key={m.username} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 border-t border-line px-5 py-3 text-[13.5px]" data-testid="more-row">
+                    <div className="min-w-0">
+                      <OpenPanelButton username={m.username} className="truncate text-left font-semibold text-brand hover:underline" />
+                      <p className="text-[12px] text-ink-3">{m.followers != null ? `${fmtCompact(m.followers)} followers · ` : ""}{m.verdict ? (m.verdict.status === "eligible" ? <span className="font-semibold text-good">Meets your rules</span> : "Not sure (TikTok shows no level)") : "Rules not checked yet"}</p>
+                    </div>
+                    <p className="tnum text-right font-semibold text-ink">{fmtRM(m.sales28)}<span className="block text-[12px] font-normal text-ink-3">28 days</span></p>
+                    <div className="col-span-2 flex flex-wrap gap-1.5" data-testid="offer-next">
+                      {m.recs.length ? m.recs.map((r) => (
+                        <span key={r.pid} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2 py-1 text-[12px] text-ink-2" title={`${Math.round(r.pct * 100)}% of the creators who sell ${r.from} also sell ${r.product}${r.typical ? `; one creator typically sells RM ${Math.round(r.typical).toLocaleString("en-MY")} of it in 28 days` : ""}`}>
+                          <Gift className="size-3.5 text-brand" /><b className="text-ink">{r.product}</b><span className="text-ink-3">{Math.round(r.pct * 100)}% of {r.from} sellers{r.typical ? ` · ~${fmtRM(r.typical)}` : ""}</span>
+                        </span>
+                      )) : <span className="text-[12px] text-ink-3">Already sells or was sent every product that sells alongside theirs.</span>}
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
-            {o.more.length > 20 && <p className="border-t border-line px-5 py-3 text-[12.5px] text-ink-3">Showing 20 of {o.more.length}. Open Actions for the full ranked list.</p>}
+            {mPages > 1 && (
+              <div className="flex items-center justify-between border-t border-line px-5 py-2.5 text-[12.5px] text-ink-3" data-testid="more-pages">
+                <span>{(mp - 1) * MORE_PAGE + 1}–{Math.min(mp * MORE_PAGE, o.more.length)} of {o.more.length.toLocaleString("en-MY")}</span>
+                <span className="flex gap-2">
+                  {mp > 1 && <Link href={href("/affiliate/outreach", { ...keep, mp: mp - 1 > 1 ? mp - 1 : undefined })} scroll={false} className="font-semibold text-brand hover:underline">Previous</Link>}
+                  {mp < mPages && <Link href={href("/affiliate/outreach", { ...keep, mp: mp + 1 })} scroll={false} className="font-semibold text-brand hover:underline">Next</Link>}
+                </span>
+              </div>
+            )}
           </Card>
           <Card data-testid="tiktok-card">
-            <CardHeader title="From TikTok Affiliate Portal" description="TikTok's own Creator Marketplace, with data for the last 30 days. We do not make this list: it is what TikTok returns. Search by keyword or sales range." action={<a href="https://seller-my.tiktok.com/" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open TikTok Seller Center</a>} />
-            <p className="px-5 pb-2 text-[12.5px] text-ink-3">From TikTok · new creators, not yet in your system</p>
-            {o.tiktok.ok ? <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} hidden={o.tiktok.hidden} /> : (
+            <CardHeader title="From TikTok Affiliate Portal" description="TikTok's own Creator Marketplace in your categories, leaving out creators you invited in the last 90 days. The system fetches it in the background every 6 hours and keeps it, then applies your rules: only creators who meet them are shown first. Search by keyword or sales range for more." action={<a href="https://seller-my.tiktok.com/" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open TikTok Seller Center</a>} />
+            {o.tiktok.ok ? (
               <>
-                <p className="px-5 pb-3 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">TikTok&apos;s creator list is not available right now: {o.tiktok.error} You can also use TikTok&apos;s own recommended creators in Seller Center with the link above.</p>
+                <p className="px-5 pb-2 text-[12.5px] text-ink-3" data-testid="tiktok-updated">From TikTok · {o.tiktok.creators.filter((c) => c.verdict.status === "eligible").length} meet your rules{o.tiktok.at ? ` · updated ${new Date(o.tiktok.at).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : ""}{o.tiktok.note ? ` · last try: ${o.tiktok.note}` : ""}</p>
+                <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} hidden={o.tiktok.hidden} />
+              </>
+            ) : (
+              <>
+                <p className="px-5 pb-3 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">{o.tiktok.error}</p>
                 {o.flags.market && <FindCreators initial={[]} fieldsSeen={[]} />}
               </>
             )}
@@ -166,13 +260,13 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
             <div><h2 className="text-[15px] font-semibold text-ink">{def.label}</h2><p className="text-[13px] text-ink-3">{def.help}</p></div>
             {stage === "requested" && (
               <>
-                <CheckEligibility unchecked={o.unchecked} />
                 <nav aria-label="Eligibility" className="flex flex-wrap gap-2" data-testid="fit-filter">
-                  {([["", "All"], ["eligible", "Eligible"], ["not", "Not Eligible"], ["unknown", "Not Sure"], ["unchecked", "Not Checked"]] as const).map(([k, label]) => {
+                  {([["", "All"], ["eligible", "Eligible · Meets Rules"], ["unknown", "Not Sure"], ["unchecked", "Not Checked"], ["not", "Not Eligible"]] as const).map(([k, label]) => {
                     const n = k === "" ? o.samples.requested.length : o.samples.requested.filter((c) => (k === "unchecked" ? !c.verdict : c.verdict?.status === k)).length;
-                    return <Link key={k || "all"} href={href("/affiliate/outreach", { stage: "requested", fit: k || undefined })} scroll={false} aria-current={fit === k ? "page" : undefined} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", fit === k ? "border-brand/40 bg-brand-soft text-brand" : "border-line text-ink-2 hover:bg-surface-2")}>{label}<span className="tnum text-[12px] text-ink-3">{n}</span></Link>;
+                    return <Link key={k || "all"} href={href("/affiliate/outreach", { ...keep, stage: "requested", fit: k || undefined })} scroll={false} aria-current={fit === k ? "page" : undefined} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium", fit === k ? "border-brand/40 bg-brand-soft text-brand" : k === "eligible" ? "border-good/40 text-good hover:bg-good-soft" : "border-line text-ink-2 hover:bg-surface-2")}>{label}<span className="tnum text-[12px] text-ink-3">{n}</span></Link>;
                   })}
                 </nav>
+                <CheckEligibility unchecked={o.unchecked} />
               </>
             )}
           </div>

@@ -114,3 +114,13 @@ Team and the Today strip count the same events: creators contacted from Actions 
 - Every page header carries its menu icon. Long explanations sit behind ⓘ, never as paragraphs.
 - Headline numbers use one tile (`StatTile`): icon, short label, the number, a ▲▼ change pill, a few words or ⓘ, optional trend line.
 - One icon per idea (`src/components/ui/icon-set.ts`): stages (Creators strip, Command funnel), next steps (Chase, Push, Reward…), work kinds (creator, product action, video), video lists (heating, fading, stopped, ready) and product tags.
+
+## Creator Outreach (renamed from Outreach)
+
+- **Header:** "Approve Samples Here" switch (owner; others see On/Off) and a calendar (default last 30 days). The rules sit in one line under the title (Level 5+, 6 categories behind ⓘ).
+- **Pipeline + Approval History** tab. History lists every approval/rejection in the chosen dates: *This App* (with the person's name, from the event recorded when the button is pressed) or *TikTok Seller Center*. The time of a Seller Center decision is when our copy changed (`tt_sample_requests.decided_at`, set by a database trigger, migration 0045); older ones show ≈ the sample order date.
+- **Outreach Conversion** (chosen dates, own data): requests → approved → delivered → posted content → generated sales, with each rate against the step before, plus sales.
+- **Your Own Affiliates:** everyone who qualifies (paged, no 60 cap), creators failing your rules left out, and *what to offer next* from real co-selling: "x% of creators who sell A also sell B · typical RM y in 28 days" (`offerNext`).
+- **From TikTok Affiliate Portal:** fetched in the background (worker, every 6 hours, up to 5 pages, your categories, not invited in 90 days) and kept (`settings.market_suggestions`); the screen never waits for TikTok. A "too busy" keeps the last good list. Your rules then decide who is shown.
+- **Sample Requested:** requests meeting your rules come first, highlighted green; filter chips. Eligibility (level, categories) is checked by the worker by itself, 8 creators every 10 minutes; the Check button does 15 at once.
+- **Chase idle samples first:** "N delivered, not posted · M posted, no sale", each linking to exactly those samples in Creators (`status=Silent` / `status=Posted`). Counted per creator and product.

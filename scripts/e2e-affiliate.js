@@ -263,6 +263,35 @@ async function login(p, email) {
   ok((await p.getByTestId("tiktok-unavailable").count()) === 1 || (await p.getByTestId("tiktok-creators").count()) === 1, "outreach: TikTok's list is shown, or says plainly why it is not available");
   ok((await p.getByTestId("rules").count()) === 1 && /Level 5\+/.test(await p.getByTestId("rules").innerText()) && /Home Supplies/.test(await p.getByTestId("rules").innerText()) && /Muslim Fashion/.test(await p.getByTestId("rules").innerText()), "outreach: your rules (level 5 or higher and the six categories) are shown");
   ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
+  ok(/Creator Outreach/.test(await p.locator("h1").first().innerText()) && /Approve Samples Here/.test(await p.getByTestId("review-card").innerText()), "outreach: named Creator Outreach, with Approve Samples Here next to the calendar");
+  ok((await p.getByTestId("date-range").count()) === 1, "outreach: has a calendar");
+  { const ft = await p.getByTestId("funnel").innerText(); ok(["Sample Requested", "Approved", "Delivered", "Posted Content", "Generated Sales"].every((x) => ft.includes(x)), "outreach: conversion funnel from our own data (requested → approved → delivered → posted → sales)"); }
+  { const rows = await p.locator("[data-testid=more-row]").count(), offers = await p.locator("[data-testid=offer-next]").count();
+    ok(rows > 0 && rows === offers && !/Not offered yet/.test(await p.getByTestId("more-samples").innerText()), `outreach: own affiliates each come with what to offer next, from real co-selling (${rows} shown)`);
+    const total = Number(((await p.getByTestId("more-samples").innerText()).match(/· ([\d,]+) creators/) || [0, "0"])[1].replace(/,/g, ""));
+    ok(total <= 20 || (await p.getByTestId("more-pages").count()) === 1, `outreach: all ${total} own affiliates can be paged through, not a fixed 60`); }
+  // The idle-samples warning: the number and the two links agree with Creators.
+  if (await p.getByTestId("guard-banner").count()) {
+    const n1 = Number((await p.getByTestId("guard-notposted").innerText()).replace(/\D/g, ""));
+    await p.getByTestId("guard-notposted").click(); await p.waitForURL(/status=Silent/); await p.waitForSelector("[data-testid=creator-kpis]");
+    const lines = Number(((await p.locator("main").innerText()).match(/([\d,]+) product lines?/) || [0, "-1"])[1].replace(/,/g, ""));
+    ok(lines === n1, `outreach: "${n1} delivered, not posted" opens exactly those ${lines} samples in Creators`);
+    await p.goto(BASE + "/affiliate/outreach", { waitUntil: "networkidle" });
+  }
+  // Approval history: in the chosen dates, who approved (this app) or TikTok Seller Center.
+  {
+    const db = require("postgres")(process.env.DATABASE_URL, { prepare: false, max: 1 });
+    const [u] = await db`select id from users where email = 'owner@test.local'`;
+    const [rq] = await db`select id, creator from tt_sample_requests where creator is not null order by id limit 1`;
+    await db`insert into staff_events (username, kind, user_id, details) values (${rq.creator}, 'note', ${u.id}, ${db.json({ action: "Approved Sample", applicationId: rq.id, e2e: true })})`;
+    await p.goto(BASE + "/affiliate/outreach?stage=history", { waitUntil: "networkidle" });
+    const ht = await p.getByTestId("history").innerText();
+    ok(/Approval History/.test(ht) && /Test Owner/.test(ht) && /TikTok Seller Center/.test(ht), "outreach: approval history shows approvals from this app (with the name) and from TikTok Seller Center");
+    await p.goto(BASE + "/affiliate/outreach?stage=history&d=app", { waitUntil: "networkidle" });
+    ok((await p.locator("[data-testid=history-rows] li").count()) >= 1 && !/TikTok Seller Center/.test(await p.getByTestId("history").locator("ul").innerText()), "outreach: approval history filters to this app only");
+    await db`delete from staff_events where details->>'e2e' = 'true' and details->>'applicationId' = ${rq.id}`;
+    await db.end();
+  }
   await p.goto(BASE + "/affiliate/outreach?stage=requested", { waitUntil: "networkidle" });
   ok((await p.getByTestId("fit-filter").count()) === 1 && /Eligible/.test(await p.getByTestId("fit-filter").innerText()) && /Not Checked/.test(await p.getByTestId("fit-filter").innerText()), "outreach: waiting requests can be filtered by eligibility");
   for (const st of ["requested", "approved", "shipped", "delivered", "posted"]) {
@@ -271,7 +300,7 @@ async function login(p, email) {
     ok(!/Application error|Internal Server Error/.test(body) && (/Nobody is in this stage/.test(body) || (await p.locator("[data-testid=sample-card]").count()) > 0), `outreach: stage "${st}" opens`);
   }
   const oa = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
-  ok(oa.length === 1 && /^Outreach$/.test(oa[0].trim()), `menu: only Outreach is lit there (${oa.join("|")})`);
+  ok(oa.length === 1 && /^Creator Outreach$/.test(oa[0].trim()), `menu: only Creator Outreach is lit there (${oa.join("|")})`);
 
   // affiliate data: the stage strip (the stages after the sample arrives), days in stage and a stuck-longest-first sort; nothing was removed
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
