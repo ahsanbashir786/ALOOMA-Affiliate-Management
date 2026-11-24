@@ -9,7 +9,7 @@ import { parseRange } from "@/lib/creators/params";
 import { DatesPicker } from "@/components/ui/range-picker";
 import { UrlSearch } from "@/components/ui/url-search";
 import { PIPELINE, type PipelineKey } from "@/lib/affiliate/outreach";
-import { addDaysISO, fmtDayLabel, todayKL } from "@/lib/time";
+import { addDaysISO, daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { OpenPanelButton } from "@/components/creators/open-panel-button";
@@ -25,7 +25,6 @@ import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 export const metadata: Metadata = { title: "Creator Outreach" };
 const MORE_PAGE = 20;
 const FIT_RANK = { eligible: 0, unknown: 1, unchecked: 2, not: 3 } as const;
-const pct = (a: number, b: number) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "–");
 const KEYS = PIPELINE.map((p) => p.key) as string[];
 const TONE = { good: "good", warn: "warn", bad: "critical", neutral: "neutral" } as const;
 
@@ -83,7 +82,9 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, one(v)]));
   const today = todayKL();
   const range = parseRange(raw) ?? { start: addDaysISO(today, -29), end: today };
-  const [o, per] = await Promise.all([loadOutreach(), loadOutreachPeriod(range)]);
+  const days = daysBetweenISO(range.start, range.end) + 1;
+  const prevRange = { start: addDaysISO(range.start, -days), end: addDaysISO(range.start, -1) };
+  const [o, per, prev] = await Promise.all([loadOutreach(), loadOutreachPeriod(range), loadOutreachPeriod(prevRange)]);
   if (!o) return null;
   const view = one(sp.stage) === "history" ? "history" : ((KEYS.includes(one(sp.stage) ?? "") ? one(sp.stage) : "suggested") as PipelineKey);
   const stage = view === "history" ? "suggested" : view;
@@ -99,14 +100,16 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
   const list = fit ? ordered.filter((c) => (fit === "unchecked" ? !c.verdict : c.verdict?.status === fit)) : ordered;
   const mp = Math.max(1, Number(one(sp.mp)) || 1), mPages = Math.max(1, Math.ceil(o.more.length / MORE_PAGE));
   const moreRows = o.more.slice((mp - 1) * MORE_PAGE, mp * MORE_PAGE);
-  const f = per.funnel;
+  const f = per.funnel, pf = prev.funnel;
+  const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
+  // Each rate in plain words ("x of every 100 …") and against the same number of days just before.
   const steps = [
-    { k: "requested", label: "Sample Requested", n: f.requested, rate: null as string | null, rateLabel: "" },
-    { k: "approved", label: "Approved", n: f.approved, rate: pct(f.approved, f.requested), rateLabel: "Approval rate" },
-    { k: "delivered", label: "Delivered", n: f.delivered, rate: pct(f.delivered, f.approved), rateLabel: "Delivered" },
-    { k: "posted", label: "Posted Content", n: f.posted, rate: pct(f.posted, f.delivered), rateLabel: "Post rate" },
-    { k: "sold", label: "Generated Sales", n: f.sold, rate: pct(f.sold, f.posted), rateLabel: "Sales rate" },
-  ];
+    { k: "requested", label: "Sample Requested", n: f.requested, r: null as number | null, was: null as number | null, rateLabel: "", says: "" },
+    { k: "approved", label: "Approved", n: f.approved, r: ratio(f.approved, f.requested), was: ratio(pf.approved, pf.requested), rateLabel: "Approval Rate", says: "of every 100 requests you approved" },
+    { k: "delivered", label: "Delivered", n: f.delivered, r: ratio(f.delivered, f.approved), was: ratio(pf.delivered, pf.approved), rateLabel: "Delivered", says: "of every 100 approved samples arrived" },
+    { k: "posted", label: "Posted Content", n: f.posted, r: ratio(f.posted, f.delivered), was: ratio(pf.posted, pf.delivered), rateLabel: "Post Rate", says: "of every 100 creators who got it posted" },
+    { k: "sold", label: "Generated Sales", n: f.sold, r: ratio(f.sold, f.posted), was: ratio(pf.sold, pf.posted), rateLabel: "Sales Rate", says: "of every 100 who posted made a sale" },
+  ].map((st) => ({ ...st, rate: st.r == null ? (st.k === "requested" ? null : "–") : `${Math.round(st.r * 100)}%` }));
   const fMax = Math.max(1, f.requested);
   const dview = one(sp.d) ?? "";
   // One search across everything in a row: creator, product, approved/rejected, this app/TikTok, who, and the date. Every word must match.
@@ -171,11 +174,16 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
       )}
 
       <Card data-testid="funnel-card">
-        <CardHeader title="Outreach Conversion" description="Sample requests made in your chosen dates, and how far they got: approved, delivered, posted, and sold the product. From your own data. Each rate is against the step before." action={<span className="tnum text-[12.5px] text-ink-3">{fmtDayLabel(range.start)} – {fmtDayLabel(range.end)} · sales {fmtRM(f.sales)}</span>} />
+        <CardHeader title="Outreach Conversion" description="Sample requests made in your chosen dates, and how far they got: approved, delivered, posted, and sold the product. From your own data. Each rate is against the step before, and the arrow compares it with the same number of days just before." action={<span className="tnum text-[12.5px] text-ink-3">{fmtDayLabel(range.start)} – {fmtDayLabel(range.end)} · sales {fmtRM(f.sales)} · vs {fmtDayLabel(prevRange.start)} – {fmtDayLabel(prevRange.end)}</span>} />
         <ul className="space-y-1.5 px-5 pb-5" data-testid="funnel">
           {steps.map((st) => (
-            <li key={st.k} className="grid grid-cols-[96px_1fr] items-center gap-3 sm:grid-cols-[150px_1fr]">
-              <span className="text-right">{st.rate ? <><b className="tnum block text-[16px] leading-tight text-ink">{st.rate}</b><span className="text-[11.5px] text-ink-3">{st.rateLabel}</span></> : <span className="text-[11.5px] text-ink-3">start</span>}</span>
+            <li key={st.k} className="grid grid-cols-[120px_1fr] items-center gap-3 sm:grid-cols-[230px_1fr]">
+              <span className="text-right" data-testid={st.r != null ? "funnel-rate" : undefined}>{st.rate ? (
+                <>
+                  <span className="flex items-center justify-end gap-1.5"><span className="text-[11.5px] font-medium text-ink-3">{st.rateLabel}</span><b className="tnum text-[17px] leading-tight text-ink">{st.rate}</b>{st.r != null && st.was != null && Math.round((st.r - st.was) * 100) !== 0 ? <span className={cn("tnum rounded-full px-1.5 text-[11px] font-semibold", st.r > st.was ? "bg-good-soft text-good" : "bg-critical-soft text-critical")} title={`Was ${Math.round(st.was * 100)}% in the days before`}>{st.r > st.was ? "▲" : "▼"} {Math.abs(Math.round((st.r - st.was) * 100))} pts</span> : st.was != null ? <span className="text-[11px] text-ink-3">same</span> : null}</span>
+                  {st.r != null && <span className="hidden text-[11.5px] leading-snug text-ink-3 sm:block">{Math.round(st.r * 100)} {st.says}</span>}
+                </>
+              ) : <span className="text-[11.5px] text-ink-3">start</span>}</span>
               <span className="relative overflow-hidden rounded-lg bg-surface-2">
                 <span className="absolute inset-y-0 left-0 rounded-lg bg-brand/20" style={{ width: `${Math.max(1.5, (st.n / fMax) * 100)}%` }} />
                 <span className="relative flex items-center justify-between px-3 py-2.5 text-[13.5px]"><span className="font-medium text-ink">{st.label}</span><b className="tnum text-ink">{st.n.toLocaleString("en-MY")}</b></span>

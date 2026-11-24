@@ -15,10 +15,21 @@ async function login(p, email) {
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
   await login(p, "owner@test.local");
   const menu = (await p.locator("aside nav a:not([data-testid^=submenu-])").allInnerTexts()).map((t) => t.trim());
-  ok(menu.includes("Command") && !menu.includes("Creator Lifecycle") && !menu.includes("Execution Plan") && !menu.includes("Product Analysis"), `menu: Command is listed; Creator Lifecycle, Execution Plan and Product Analysis are gone (${menu.slice(0, 4).join(", ")})`);
+  ok(menu.includes("Dashboard") && !menu.includes("Creator Lifecycle") && !menu.includes("Execution Plan") && !menu.includes("Product Analysis"), `menu: Command is listed; Creator Lifecycle, Execution Plan and Product Analysis are gone (${menu.slice(0, 4).join(", ")})`);
 
   await p.goto(BASE + "/affiliate", { waitUntil: "networkidle" });
-  ok(/Command/.test(await p.locator("h1").first().innerText()), "command: page opens");
+  ok(/Dashboard/.test(await p.locator("h1").first().innerText()), "dashboard: page opens");
+  ok(/Affiliate Management/.test(await p.locator("aside").innerText()), "menu: the affiliate group is called Affiliate Management");
+  {
+    const before = await p.locator("aside").getAttribute("data-collapsed");
+    await p.getByTestId("menu-toggle").click(); await p.waitForTimeout(400);
+    const after = await p.locator("aside").getAttribute("data-collapsed");
+    await p.getByTestId("menu-toggle").click(); await p.waitForTimeout(400);
+    ok(before === "false" && after === "true" && (await p.locator("aside").getAttribute("data-collapsed")) === "false", "menu: the top-bar button closes the side menu to icons and opens it again");
+    ok((await p.locator("[data-testid=submenu]").count()) === 0, "menu: Profit And Loss options are closed until needed");
+    await p.getByTestId("subtoggle").first().click();
+    ok((await p.locator("[data-testid=submenu]").count()) === 1, "menu: the arrow opens Profit And Loss options");
+  }
   // Choosing dates: the loading bar and the fade show at once, and the new dates arrive.
   {
     const url0 = p.url();
@@ -53,7 +64,7 @@ async function login(p, email) {
   ok(!/Synced .* from TikTok Shop/.test(main), "command: no sync-time line (Data Sync shows that)");
   ok((await p.locator("button", { hasText: "Last 28 Days" }).count()) >= 1, "command: a date picker is there");
   const active = await p.locator("aside nav a[aria-current=page]").allInnerTexts();
-  ok(active.length === 1 && /Command/.test(active[0]), `menu: only Command is lit on this screen (${active.join("|")})`);
+  ok(active.length === 1 && /Dashboard/.test(active[0]), `menu: only Dashboard is lit on this screen (${active.join("|")})`);
   // chosen dates: "Last 7 days" ending today must still be 7 days of real data
   const iso = (d) => d.toISOString().slice(0, 10); const td = new Date(); const from7 = new Date(td.getTime() - 6 * 86400000);
   await p.goto(BASE + `/affiliate?from=${iso(from7)}&to=${iso(td)}`, { waitUntil: "networkidle" });
@@ -269,6 +280,7 @@ async function login(p, email) {
   ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
   ok(/Creator Outreach/.test(await p.locator("h1").first().innerText()) && /Approve Samples Here/.test(await p.getByTestId("review-card").innerText()), "outreach: named Creator Outreach, with Approve Samples Here next to the calendar");
   ok((await p.getByTestId("date-range").count()) === 1, "outreach: has a calendar");
+  { const rates = await p.locator("[data-testid=funnel-rate]").allInnerTexts(); ok(rates.length === 4 && /of every 100/.test(rates.join(" ")) && /Approval Rate/.test(rates.join(" ")), "outreach: each conversion rate is explained in plain words (x of every 100 …)"); }
   { const ft = await p.getByTestId("funnel").innerText(); ok(["Sample Requested", "Approved", "Delivered", "Posted Content", "Generated Sales"].every((x) => ft.includes(x)), "outreach: conversion funnel from our own data (requested → approved → delivered → posted → sales)"); }
   { const rows = await p.locator("[data-testid=more-row]").count(), offers = await p.locator("[data-testid=offer-next]").count();
     ok(rows > 0 && rows === offers && !/Not offered yet/.test(await p.getByTestId("more-samples").innerText()), `outreach: own affiliates each come with what to offer next, from real co-selling (${rows} shown)`);

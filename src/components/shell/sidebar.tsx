@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import { X } from "lucide-react";
+import { Suspense, useState } from "react";
+import { ChevronDown, X } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { NAV, navAllowed, type NavChild, type NavItem } from "./nav";
@@ -47,6 +47,8 @@ export function Sidebar({ user, open, onClose, collapsed }: Props) {
     if (!(pathname === h || pathname.startsWith(h + "/"))) return false;
     return !all.some((o) => o.length > h.length && (pathname === o || pathname.startsWith(o + "/")));
   };
+  // Sub-menus (Profit And Loss: All, TikTok, Shopee) are closed until you are on that screen or press the arrow.
+  const [openSub, setOpenSub] = useState<Record<string, boolean>>({});
   // On phones the menu is always the full one.
   const rail = collapsed;
 
@@ -84,7 +86,7 @@ export function Sidebar({ user, open, onClose, collapsed }: Props) {
                     const active = isActive(item);
                     const Icon = item.icon;
                     return (
-                      <li key={item.href}>
+                      <li key={item.href} className="relative">
                         <Link
                           href={item.href}
                           onClick={onClose}
@@ -101,7 +103,13 @@ export function Sidebar({ user, open, onClose, collapsed }: Props) {
                           <span className={cn("flex-1 truncate", rail && "lg:hidden")}>{item.label}</span>
                         </Link>
                         {item.children && !rail && (
-                          <Suspense fallback={null}><SubMenu open={active} onClose={onClose}>{item.children}</SubMenu></Suspense>
+                          <>
+                            <button type="button" onClick={() => setOpenSub((o) => ({ ...o, [item.href]: !(o[item.href] ?? active) }))} aria-expanded={openSub[item.href] ?? active} aria-label={`Show ${item.label} options`} data-testid="subtoggle"
+                              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-ink-3 hover:bg-surface-2 hover:text-ink">
+                              <ChevronDown className={cn("size-4 transition-transform", (openSub[item.href] ?? active) && "rotate-180")} />
+                            </button>
+                            {(openSub[item.href] ?? active) && <Suspense fallback={null}><SubMenu open={active} onClose={onClose}>{item.children}</SubMenu></Suspense>}
+                          </>
                         )}
                       </li>
                     );

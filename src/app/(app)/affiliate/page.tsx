@@ -13,16 +13,16 @@ import { DatesPicker } from "@/components/ui/range-picker";
 import { AgeStack, Funnel, KpiCard, SalesVideosChart, type FunnelRow } from "@/components/affiliate/charts";
 import { fmtCompact, fmtRM } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Command" };
+export const metadata: Metadata = { title: "Dashboard" };
 
 
 export default async function CommandPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const { denied } = await gate("creators", "Command");
+  const { denied } = await gate("creators", "Dashboard");
   if (denied) return denied;
   if (!(await hasSyncedData())) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Command" />
+        <PageHeader title="Dashboard" />
         <Card><EmptyState icon={<Users className="size-5" />} title="No TikTok data yet" description="Connect TikTok Shop and run Data Sync. This screen fills in as soon as the first orders arrive." action={<Link href="/sync" className={buttonClasses({ variant: "primary" })}>Open Data Sync</Link>} /></Card>
       </div>
     );
@@ -48,7 +48,7 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Command"
+        title="Dashboard"
         description="How your affiliate sales are doing, why, and where to act. Charts show the last 12 weeks. The headline numbers use the dates you choose, compared with the same number of days just before. Creator stages are as of today."
         actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
       />

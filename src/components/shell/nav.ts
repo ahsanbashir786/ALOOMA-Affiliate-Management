@@ -8,9 +8,9 @@ export type NavGroup = { label: string; items: NavItem[] };
 /** The whole menu. Everyone sees every item; a role without the permission gets the Permission Denied page when opening it. */
 export const NAV: NavGroup[] = [
   {
-    label: "Affiliates",
+    label: "Affiliate Management",
     items: [
-      { href: "/affiliate", label: "Command", icon: Compass, perm: "creators" },
+      { href: "/affiliate", label: "Dashboard", icon: Compass, perm: "creators" },
       { href: "/affiliate/outreach", label: "Creator Outreach", icon: Send, perm: "creators" },
       { href: "/creators", label: "Creators", icon: Users, perm: "creators" },
       { href: "/affiliate/products", label: "Products", icon: PackageSearch, perm: "creators", perms: ["creators", "products"] },

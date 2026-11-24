@@ -7,7 +7,7 @@ export type Permission = { key: PermissionKey; group: string; label: string; hel
 
 export const PERMISSIONS: Permission[] = [
   { key: "execution", group: "Affiliates", label: "Actions: By Product", help: "See and work on the product actions in Actions › By Product: assign people, set due dates, tick creators" },
-  { key: "creators", group: "Affiliates", label: "Affiliate Screens", help: "Command, Outreach, Creators, Content, Actions and Team: see every creator, record contacts, export to Excel" },
+  { key: "creators", group: "Affiliates", label: "Affiliate Screens", help: "Dashboard, Creator Outreach, Creators, Content, Actions and Team: see every creator, record contacts, export to Excel" },
   { key: "products", group: "Affiliates", label: "Products", help: "See how every product is doing and why (Products and each product's full analysis)" },
   { key: "ads", group: "GMV Max", label: "GMV Max", help: "See GMV Max ad results and which videos are worth boosting" },
   { key: "stock", group: "Stock", label: "Stock And Costing", help: "See stock-in orders, cost per piece and FIFO stock; import stock files" },

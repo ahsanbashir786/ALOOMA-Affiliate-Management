@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Menu } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { AlertBell } from "./alert-bell";
 import { NavProgress } from "./nav-progress";
 import { ErrorReporter } from "./error-reporter";
@@ -48,6 +48,15 @@ export function AppShell({
             aria-label="Open menu"
           >
             <Menu className="size-5" />
+          </button>
+          <button
+            className="hidden size-9 items-center justify-center rounded-lg border border-line-strong bg-surface text-ink-2 transition-colors hover:bg-surface-2 hover:text-brand lg:flex"
+            onClick={toggle}
+            aria-label={collapsed ? "Open the side menu" : "Close the side menu"}
+            title={collapsed ? "Open the side menu" : "Close the side menu"}
+            data-testid="menu-toggle"
+          >
+            {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-2.5">
