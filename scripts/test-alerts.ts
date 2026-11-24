@@ -141,6 +141,15 @@ const keys = (c: { key: string }[]) => c.map((x) => x.key).sort().join(",");
   check("report: never contains a key or secret", !rep.includes("SUPER-SECRET-PARTNER-KEY") && !/TIKTOK_APP_SECRET|password|access_token/i.test(rep));
   check("report: lists the latest errors with their page", /\/profit: relation/.test(rep) && /Page error|OPEN ALERTS/.test(rep));
   await pg.end();
-  console.log(`\n${pass} passed, ${fail} failed`);
+  // A page left open across an update ("Server Action … was not found") is not an app fault: never an App Errors alert.
+{
+  const { errorCandidates } = await import("../src/lib/alerts/checks");
+  const { isVersionSkew } = await import("../src/lib/version-skew");
+  const skew = 'Uncaught UnrecognizedActionError: Server Action "4037b9c7ee8ff192d9c658a069bb6c6c3597c84071" was not found on the server. Read more: https://nextjs.org/docs/messages/failed-to-find-server-action';
+  check("a stale page's missing Server Action is recognised as an update, not a fault", isVersionSkew(skew) && isVersionSkew("Failed to find Server Action \"abc\". This request might be from an older or newer deployment.") && !isVersionSkew("Cannot read properties of undefined"));
+  const g = { signature: "s", source: "browser", route: "/settings", message: skew, count24h: 1, countHour: 1, lastAtMs: Date.now() };
+  check("it does not become an App Errors alert", errorCandidates([g as never]).length === 0 && errorCandidates([{ ...g, message: "TypeError: x is undefined" } as never]).length === 1);
+}
+console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect } from "react";
+import { isVersionSkew } from "@/lib/version-skew";
 
 /** Sends errors that happen in the browser to the System Alerts log (at most 5 per page load). Invisible. */
 export function ErrorReporter() {
   useEffect(() => {
     let sent = 0;
     const send = (message: string, stack?: string) => {
+      // The page is older than the server (an update happened while it was open): load the new version once, quietly.
+      if (isVersionSkew(message)) {
+        try {
+          const last = Number(sessionStorage.getItem("app:reloadedForUpdate") ?? 0);
+          if (Date.now() - last > 60_000) { sessionStorage.setItem("app:reloadedForUpdate", String(Date.now())); location.reload(); }
+        } catch { location.reload(); }
+        return;
+      }
       if (sent >= 5 || !message) return;
       sent++;
       try { void fetch("/api/alerts/client-error", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: message.slice(0, 500), stack: stack?.slice(0, 2000), page: location.pathname }), keepalive: true }); } catch { /* reporting must never break the page */ }

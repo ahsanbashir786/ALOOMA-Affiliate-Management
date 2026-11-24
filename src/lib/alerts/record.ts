@@ -1,4 +1,5 @@
 import "server-only";
+import { isVersionSkew } from "@/lib/version-skew";
 import { sql as pg } from "@/db";
 import { errorSignature } from "./checks";
 
@@ -10,7 +11,7 @@ const recent = new Map<string, { n: number; at: number }>();
 export async function recordError(e: { source: "server" | "browser"; route?: string | null; message: string; stack?: string | null }): Promise<void> {
   try {
     const message = String(e.message ?? "").slice(0, 800);
-    if (!message || NOISE.test(message) || NOISE.test(e.stack ?? "")) return;
+    if (!message || NOISE.test(message) || NOISE.test(e.stack ?? "") || isVersionSkew(message)) return; // a page left open across an update: not a fault
     const route = e.route ? e.route.split("?")[0].slice(0, 200) : null;
     const signature = errorSignature(e.source, route, message);
     const now = Date.now();

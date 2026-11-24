@@ -1,4 +1,5 @@
 // What counts as a problem. Pure (no database, no clock of its own) so every rule can be tested.
+import { isVersionSkew } from "@/lib/version-skew";
 export type Severity = "critical" | "warning" | "info";
 export type Area = "connections" | "sync" | "server" | "errors";
 export type Candidate = { key: string; area: Area; severity: Severity; title: string; detail?: string; advice?: string; href?: string; /** Overrides the "times seen" counter (errors count their own repeats). */ count?: number; /** The latest time the problem happened (errors): a person who cleared the alert only sees it again if it happens after that. */ lastAtMs?: number };
@@ -86,7 +87,8 @@ export function serverCandidates(i: ServerInput): Candidate[] {
 export type ErrorGroup = { signature: string; source: string; route: string | null; message: string; count24h: number; countHour: number; lastAtMs?: number };
 
 export function errorCandidates(groups: ErrorGroup[]): Candidate[] {
-  return groups.map((g) => ({
+  // A page left open across an update is not an app fault (the browser reloads itself): never an alert.
+  return groups.filter((g) => !isVersionSkew(g.message)).map((g) => ({
     key: `error:${g.signature}`, area: "errors" as const, severity: (g.countHour >= 10 ? "critical" : "warning") as Severity,
     title: `${g.source === "browser" ? "Browser error" : "Page error"} on ${g.route || "an unknown page"}`,
     detail: g.message, count: g.count24h, lastAtMs: g.lastAtMs,
