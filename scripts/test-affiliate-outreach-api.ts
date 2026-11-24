@@ -83,11 +83,11 @@ async function main() {
     try {
       await db.execute(sql`delete from settings where key = 'market_suggestions'`);
       const before = calls.filter((c) => new URL(c.url).pathname.endsWith("/marketplace_creators/search")).length;
-      const m1 = await bg.refreshMarket();
+      const m1 = await bg.refreshMarket({ wait: async () => undefined });
       const pages = calls.filter((c) => new URL(c.url).pathname.endsWith("/marketplace_creators/search")).length - before;
       check("16 TikTok's suggested creators are fetched page by page (up to 5), kept, and counted once each", m1.creators.length === 1 && pages === 5 && !!m1.at && !bg.marketDue(m1));
       mode = "busy";
-      const m2 = await bg.refreshMarket();
+      const m2 = await bg.refreshMarket({ wait: async () => undefined });
       check("17 when TikTok is busy, the last good list stays and the reason is noted", m2.creators.length === 1 && m2.at === m1.at && /busy/i.test(m2.error ?? ""));
       check("18 the list is due again after 6 hours, but not within 15 minutes of a try", bg.marketDue({ ...m2, at: Date.now() - 7 * 3600_000, triedAt: Date.now() - 20 * 60_000 }) && !bg.marketDue({ ...m2, at: Date.now() - 7 * 3600_000, triedAt: Date.now() - 60_000 }));
       mode = "ok";

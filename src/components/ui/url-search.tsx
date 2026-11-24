@@ -15,6 +15,7 @@ export function UrlSearch({ placeholder, param = "q", testId }: { placeholder: s
   const go = (q: string) => {
     const next = new URLSearchParams(params.toString());
     if (q.trim()) next.set(param, q.trim()); else next.delete(param);
+    next.delete("page"); next.delete("mp"); // a new search starts on page 1
     const to = `${path}${next.toString() ? `?${next}` : ""}`;
     startNav(to);
     start(() => router.replace(to, { scroll: false }));

@@ -19,6 +19,7 @@ import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components
 import { DatesPicker } from "@/components/ui/range-picker";
 import { statsOf } from "@/lib/creators/action-messages";
 import { Pagination } from "@/components/ui/pagination";
+import { sizeFrom } from "@/lib/paging";
 import { OpenPanelButton } from "@/components/creators/open-panel-button";
 import { CreatorFilters } from "@/components/creators/creator-filters";
 import { LineAction } from "@/components/creators/line-action";
@@ -144,7 +145,9 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
     );
   }
 
-  const dir = await getAffiliateDirectory({ ...opts, size: SIZE });
+  const size = sizeFrom(sp, SIZE);
+  const per = size === "all" ? 100_000 : size;
+  const dir = await getAffiliateDirectory({ ...opts, size: per, page: size === "all" ? 1 : opts.page });
   const ov = dir.overview!;
   const periodLabel = opts.range ? `${fmtDayLabel(opts.range.start)} – ${fmtDayLabel(opts.range.end)}` : "All time";
   const values = { q: opts.q ?? "", samples: opts.samples ?? "all", product: opts.product ?? "", status: opts.status ?? "", stage: opts.stage ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", owner: opts.owner ?? "", tier: opts.tier ?? "", sort: opts.sort ?? "gmv", from: opts.from, to: opts.to };
@@ -157,7 +160,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   };
   const statsAll = (r: DirRow) => r.allLines.filter((l) => (l.sampled ?? !l.noSample)).map(statsOf);
   const page = opts.page ?? 1;
-  const pages = Math.max(1, Math.ceil(dir.total / SIZE));
+  const pages = Math.max(1, Math.ceil(dir.total / per));
   await recordDailyCounts({ creators: ov.creators, sellers: ov.sellers28, todo: ov.todoLines, unowned: ov.unowned });
   const cmp = await countsToCompare();
   const goldN = ov.tiers.Gold;
@@ -257,7 +260,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
             </ul>
           </>
         )}
-        <div className="border-t border-line p-3"><Pagination page={Math.min(page, pages)} pages={pages} total={dir.total} pageSize={SIZE} hrefFor={(p) => href("/creators", { ...pageFilters, page: p })} /></div>
+        <div className="border-t border-line p-3"><Pagination page={Math.min(page, pages)} pages={pages} total={dir.total} pageSize={per} size={size} hrefFor={(p) => href("/creators", { ...pageFilters, size: size === SIZE ? undefined : size, page: p })} sizeHrefFor={(s) => href("/creators", { ...pageFilters, size: s === SIZE ? undefined : s })} /></div>
       </Card>
       </BulkProvider>
 

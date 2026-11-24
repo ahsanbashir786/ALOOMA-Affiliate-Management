@@ -27,7 +27,7 @@ export type Outreach = {
   counts: Record<PipelineKey, number>;
   samples: Record<Exclude<PipelineKey, "suggested">, SampleCard[]>;
   more: (MoreSample & { verdict: Verdict | null })[];
-  tiktok: { ok: true; creators: TikTokCreator[]; hidden: number; fieldsSeen: string[]; at: number | null; note: string | null } | { ok: false; error: string };
+  tiktok: { ok: true; creators: TikTokCreator[]; hidden: number; fieldsSeen: string[]; at: number | null; note: string | null; fetching: boolean; detail: string | null; catNames: Record<string, string> } | { ok: false; error: string; fetching: boolean; detail: string | null };
   rules: { categories: string[]; level: number; matched: { id: string; name: string }[]; missing: string[]; error: string | null };
   unchecked: number;
   guard: ReturnType<typeof sampleGuard>;
@@ -152,14 +152,16 @@ export async function loadOutreach(): Promise<Outreach | null> {
   // Your rules apply here too: a creator TikTok shows below level 5 or outside your categories is left out; not checked yet stays (marked).
   const more = giveMoreSamples(all).map((m) => ({ ...m, verdict: verdictFor(idByName.get(m.username) ?? null).v })).filter((m) => m.verdict?.status !== "not");
   let tiktok: Outreach["tiktok"];
-  if (!scopes.connected) tiktok = { ok: false, error: "TikTok Shop is not connected." };
-  else if (!scopes.market) tiktok = { ok: false, error: "TikTok has not granted the creator search permission yet. Reconnect TikTok in Settings after switching it on in Partner Center." };
+  if (!scopes.connected) tiktok = { ok: false, error: "TikTok Shop is not connected.", fetching: false, detail: null };
+  else if (!scopes.market) tiktok = { ok: false, error: "TikTok has not granted the creator search permission yet. Reconnect TikTok in Settings after switching it on in Partner Center.", fetching: false, detail: null };
   else {
     // The list is fetched in the background (worker, every 6 hours) and kept, so this screen never waits for TikTok or shows "busy".
     const m = await readMarket();
     if (marketDue(m)) void refreshMarket().catch(() => undefined);
-    if (!m.at && !m.creators.length) tiktok = { ok: false, error: m.error ?? "The first list is being fetched from TikTok now. It appears here within a few minutes." };
-    else tiktok = { ...judgeCreators(m.creators, prefs, m.fieldsSeen), at: m.at, note: m.error };
+    const fetching = m.error === "fetching" && !!m.triedAt && Date.now() - m.triedAt < 3 * 60_000;
+    const catNames = Object.fromEntries(prefs.roots.map((r) => [r.id, r.local_name]));
+    if (!m.at && !m.creators.length) tiktok = { ok: false, error: fetching ? "fetching" : m.error ?? "fetching", fetching: fetching || !m.error, detail: m.detail ?? null };
+    else tiktok = { ...judgeCreators(m.creators, prefs, m.fieldsSeen), at: m.at, note: m.error === "fetching" ? null : m.error, fetching, detail: m.detail ?? null, catNames };
   }
   if (tiktok.ok) await saveSuggestedHint({ eligible: tiktok.creators.filter((c) => c.verdict.status === "eligible").length, notSure: tiktok.creators.filter((c) => c.verdict.status === "unknown").length, own: more.length, at: Date.now() }).catch(() => undefined);
   const rules = { categories: PREFERRED_CATEGORIES, level: MIN_LEVEL, matched: prefs.matched, missing: prefs.missing, error: prefs.ok ? null : prefs.error ?? null };

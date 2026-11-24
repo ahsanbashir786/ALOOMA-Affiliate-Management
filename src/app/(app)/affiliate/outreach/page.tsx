@@ -8,6 +8,9 @@ import { loadOutreach, loadOutreachPeriod, type SampleCard } from "@/lib/affilia
 import { parseRange } from "@/lib/creators/params";
 import { DatesPicker } from "@/components/ui/range-picker";
 import { UrlSearch } from "@/components/ui/url-search";
+import { ProductPick } from "@/components/ui/product-pick";
+import { Pagination } from "@/components/ui/pagination";
+import { pageOf, sizeFrom } from "@/lib/paging";
 import { PIPELINE, type PipelineKey } from "@/lib/affiliate/outreach";
 import { addDaysISO, daysBetweenISO, fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
@@ -98,8 +101,14 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
   // Requests that meet your rules come first, then the ones still to check; within each, the ones expiring first.
   const ordered = stage === "requested" ? [...all].sort((a, b) => FIT_RANK[a.verdict?.status ?? "unchecked"] - FIT_RANK[b.verdict?.status ?? "unchecked"]) : all;
   const list = fit ? ordered.filter((c) => (fit === "unchecked" ? !c.verdict : c.verdict?.status === fit)) : ordered;
-  const mp = Math.max(1, Number(one(sp.mp)) || 1), mPages = Math.max(1, Math.ceil(o.more.length / MORE_PAGE));
-  const moreRows = o.more.slice((mp - 1) * MORE_PAGE, mp * MORE_PAGE);
+  // Your Own Affiliates: a search and a product to target, then pages.
+  const mq = (one(sp.mq) ?? "").toLowerCase().trim().replace(/^@/, ""), mprod = one(sp.mprod) ?? "";
+  const moreAll = o.more.filter((m) => (!mq || m.username.toLowerCase().includes(mq)) && (!mprod || m.recs.some((r) => r.pid === mprod)));
+  const mSize = sizeFrom(sp, MORE_PAGE, "msize");
+  const mpg = pageOf(moreAll, Math.max(1, Number(one(sp.mp)) || 1), mSize);
+  const moreRows = mpg.rows;
+  const targetable = [...new Map(o.more.flatMap((m) => m.recs.map((r) => [r.pid, r.product] as const))).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const mKeep = { ...keep, mq: one(sp.mq) || undefined, mprod: mprod || undefined, msize: mSize === MORE_PAGE ? undefined : mSize };
   const f = per.funnel, pf = prev.funnel;
   const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
   // Each rate in plain words ("x of every 100 …") and against the same number of days just before.
@@ -219,52 +228,60 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
           )}
         </Card>
       ) : stage === "suggested" ? (
-        <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
+        <div className="space-y-6">
           <Card data-testid="more-samples">
-            <CardHeader title="Your Own Affiliates" description="Creators already selling for you with nothing outstanding (no sample still unposted or on the way), best sellers first. Each comes with what to offer next, from what other creators actually do: the share of creators selling the same product who also sell this one, and what it typically sells for one creator in 28 days. Creators TikTok shows outside your rules are left out." />
-            <p className="px-5 pb-2 text-[12.5px] text-ink-3">From your own data · {o.more.length.toLocaleString("en-MY")} creators</p>
-            {o.more.length === 0 ? <p className="px-5 pb-6 text-[13.5px] text-ink-3">Nobody qualifies right now.</p> : (
+            <CardHeader title="Your Own Affiliates" description="Creators already selling for you, with a sample before and nothing outstanding now (no sample still unposted or on the way), best sellers first. Each comes with what to offer next, from what other creators actually do. Creators TikTok shows outside your rules are left out." />
+            <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
+              <span className="mr-auto inline-flex flex-wrap items-center gap-1.5 text-[12.5px] text-ink-3" data-testid="more-why" title="Who is counted here">
+                <b className="tnum text-[15px] text-ink">{o.more.length.toLocaleString("en-MY")}</b> ready for another sample:
+                <span className="rounded-full bg-good-soft px-2 py-0.5 font-medium text-good">selling now</span>
+                <span className="rounded-full bg-brand-soft px-2 py-0.5 font-medium text-brand">had a sample before</span>
+                <span className="rounded-full bg-surface-2 px-2 py-0.5 font-medium text-ink-2">nothing pending</span>
+              </span>
+              <UrlSearch placeholder="Find a creator" param="mq" testId="more-search" />
+              <ProductPick options={targetable} value={mprod} param="mprod" label="Offer this product" />
+            </div>
+            {moreAll.length === 0 ? <p className="border-t border-line px-5 py-8 text-center text-[13.5px] text-ink-3">{o.more.length ? "Nobody matches. Clear the search or the product." : "Nobody qualifies right now."}</p> : (
               <ul>
                 {moreRows.map((m) => (
-                  <li key={m.username} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 border-t border-line px-5 py-3 text-[13.5px]" data-testid="more-row">
+                  <li key={m.username} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 border-t border-line px-5 py-3 text-[13.5px] lg:grid-cols-[minmax(180px,0.9fr)_110px_minmax(300px,2fr)]" data-testid="more-row">
                     <div className="min-w-0">
                       <OpenPanelButton username={m.username} className="truncate text-left font-semibold text-brand hover:underline" />
-                      <p className="text-[12px] text-ink-3">{m.followers != null ? `${fmtCompact(m.followers)} followers · ` : ""}{m.verdict ? (m.verdict.status === "eligible" ? <span className="font-semibold text-good">Meets your rules</span> : "Not sure (TikTok shows no level)") : "Rules not checked yet"}</p>
+                      <p className="flex items-center gap-1.5 text-[12px] text-ink-3">{m.followers != null ? `${fmtCompact(m.followers)} followers` : ""}{m.verdict?.status === "eligible" && <span className="inline-flex items-center gap-0.5 font-semibold text-good"><ShieldCheck className="size-3" />fits rules</span>}</p>
                     </div>
-                    <p className="tnum text-right font-semibold text-ink">{fmtRM(m.sales28)}<span className="block text-[12px] font-normal text-ink-3">28 days</span></p>
-                    <div className="col-span-2 flex flex-wrap gap-1.5" data-testid="offer-next">
+                    <p className="tnum text-right font-semibold text-ink lg:text-left">{fmtRM(m.sales28)}<span className="block text-[11.5px] font-normal text-ink-3">last 28 days</span></p>
+                    <div className="col-span-2 flex flex-wrap gap-2 lg:col-span-1" data-testid="offer-next">
                       {m.recs.length ? m.recs.map((r) => (
-                        <span key={r.pid} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2 py-1 text-[12px] text-ink-2" title={`${Math.round(r.pct * 100)}% of the creators who sell ${r.from} also sell ${r.product}${r.typical ? `; one creator typically sells RM ${Math.round(r.typical).toLocaleString("en-MY")} of it in 28 days` : ""}`}>
-                          <Gift className="size-3.5 text-brand" /><b className="text-ink">{r.product}</b><span className="text-ink-3">{Math.round(r.pct * 100)}% of {r.from} sellers{r.typical ? ` · ~${fmtRM(r.typical)}` : ""}</span>
+                        <span key={r.pid} className={cn("inline-flex items-center gap-2 rounded-xl border bg-surface px-2.5 py-1.5", mprod === r.pid ? "border-brand bg-brand-soft/40" : "border-line")} title={`${Math.round(r.pct * 100)}% of creators who sell ${r.from} also sell ${r.product}${r.typical ? `. One creator typically sells RM ${Math.round(r.typical).toLocaleString("en-MY")} of it in 28 days` : ""}`}>
+                          <Gift className="size-4 shrink-0 text-brand" />
+                          <span className="min-w-0">
+                            <span className="block text-[12.5px] font-semibold leading-tight text-ink">{r.product}</span>
+                            <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
+                              <span className="relative h-1.5 w-14 overflow-hidden rounded-full bg-surface-2"><span className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${Math.min(100, Math.round(r.pct * 100))}%` }} /></span>
+                              <b className="tnum text-ink-2">{Math.round(r.pct * 100)}% match</b>{r.typical ? <span className="tnum">· ~{fmtRM(r.typical)}/mo</span> : null}
+                            </span>
+                          </span>
                         </span>
-                      )) : <span className="text-[12px] text-ink-3">Already sells or was sent every product that sells alongside theirs.</span>}
+                      )) : <span className="text-[12px] text-ink-3">Already sells or was sent every product that goes with theirs.</span>}
                     </div>
                   </li>
                 ))}
               </ul>
             )}
-            {mPages > 1 && (
-              <div className="flex items-center justify-between border-t border-line px-5 py-2.5 text-[12.5px] text-ink-3" data-testid="more-pages">
-                <span>{(mp - 1) * MORE_PAGE + 1}–{Math.min(mp * MORE_PAGE, o.more.length)} of {o.more.length.toLocaleString("en-MY")}</span>
-                <span className="flex gap-2">
-                  {mp > 1 && <Link href={href("/affiliate/outreach", { ...keep, mp: mp - 1 > 1 ? mp - 1 : undefined })} scroll={false} className="font-semibold text-brand hover:underline">Previous</Link>}
-                  {mp < mPages && <Link href={href("/affiliate/outreach", { ...keep, mp: mp + 1 })} scroll={false} className="font-semibold text-brand hover:underline">Next</Link>}
-                </span>
-              </div>
-            )}
+            {moreAll.length > 0 && <div className="border-t border-line"><Pagination page={mpg.page} pages={mpg.pages} total={moreAll.length} pageSize={mpg.pageSize} size={mSize} hrefFor={(n) => href("/affiliate/outreach", { ...mKeep, mp: n > 1 ? n : undefined })} sizeHrefFor={(z) => href("/affiliate/outreach", { ...mKeep, msize: z === MORE_PAGE ? undefined : z })} /></div>}
           </Card>
           <Card data-testid="tiktok-card">
-            <CardHeader title="From TikTok Affiliate Portal" description="TikTok's own Creator Marketplace in your categories, leaving out creators you invited in the last 90 days. The system fetches it in the background every 6 hours and keeps it, then applies your rules: only creators who meet them are shown first. Search by keyword or sales range for more." action={<a href="https://seller-my.tiktok.com/" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open TikTok Seller Center</a>} />
-            {o.tiktok.ok ? (
-              <>
-                <p className="px-5 pb-2 text-[12.5px] text-ink-3" data-testid="tiktok-updated">From TikTok · {o.tiktok.creators.filter((c) => c.verdict.status === "eligible").length} meet your rules{o.tiktok.at ? ` · updated ${new Date(o.tiktok.at).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : ""}{o.tiktok.note ? ` · last try: ${o.tiktok.note}` : ""}</p>
-                <FindCreators initial={o.tiktok.creators} fieldsSeen={o.tiktok.fieldsSeen} hidden={o.tiktok.hidden} />
-              </>
-            ) : (
-              <>
-                <p className="px-5 pb-3 text-[13.5px] text-ink-2" data-testid="tiktok-unavailable">{o.tiktok.error}</p>
-                {o.flags.market && <FindCreators initial={[]} fieldsSeen={[]} />}
-              </>
+            <CardHeader title="Recommended By TikTok" description="TikTok's Creator Marketplace in your categories, leaving out creators you invited in the last 90 days, then your rules (level 5+, your categories). The system fetches it in the background every 6 hours and keeps it, so this list never waits for TikTok." action={<a href="https://affiliate.tiktok.com/connection/creator?shop_region=MY" target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-brand hover:underline">Open In TikTok</a>} />
+            <p className="flex items-center gap-1.5 px-5 pb-2 text-[12.5px] text-ink-3" data-testid="tiktok-updated">
+              {o.tiktok.fetching ? <><span className="size-2 animate-pulse rounded-full bg-brand" />Getting the latest list from TikTok now…</> : o.tiktok.ok && o.tiktok.at ? <><span className="size-2 rounded-full bg-good" />Updated {new Date(o.tiktok.at).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</> : null}
+              {o.tiktok.ok && o.tiktok.note && !o.tiktok.fetching && <span>· the last refresh was refused by TikTok, so this is the previous list; it tries again by itself</span>}
+              {o.tiktok.detail && <InfoTip label="What TikTok said">TikTok&apos;s exact answer to the last try (send this to the developer if the list stays empty): <code className="break-all">{o.tiktok.detail}</code></InfoTip>}
+            </p>
+            {o.tiktok.ok ? <FindCreators initial={o.tiktok.creators} hidden={o.tiktok.hidden} catNames={o.tiktok.catNames} /> : (
+              <div className="px-5 py-10 text-center" data-testid="tiktok-unavailable">
+                <Sparkles className="mx-auto mb-2 size-5 text-brand" />
+                <p className="text-[13.5px] text-ink-2">{o.tiktok.fetching || o.tiktok.error === "fetching" ? "The first list is on its way from TikTok. It appears here by itself within a few minutes." : /busy/i.test(o.tiktok.error) ? "TikTok asked us to slow down. The system keeps trying every 10 minutes; nothing to do on your side." : o.tiktok.error}</p>
+              </div>
             )}
           </Card>
         </div>

@@ -274,7 +274,7 @@ async function login(p, email) {
   const pl = await p.getByTestId("pipeline").innerText();
   ok(["Suggested", "Sample Requested", "Approved", "Shipped", "Delivered", "Posted"].every((x) => pl.includes(x)), "outreach: the six pipeline stages are shown");
   ok(/Off/.test(await p.getByTestId("review-status").innerText()) || /not granted|not connected/i.test(await p.getByTestId("review-status").innerText()), "outreach: approving and rejecting start switched off (or blocked)");
-  ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 0 && /Your Own Affiliates/.test(await p.getByTestId("more-samples").innerText()) && /From TikTok Affiliate Portal/.test(await p.getByTestId("tiktok-card").innerText()), "outreach: own affiliates and TikTok are two separate sections, and waiting requests are not on the Suggested page");
+  ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 0 && /Your Own Affiliates/.test(await p.getByTestId("more-samples").innerText()) && /Recommended By TikTok/.test(await p.getByTestId("tiktok-card").innerText()), "outreach: own affiliates and TikTok are two separate sections, and waiting requests are not on the Suggested page");
   ok((await p.getByTestId("tiktok-unavailable").count()) === 1 || (await p.getByTestId("tiktok-creators").count()) === 1, "outreach: TikTok's list is shown, or says plainly why it is not available");
   ok((await p.getByTestId("rules").count()) === 1 && /Level 5\+/.test(await p.getByTestId("rules").innerText()) && /Home Supplies/.test(await p.getByTestId("rules").innerText()) && /Muslim Fashion/.test(await p.getByTestId("rules").innerText()), "outreach: your rules (level 5 or higher and the six categories) are shown");
   ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
@@ -284,8 +284,23 @@ async function login(p, email) {
   { const ft = await p.getByTestId("funnel").innerText(); ok(["Sample Requested", "Approved", "Delivered", "Posted Content", "Generated Sales"].every((x) => ft.includes(x)), "outreach: conversion funnel from our own data (requested → approved → delivered → posted → sales)"); }
   { const rows = await p.locator("[data-testid=more-row]").count(), offers = await p.locator("[data-testid=offer-next]").count();
     ok(rows > 0 && rows === offers && !/Not offered yet/.test(await p.getByTestId("more-samples").innerText()), `outreach: own affiliates each come with what to offer next, from real co-selling (${rows} shown)`);
-    const total = Number(((await p.getByTestId("more-samples").innerText()).match(/· ([\d,]+) creators/) || [0, "0"])[1].replace(/,/g, ""));
-    ok(total <= 20 || (await p.getByTestId("more-pages").count()) === 1, `outreach: all ${total} own affiliates can be paged through, not a fixed 60`); }
+    const total = Number(((await p.getByTestId("more-why").innerText()).match(/([\d,]+)/) || [0, "0"])[1].replace(/,/g, ""));
+    ok(/selling now/.test(await p.getByTestId("more-why").innerText()) && /had a sample before/.test(await p.getByTestId("more-why").innerText()), "outreach: says plainly who is counted (selling now, had a sample, nothing pending)");
+    ok(total <= 20 || (await p.getByTestId("more-samples").getByTestId("pager").count()) === 1, `outreach: all ${total} own affiliates can be paged through`);
+    // the pager: numbers, and 10 / 20 / 50 / All
+    await p.getByTestId("more-samples").getByTestId("pager-size").locator("summary").click();
+    await p.getByTestId("more-samples").getByTestId("pager-size").getByRole("link", { name: "All" }).click(); await p.waitForURL(/msize=all/); await p.waitForLoadState("networkidle");
+    ok((await p.locator("[data-testid=more-row]").count()) === total, `outreach: "All" shows every one of the ${total}`);
+    // search and target a product
+    const first = (await p.locator("[data-testid=more-row] button[title='Open details']").first().innerText()).replace(/^@/, "");
+    await p.getByTestId("more-search").fill(first.slice(0, 6)); await p.waitForURL(/mq=/); await p.waitForLoadState("networkidle");
+    ok((await p.locator("[data-testid=more-row]").count()) >= 1 && (await p.locator("[data-testid=more-row] button[title='Open details']").allInnerTexts()).every((t) => t.toLowerCase().includes(first.slice(0, 6).toLowerCase())), "outreach: the search finds own affiliates by name");
+    await p.goto(BASE + "/affiliate/outreach", { waitUntil: "networkidle" });
+    const opt = await p.getByTestId("pick-mprod").locator("option").nth(1).getAttribute("value");
+    await p.getByTestId("pick-mprod").selectOption(opt); await p.waitForURL(/mprod=/); await p.waitForLoadState("networkidle");
+    const picked = await p.locator("[data-testid=offer-next]").allInnerTexts();
+    ok(picked.length > 0 && picked.length < total && (await p.locator("[data-testid=more-row]").count()) > 0, `outreach: choosing a product shows only creators it should be offered to (${picked.length})`);
+    await p.goto(BASE + "/affiliate/outreach", { waitUntil: "networkidle" }); }
   // The idle-samples warning: the number and the two links agree with Creators.
   if (await p.getByTestId("guard-banner").count()) {
     const n1 = Number((await p.getByTestId("guard-notposted").innerText()).replace(/\D/g, ""));

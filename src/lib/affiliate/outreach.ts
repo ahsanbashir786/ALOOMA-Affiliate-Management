@@ -117,6 +117,8 @@ export type MarketCreator = {
   avgVideoViews: number | null; avgLiveViewers: number | null; region: string | null; avatar: string | null;
   /** What TikTok says about the creator, for the eligibility rules (null = TikTok did not send it). */
   level: number | null; categoryIds: string[]; pps: number | null; officialRecommend: boolean | null; risingStar: boolean | null; fastGrowing: boolean | null; blocked: boolean | null; hasCollaborated: boolean | null; invited90d: boolean | null;
+  /** Shown as TikTok shows them: "RM10K+" when the creator does not share exact sales, "1K-10K" items sold, the main follower group. */
+  gmvRange?: string | null; unitsRange?: string | null; audience?: string | null; videoGmv?: number | null; liveGmv?: number | null; mcn?: string | null;
 };
 const first = (o: Record<string, unknown>, keys: string[]) => { for (const k of keys) if (o[k] != null && o[k] !== "") return o[k]; return null; };
 const str = (v: unknown) => (v == null ? null : typeof v === "object" ? null : String(v));
@@ -131,7 +133,7 @@ const strList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => x 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /** Reads whatever list of creators TikTok sent back, tolerating different field names; the field names seen are returned so a mismatch can be diagnosed. */
-export function readMarketCreators(data: unknown): { creators: MarketCreator[]; next: string | null; fieldsSeen: string[] } {
+export function readMarketCreators(data: unknown): { creators: MarketCreator[]; next: string | null; searchKey: string | null; fieldsSeen: string[] } {
   const d = (data ?? {}) as Record<string, unknown>;
   const list = (Object.values(d).find((v) => Array.isArray(v) && v.length && typeof v[0] === "object") ?? []) as Record<string, unknown>[];
   const creators = list.map((c) => {
@@ -153,10 +155,19 @@ export function readMarketCreators(data: unknown): { creators: MarketCreator[]; 
       avatar: (() => { const a = c.avatar as { url?: unknown } | string | undefined; const u = typeof a === "string" ? a : typeof a?.url === "string" ? a.url : null; return u && /^https:\/\//.test(u) ? u : null; })(),
       level: num(prof.creator_level), categoryIds: ids, pps: num(prof.pps_score), officialRecommend: bool(prof.is_official_recommend), risingStar: bool(prof.is_rising_star), fastGrowing: bool(prof.is_fast_growing),
       blocked: bool(prof.is_creator_blocked), hasCollaborated: bool(prof.has_collaborated), invited90d: bool(prof.has_invited_90d),
+      gmvRange: str(obj(c.gmv_range).formatted_range), unitsRange: str(obj(c.units_sold_range).formatted_range),
+      audience: (() => {
+        const d = obj(c.top_follower_demographics), g = obj(d.major_gender), ages = strList(d.age_ranges);
+        const gp = num(g.percentage), gender = str(g.gender);
+        const age = ages[0] ? ages[0].replace(/^AGE_RANGE_/, "").replace(/_AND_ABOVE$/, "+").replace("_", "–") : null;
+        const parts = [gender && gp != null ? `${gender === "FEMALE" ? "Female" : "Male"} ${Math.round(gp / 100)}%` : null, age].filter(Boolean);
+        return parts.length ? parts.join(", ") : null;
+      })(),
+      videoGmv: num(obj(c.video_gmv).amount), liveGmv: num(obj(c.live_gmv).amount), mcn: str(prof.creator_bind_mcn_name),
     };
   });
   const fieldsSeen = list.length ? [...new Set([...Object.keys(list[0]), ...Object.keys(obj(list[0].creator_profile)).map((k) => `creator_profile.${k}`)])].slice(0, 40) : [];
-  return { creators, next: str(first(d, ["next_page_token", "next_token", "search_key"])), fieldsSeen };
+  return { creators, next: str(first(d, ["next_page_token", "next_token"])), searchKey: str(d.search_key), fieldsSeen };
 }
 
 export type CreatorProfile = {

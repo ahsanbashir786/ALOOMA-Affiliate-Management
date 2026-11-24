@@ -17,6 +17,7 @@ import { fmtDayLabel, todayKL } from "@/lib/time";
 import { href, one, type SP } from "@/lib/url";
 import { Badge, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/pagination";
+import { pageOf, sizeFrom } from "@/lib/paging";
 import { InfoTip } from "@/components/ui/info-tip";
 import { OpenPanelButton, OpenProductButton, OpenVideoButton } from "@/components/creators/open-panel-button";
 import { LineAction } from "@/components/creators/line-action";
@@ -25,7 +26,7 @@ import { TierBadge } from "@/components/creators/tier-badge";
 import { cn, fmtCompact, fmtRM } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Actions" };
-const SIZE = 40;
+const SIZE = 20;
 const VIEWS = [{ key: "todo", label: "To Do" }, { key: "waiting", label: "Waiting For Result" }, { key: "held", label: "New Creators (Held)" }] as const;
 const LEVER_ICON = { creators: Users, content: Clapperboard, quality: Sparkles } as const;
 const LEVER_TONE: Record<Lever, "brand" | "good" | "warn"> = { creators: "brand", content: "good", quality: "warn" };
@@ -130,8 +131,9 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
     for (const i of work.items) counts[i.kind]++;
     const shown = kind ? work.items.filter((i) => i.kind === kind) : work.items;
     const page = Math.max(1, Number(one(sp.page)) || 1);
-    const pages = Math.max(1, Math.ceil(shown.length / SIZE));
-    const slice = shown.slice((page - 1) * SIZE, page * SIZE);
+    const size = sizeFrom(sp, SIZE);
+    const pg = pageOf(shown, page, size);
+    const pages = pg.pages, slice = pg.rows;
     const period = `Last 28 days to ${fmtDayLabel(work.ref)}`;
     const e = work.eff;
     const staff = can(user, "users") ? await staffList() : [];
@@ -157,7 +159,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
           {slice.length === 0 ? <div className="px-5 py-12 text-center text-[14px] text-ink-3"><Check className="mx-auto mb-2 size-5 text-good" />Nothing left to do right now.</div> : (
             <ul data-testid="work-rows">{slice.map((w) => w.kind === "creator" ? <Row key={w.key} i={w.item} period={period} /> : w.kind === "task" ? <TaskRow key={w.key} w={w} /> : <VideoWorkRow key={w.key} w={w} />)}</ul>
           )}
-          <Pagination page={Math.min(page, pages)} pages={pages} total={shown.length} pageSize={SIZE} hrefFor={(p) => qs({ page: p > 1 ? p : undefined })} />
+          <Pagination page={pg.page} pages={pages} total={shown.length} pageSize={pg.pageSize} size={size} hrefFor={(p) => qs({ size: size === SIZE ? undefined : size, page: p > 1 ? p : undefined })} sizeHrefFor={(z) => qs({ size: z === SIZE ? undefined : z })} />
         </Card>
       </div>
     );
@@ -179,8 +181,9 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
   const prod = one(sp.product) ?? "";
   const base = queue[view].filter((i) => (!lever || i.lever === lever) && (!prod || i.pid === prod));
   const page = Math.max(1, Number(one(sp.page)) || 1);
-  const pages = Math.max(1, Math.ceil(base.length / SIZE));
-  const rows = base.slice((page - 1) * SIZE, page * SIZE);
+  const size = sizeFrom(sp, SIZE);
+  const pg = pageOf(base, page, size);
+  const pages = pg.pages, rows = pg.rows;
   const today = todayKL();
   const doneToday = queue.waiting.filter((i) => i.doneOn === today).length;
   const upside = queue.todo.reduce((n, i) => n + i.expected, 0);
@@ -234,7 +237,7 @@ export default async function ActionsPage({ searchParams }: { searchParams: Prom
             <Check className="mx-auto mb-2 size-5 text-good" />{view === "todo" ? "Nothing left to do right now." : view === "waiting" ? "Nobody is waiting for a result." : "No new creators are held."}
           </div>
         ) : <ul data-testid="action-rows">{rows.map((i) => <Row key={i.username} i={i} period={period} />)}</ul>}
-        <Pagination page={page} pages={pages} total={base.length} pageSize={SIZE} hrefFor={(p) => q({ page: p > 1 ? p : undefined })} />
+        <Pagination page={pg.page} pages={pages} total={base.length} pageSize={pg.pageSize} size={size} hrefFor={(p) => q({ size: size === SIZE ? undefined : size, page: p > 1 ? p : undefined })} sizeHrefFor={(z) => q({ size: z === SIZE ? undefined : z })} />
       </Card>
     </div>
   );

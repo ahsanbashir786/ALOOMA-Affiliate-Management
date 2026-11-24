@@ -45,8 +45,8 @@ export async function reviewSampleApplication(applicationId: string, result: "AP
   }
 }
 
-export type MarketFilters = { keyword?: string; gmvRanges?: string[]; pageToken?: string; /** Only creators in these top-level TikTok categories. */ categoryIds?: string[]; /** Leave out creators you invited in the last 90 days. */ notInvited90d?: boolean };
-export type MarketResult = { ok: true; creators: MarketCreator[]; next: string | null; fieldsSeen: string[] } | { ok: false; error: string };
+export type MarketFilters = { keyword?: string; gmvRanges?: string[]; pageToken?: string; /** TikTok's key for the same search, needed with every next page. */ searchKey?: string; /** Only creators in these top-level TikTok categories. */ categoryIds?: string[]; /** Leave out creators you invited in the last 90 days. */ notInvited90d?: boolean };
+export type MarketResult = { ok: true; creators: MarketCreator[]; next: string | null; searchKey: string | null; fieldsSeen: string[] } | { ok: false; error: string; busy: boolean; raw: string };
 
 /** TikTok's own Creator Marketplace (last 30 days of data). Read only. */
 export async function searchMarketplace(filters: MarketFilters = {}, f?: Fetch): Promise<MarketResult> {
@@ -55,12 +55,14 @@ export async function searchMarketplace(filters: MarketFilters = {}, f?: Fetch):
   if (filters.gmvRanges?.length) body.gmv_ranges = filters.gmvRanges.filter((g) => /^GMV_RANGE_[0-9_A-Z]+$/.test(g));
   if (filters.categoryIds?.length) body.category = filters.categoryIds.filter((c) => /^\d{3,12}$/.test(c)).map((id) => ({ parent_category_id: id }));
   if (filters.notInvited90d) body.affiliate_data = { not_invited_l90_days: true };
+  if (filters.searchKey) body.search_key = filters.searchKey;
   try {
     const data = await callApi<Record<string, unknown>>("/affiliate_seller/202608/marketplace_creators/search", { method: "POST", query: { page_size: "20", ...(filters.pageToken ? { page_token: filters.pageToken } : {}) }, body, f });
     const r = readMarketCreators(data);
     return { ok: true, ...r };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message.replace(/^TikTok said no \(\d+\): /, "") : "TikTok did not answer." };
+    const raw = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: raw.replace(/^TikTok said no \(\d+\): /, "") || "TikTok did not answer.", busy: /too many requests|rate limit|\(429\)|36009004/i.test(raw), raw: raw.slice(0, 300) };
   }
 }
 

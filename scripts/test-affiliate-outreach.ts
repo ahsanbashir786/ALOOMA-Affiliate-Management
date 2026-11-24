@@ -35,7 +35,7 @@ assert.equal(offerNext(pool)(row("me2", [{ pid: "quilt" }, { pid: "pillows", gmv
 assert.equal(offerNext(pool)(row("me3", [{ pid: "quilt" }, { pid: "pillows" }])).length, 0, "a product the creator already sells is not offered");
 
 const m = readMarketCreators({ creators: [{ creator_user_open_id: "oid1", username: "abc", nickname: "ABC", follower_count: "12000", gmv: { amount: "3400.5" }, units_sold: 80 }], next_page_token: "t2" });
-assert.deepEqual({ ...m.creators[0] }, { id: "oid1", username: "abc", nickname: "ABC", followers: 12000, gmv: 3400.5, units: 80, category: null, avgVideoViews: null, avgLiveViewers: null, region: null, avatar: null, level: null, categoryIds: [], pps: null, officialRecommend: null, risingStar: null, fastGrowing: null, blocked: null, hasCollaborated: null, invited90d: null });
+assert.deepEqual({ ...m.creators[0] }, { id: "oid1", username: "abc", nickname: "ABC", followers: 12000, gmv: 3400.5, units: 80, category: null, avgVideoViews: null, avgLiveViewers: null, region: null, avatar: null, level: null, categoryIds: [], pps: null, officialRecommend: null, risingStar: null, fastGrowing: null, blocked: null, hasCollaborated: null, invited90d: null, gmvRange: null, unitsRange: null, audience: null, videoGmv: null, liveGmv: null, mcn: null });
 const docEx = readMarketCreators({ creators: [{ username: "abc", nickname: "cde", avatar: { url: "https://p16.example/x.webp" }, selection_region: "MY", category_ids: ["60001"], avg_ec_live_uv: 1331, avg_ec_video_view_count: 112, follower_count: 23241, gmv: { currency: "MYR", amount: "1232.90" } }] }).creators[0];
 assert.equal(docEx.username, "abc"); assert.equal(docEx.avgVideoViews, 112); assert.equal(docEx.avgLiveViewers, 1331); assert.equal(docEx.region, "MY"); assert.equal(docEx.gmv, 1232.9); assert.equal(docEx.followers, 23241); assert.equal(docEx.category, "category 60001"); assert.equal(docEx.avatar, "https://p16.example/x.webp");
 assert.equal(readMarketCreators({ creators: [{ avatar: { url: "javascript:alert(1)" } }] }).creators[0].avatar, null, "only https pictures");
@@ -50,4 +50,12 @@ assert.equal(emptyProfile.level, null, "an empty profile (TikTok does not suppor
 const perf = readCreatorProfile({ creator: { username: "dioab", follower_count: 2323, category_ids: ["60001"], pps: "4.5", rating: "3.2", post_rate: "100", creator_profile: { creator_level: 2, sample_score: 75, is_official_recommend: false, creator_fulfillment_score_90d: "4.1" } } });
 assert.equal(perf.level, 2); assert.equal(perf.rating, 3.2); assert.equal(perf.sampleScore, 75); assert.equal(perf.fulfilmentScore, 4.1); assert.equal(perf.hasProfile, true); assert.equal(perf.postRate, 100);
 assert.equal(readCreatorProfile({ creator: { username: "a", creator_profile: {} } }).hasProfile, false);
+// TikTok's documented extras: ranges when exact numbers are private, the main follower group, video and LIVE sales.
+{
+  const x = readMarketCreators({ creators: [{ username: "deestore3", nickname: "DEE DAHLIA", follower_count: 6000, category_ids: ["601450"], gmv_range: { formatted_range: "RM10K+" }, units_sold_range: { formatted_range: "100-1K" },
+    top_follower_demographics: { age_ranges: ["AGE_RANGE_25_34"], major_gender: { gender: "FEMALE", percentage: 4100 } }, video_gmv: { amount: "900.5" }, live_gmv: { amount: "10" }, creator_profile: { creator_level: 4, creator_bind_mcn_name: "MCN X" } }], next_page_token: "n2", search_key: "SK1" });
+  const c = x.creators[0];
+  assert.equal(c.gmvRange, "RM10K+"); assert.equal(c.unitsRange, "100-1K"); assert.equal(c.audience, "Female 41%, 25–34"); assert.equal(c.videoGmv, 900.5); assert.equal(c.liveGmv, 10); assert.equal(c.mcn, "MCN X"); assert.equal(c.level, 4);
+  assert.equal(x.next, "n2"); assert.equal(x.searchKey, "SK1", "the search key is kept for the next page");
+}
 console.log("affiliate outreach: all passed");

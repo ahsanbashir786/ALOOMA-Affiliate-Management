@@ -6,6 +6,7 @@ import { Badge, Card, CardHeader, EmptyState, PageHeader, Td, Th, buttonClasses 
 import { StatTile } from "@/components/ui/stat-tile";
 import { TabLinks } from "@/components/ui/tab-links";
 import { Pagination } from "@/components/ui/pagination";
+import { pageOf, sizeFrom } from "@/lib/paging";
 import { RangePicker } from "@/components/ui/range-picker";
 import { ClaimsTable } from "@/components/profit/claims-board";
 import { FulfilmentCard } from "@/components/profit/fulfilment-card";
@@ -85,9 +86,9 @@ function Orders({ data, period, sp, channel, chName }: { data: ProfitData; perio
     (!problem || (problem === "cost" ? r.flags.noCost > 0 || r.flags.short > 0 : problem === "loss" ? (r.profitBeforeAds ?? 0) < 0 : problem === "deduction" ? r.deduction < 0 : problem === "return" ? r.returnedPieces > 0 : true)));
   if (sort === "low") rows = rows.slice().sort((a, b) => (a.profitBeforeAds ?? Infinity) - (b.profitBeforeAds ?? Infinity));
   else if (sort === "high") rows = rows.slice().sort((a, b) => (b.profitBeforeAds ?? -Infinity) - (a.profitBeforeAds ?? -Infinity));
-  const page = Math.max(1, Number(one(sp.page)) || 1);
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  const shown = rows.slice((Math.min(page, pages) - 1) * PAGE, Math.min(page, pages) * PAGE);
+  const size = sizeFrom(sp, PAGE);
+  const pg = pageOf(rows, Math.max(1, Number(one(sp.page)) || 1), size);
+  const page = pg.page, pages = pg.pages, shown = pg.rows;
   const exportHref = href("/api/profit/export", { range: one(sp.range), from: one(sp.from), to: one(sp.to) });
   const backHref = href("/profit", { range: one(sp.range), from: one(sp.from), to: one(sp.to), q: one(sp.q), money: one(sp.money), problem: one(sp.problem), sort: one(sp.sort), page: one(sp.page), channel: channel === "all" ? undefined : channel });
   const base = { tab: undefined, range: one(sp.range), from: one(sp.from), to: one(sp.to), q: one(sp.q), money: one(sp.money), problem: one(sp.problem), sort: one(sp.sort) };
@@ -129,7 +130,7 @@ function Orders({ data, period, sp, channel, chName }: { data: ProfitData; perio
             </tbody>
           </table>
         </div>
-        <Pagination page={Math.min(page, pages)} pages={pages} total={rows.length} pageSize={PAGE} hrefFor={(p) => href("/profit", { ...base, page: p })} />
+        <Pagination page={page} pages={pages} total={rows.length} pageSize={pg.pageSize} size={size} hrefFor={(p) => href("/profit", { ...base, size: size === PAGE ? undefined : size, page: p })} sizeHrefFor={(s) => href("/profit", { ...base, size: s === PAGE ? undefined : s })} />
       </Card>
     </>
   );
