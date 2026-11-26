@@ -274,18 +274,18 @@ async function login(p, email) {
   const pl = await p.getByTestId("pipeline").innerText();
   ok(["Suggested", "Sample Requested", "Approved", "Shipped", "Delivered", "Posted"].every((x) => pl.includes(x)), "outreach: the six pipeline stages are shown");
   ok(/Off/.test(await p.getByTestId("review-status").innerText()) || /not granted|not connected/i.test(await p.getByTestId("review-status").innerText()), "outreach: approving and rejecting start switched off (or blocked)");
-  ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 0 && /Your Own Affiliates/.test(await p.getByTestId("more-samples").innerText()) && /Recommended By TikTok/.test(await p.getByTestId("tiktok-card").innerText()), "outreach: own affiliates and TikTok are two separate sections, and waiting requests are not on the Suggested page");
+  ok((await p.getByTestId("more-samples").count()) === 1 && (await p.getByTestId("tiktok-card").count()) === 1 && (await p.getByTestId("side-requests").count()) === 0 && /Existing Affiliates/.test(await p.getByTestId("more-samples").innerText()) && /Recommended Affiliates/.test(await p.getByTestId("tiktok-card").innerText()), "outreach: own affiliates and TikTok are two separate sections, and waiting requests are not on the Suggested page");
   ok((await p.getByTestId("tiktok-unavailable").count()) === 1 || (await p.getByTestId("tiktok-creators").count()) === 1, "outreach: TikTok's list is shown, or says plainly why it is not available");
   ok((await p.getByTestId("rules").count()) === 1 && /Level 5\+/.test(await p.getByTestId("rules").innerText()) && /Home Supplies/.test(await p.getByTestId("rules").innerText()) && /Muslim Fashion/.test(await p.getByTestId("rules").innerText()), "outreach: your rules (level 5 or higher and the six categories) are shown");
   ok((await p.getByTestId("approve").count()) === 0 && (await p.getByTestId("approve-yes").count()) === 0, "outreach: no Approve button can be pressed while the switch is off");
   ok(/Creator Outreach/.test(await p.locator("h1").first().innerText()) && /Approve Samples Here/.test(await p.getByTestId("review-card").innerText()), "outreach: named Creator Outreach, with Approve Samples Here next to the calendar");
   ok((await p.getByTestId("date-range").count()) === 1, "outreach: has a calendar");
-  { const rates = await p.locator("[data-testid=funnel-rate]").allInnerTexts(); ok(rates.length === 4 && /of every 100/.test(rates.join(" ")) && /Approval Rate/.test(rates.join(" ")), "outreach: each conversion rate is explained in plain words (x of every 100 …)"); }
+  { const rates = await p.locator("[data-testid=funnel-rate]").allInnerTexts(); ok(rates.length === 4 && !/of every 100|pts/.test(rates.join(" ")) && /Approval Rate/.test(rates.join(" ")), "outreach: each conversion rate is short (no sentence, no \"pts\"); a change shows as \"was x%\""); }
   { const ft = await p.getByTestId("funnel").innerText(); ok(["Sample Requested", "Approved", "Delivered", "Posted Content", "Generated Sales"].every((x) => ft.includes(x)), "outreach: conversion funnel from our own data (requested → approved → delivered → posted → sales)"); }
   { const rows = await p.locator("[data-testid=more-row]").count(), offers = await p.locator("[data-testid=offer-next]").count();
     ok(rows > 0 && rows === offers && !/Not offered yet/.test(await p.getByTestId("more-samples").innerText()), `outreach: own affiliates each come with what to offer next, from real co-selling (${rows} shown)`);
     const total = Number(((await p.getByTestId("more-why").innerText()).match(/([\d,]+)/) || [0, "0"])[1].replace(/,/g, ""));
-    ok(/selling now/.test(await p.getByTestId("more-why").innerText()) && /had a sample before/.test(await p.getByTestId("more-why").innerText()), "outreach: says plainly who is counted (selling now, had a sample, nothing pending)");
+    ok(/creators can get another sample/.test(await p.getByTestId("more-why").innerText()), "outreach: says plainly who is counted");
     ok(total <= 20 || (await p.getByTestId("more-samples").getByTestId("pager").count()) === 1, `outreach: all ${total} own affiliates can be paged through`);
     // the pager: numbers, and 10 / 20 / 50 / All
     await p.getByTestId("more-samples").getByTestId("pager-size").locator("summary").click();
@@ -307,6 +307,17 @@ async function login(p, email) {
     await p.getByTestId("guard-notposted").click(); await p.waitForURL(/status=Silent/); await p.waitForSelector("[data-testid=creator-kpis]");
     const lines = Number(((await p.locator("main").innerText()).match(/([\d,]+) product lines?/) || [0, "-1"])[1].replace(/,/g, ""));
     ok(lines === n1, `outreach: "${n1} delivered, not posted" opens exactly those ${lines} samples in Creators`);
+    ok((await p.getByTestId("sent-filter").count()) === 1, "outreach: Creators shows that only samples sent in the chosen dates are listed");
+    await p.goto(BASE + "/affiliate/outreach", { waitUntil: "networkidle" });
+  }
+  // Lifetime means lifetime (not the 30-day default), and the whole page follows it.
+  {
+    await p.goto(BASE + "/affiliate/outreach", { waitUntil: "networkidle" });
+    const before = Number((await p.getByTestId("pipeline").locator("a").nth(1).innerText()).replace(/\D/g, ""));
+    await p.getByTestId("date-range").click(); await p.getByRole("button", { name: "Lifetime", exact: true }).click(); await p.getByRole("button", { name: "Confirm" }).click();
+    await p.waitForURL(/from=2000-01-01/); await p.waitForLoadState("networkidle");
+    const after = Number((await p.getByTestId("pipeline").locator("a").nth(1).innerText()).replace(/\D/g, ""));
+    ok(/Lifetime/.test(await p.getByTestId("rules").innerText()) && /Lifetime/.test(await p.getByTestId("date-range").innerText()) && after >= before, `outreach: Lifetime shows all dates (requests ${before} → ${after})`);
     await p.goto(BASE + "/affiliate/outreach", { waitUntil: "networkidle" });
   }
   // Approval history: in the chosen dates, who approved (this app) or TikTok Seller Center.

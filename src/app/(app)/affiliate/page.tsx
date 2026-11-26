@@ -35,7 +35,7 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
   const series = (f: (x: (typeof weeks)[number]) => number) => weeks.map(f);
   const st = (k: StageKey) => d.stages[k];
   const funnel: FunnelRow[] = [
-    { key: "suggested", label: "Suggested To Invite", count: hint ? hint.eligible : null, href: "/affiliate/outreach", tone: "brand", help: "New creators from TikTok's Creator Marketplace that meet your rules (level 5 or higher, your categories), including creators who never asked for a sample.", sub: hint ? (hint.own ? `+${hint.own} of yours for more samples` : "meet your rules") : "open Outreach to load" },
+    { key: "suggested", label: "Suggested To Invite", count: hint ? hint.eligible : null, href: "/affiliate/outreach", tone: "brand", help: "New creators from TikTok's Creator Marketplace that meet your criteria (level 5 or higher, your categories), including creators who never asked for a sample.", sub: hint ? (hint.own ? `+${hint.own} existing for more samples` : "meet your criteria") : "open Outreach to load" },
     { key: "requested", label: "Sample Requested", count: st("requested").creators, href: "/affiliate/outreach?stage=requested", tone: "brand", help: "Asked for a sample and waiting for your decision.", sub: "waiting for you" },
     { key: "way", label: "Sample On The Way", count: st("way").creators, href: "/affiliate/outreach?stage=shipped", tone: "neutral", help: "Approved and not delivered yet.", sub: st("way").avgDays != null ? `${st("way").avgDays} days on average` : "" },
     { key: "notposted", label: "Delivered, Not Posted", count: st("notposted").creators, href: "/creators?stage=notposted", tone: "critical", help: "The sample arrived, the posting window passed, nothing posted and no sales.", sub: st("notposted").avgDays != null ? `${st("notposted").avgDays} days on average` : "" },
@@ -50,7 +50,7 @@ export default async function CommandPage({ searchParams }: { searchParams: Prom
       <PageHeader
         title="Dashboard"
         description="How your affiliate sales are doing, why, and where to act. Charts show the last 12 weeks. The headline numbers use the dates you choose, compared with the same number of days just before. Creator stages are as of today."
-        actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" />}
+        actions={<DatesPicker from={range?.start ?? ""} to={range?.end ?? ""} today={todayKL()} emptyLabel="Last 28 Days" emptyKey="custom" />}
       />
       <p className="-mt-3 text-[13px] text-ink-3" data-testid="date-line">
         <b className="font-semibold text-ink-2">{fmtDayLabel(w.start)} – {fmtFullDay(w.end)}</b> · {w.days} day{w.days === 1 ? "" : "s"} · vs {fmtDayLabel(w.prevStart)} – {fmtDayLabel(w.prevEnd)}

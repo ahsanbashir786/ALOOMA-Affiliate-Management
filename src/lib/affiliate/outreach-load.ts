@@ -5,7 +5,7 @@ import { loadCreatorRows } from "@/lib/creators/load";
 import { kd, PK_LISTING } from "@/lib/creators/sql";
 import { hasOrderSql } from "@/lib/creators/sample-status";
 import { productName } from "@/lib/products/catalog";
-import { addDaysISO, daysBetweenISO, todayKL } from "@/lib/time";
+import { daysBetweenISO, todayKL } from "@/lib/time";
 import { sampleGuard, saveSuggestedHint } from "./command";
 import { giveMoreSamples, historyOf, PIPELINE, requestStage, type History, type MarketCreator, type MoreSample, type PipelineKey } from "./outreach";
 import { evaluate, MIN_LEVEL, PREFERRED_CATEGORIES, type Profile, type Verdict } from "./eligibility";
@@ -34,7 +34,6 @@ export type Outreach = {
   flags: { reviewOn: boolean; write: boolean; market: boolean; connected: boolean };
 };
 
-const WINDOW_DAYS = 150;
 const LIMIT = 100;
 
 type Raw = { id: string; creator: string; nickname: string | null; followers: number | null; pk: string; sku: string | null; status: string | null; order_id: string | null; approvable: boolean | null; qty: number | null; commission: number | null;
@@ -92,10 +91,10 @@ export async function loadOutreachPeriod(range: { start: string; end: string }):
   };
 }
 
-export async function loadOutreach(): Promise<Outreach | null> {
-  const { all, ref } = await loadCreatorRows();
+/** Everything on Creator Outreach for the chosen dates: requests made in them, samples sent in them, sales in them. */
+export async function loadOutreach(range: { start: string; end: string }): Promise<Outreach | null> {
+  const [{ all, ref }, ranged] = await Promise.all([loadCreatorRows(), loadCreatorRows({ range })]);
   if (!ref) return null;
-  const since = addDaysISO(todayKL(), -WINDOW_DAYS);
   const raw = await rows<Raw>(sql`
     select z.creator_id, z.id, z.creator, z.nickname, z.followers, z.pk, z.sku, z.status, z.order_id, z.approvable, z.qty, z.commission, z.req, z.ship, z.dlv, z.ostatus, z.expires,
       (z.dlv is not null and (exists (select 1 from tt_videos v cross join lateral jsonb_array_elements(coalesce(v.products, '[]'::jsonb)) p
@@ -112,7 +111,7 @@ export async function loadOutreach(): Promise<Outreach | null> {
         to_char(${kd("r.expires_at")}, 'YYYY-MM-DD') as expires,
         o.status as ostatus
       from tt_sample_requests r left join tt_orders o on o.order_id = r.order_id left join tt_skus k on k.sku_id = r.sku_id
-      where r.creator is not null and (r.first_seen_at >= ${since}::date or (r.is_approvable and r.order_id is null))
+      where r.creator is not null and ${kd("r.first_seen_at")} between ${range.start}::date and ${range.end}::date
     ) z where z.pk <> 'excluded'
     order by z.req desc nulls last, z.id`);
 
@@ -150,7 +149,8 @@ export async function loadOutreach(): Promise<Outreach | null> {
   const [flagOn, scopes] = await Promise.all([reviewEnabled(), outreachScopes()]);
   const idByName = new Map((await rows<{ creator: string; id: string }>(sql`select distinct on (creator) creator, creator_id as id from tt_sample_requests where creator is not null and creator_id is not null order by creator, synced_at desc`)).map((r) => [r.creator, r.id]));
   // Your rules apply here too: a creator TikTok shows below level 5 or outside your categories is left out; not checked yet stays (marked).
-  const more = giveMoreSamples(all).map((m) => ({ ...m, verdict: verdictFor(idByName.get(m.username) ?? null).v })).filter((m) => m.verdict?.status !== "not");
+  const salesIn = new Map(ranged.all.map((r) => [r.username, r.gmvAll]));
+  const more = giveMoreSamples(all, Infinity, salesIn).map((m) => ({ ...m, verdict: verdictFor(idByName.get(m.username) ?? null).v })).filter((m) => m.verdict?.status !== "not");
   let tiktok: Outreach["tiktok"];
   if (!scopes.connected) tiktok = { ok: false, error: "TikTok Shop is not connected.", fetching: false, detail: null };
   else if (!scopes.market) tiktok = { ok: false, error: "TikTok has not granted the creator search permission yet. Reconnect TikTok in Settings after switching it on in Partner Center.", fetching: false, detail: null };
@@ -168,7 +168,7 @@ export async function loadOutreach(): Promise<Outreach | null> {
   const lists = Object.fromEntries(Object.entries(samples).map(([k, v]) => [k, v.slice(0, LIMIT)])) as Outreach["samples"];
   const counts = { suggested: more.length + (tiktok.ok ? tiktok.creators.length : 0), requested: samples.requested.length, approved: samples.approved.length, shipped: samples.shipped.length, delivered: samples.delivered.length, posted: samples.posted.length } as Record<PipelineKey, number>;
   void PIPELINE;
-  return { ref, counts, samples: lists, more, tiktok, rules, unchecked, guard: sampleGuard(all), flags: { reviewOn: flagOn, write: scopes.write, market: scopes.market, connected: scopes.connected } };
+  return { ref, counts, samples: lists, more, tiktok, rules, unchecked, guard: sampleGuard(all, range), flags: { reviewOn: flagOn, write: scopes.write, market: scopes.market, connected: scopes.connected } };
 }
 
 

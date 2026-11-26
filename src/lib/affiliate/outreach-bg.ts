@@ -57,8 +57,8 @@ export function refreshMarket(opts: { wait?: (ms: number) => Promise<unknown> } 
     const fields = new Set<string>();
     let token: string | undefined, key: string | undefined, error: string | null = null, detail: string | null = null;
     for (let page = 0; page < MARKET_PAGES; page++) {
-      let r = await searchMarketplace({ categoryIds: prefs.ids, notInvited90d: true, pageToken: token, searchKey: key });
-      for (let i = 0; !r.ok && r.busy && i < BACKOFF.length; i++) { await pause(BACKOFF[i]); r = await searchMarketplace({ categoryIds: prefs.ids, notInvited90d: true, pageToken: token, searchKey: key }); }
+      let r = await searchMarketplace({ categoryIds: prefs.ids, children: prefs.children, notInvited90d: true, pageToken: token, searchKey: key });
+      for (let i = 0; !r.ok && r.busy && i < BACKOFF.length; i++) { await pause(BACKOFF[i]); r = await searchMarketplace({ categoryIds: prefs.ids, children: prefs.children, notInvited90d: true, pageToken: token, searchKey: key }); }
       if (!r.ok) { error = busyText(r.error); detail = `${r.raw} (${new Date().toISOString()})`; break; }
       for (const c of r.creators) { const k = c.id ?? c.username ?? ""; if (k && !seen.has(k)) seen.set(k, c); }
       r.fieldsSeen.forEach((f) => fields.add(f));

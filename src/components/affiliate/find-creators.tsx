@@ -43,7 +43,7 @@ function Rows({ rows, catNames }: { rows: Found[]; catNames: Record<string, stri
                       <p className="flex flex-wrap items-center gap-1.5">
                         <span className="font-semibold text-ink">{c.username ?? c.nickname ?? "Name not shared"}</span>
                         {c.level != null && <span className={cn("inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[11px] font-semibold", c.level >= 5 ? "bg-good-soft text-good" : "bg-surface-2 text-ink-3")}><Star className="size-3" />Lv. {c.level}</span>}
-                        {c.verdict.status === "eligible" && <span className="rounded-full bg-brand-soft px-1.5 py-px text-[11px] font-semibold text-brand" title={c.verdict.good.join(" · ")}>Fits Your Rules</span>}
+                        {c.verdict.status === "eligible" && <span className="rounded-full bg-brand-soft px-1.5 py-px text-[11px] font-semibold text-brand" title={c.verdict.good.join(" · ")}>Meets Criteria</span>}
                       </p>
                       {c.username && c.nickname && <p className="text-[12px] text-ink-3">{c.nickname}</p>}
                       <p className="mt-0.5 text-[12px] text-ink-2">{cats.length ? `${cats[0]}${cats.length > 1 ? `, +${cats.length - 1}` : ""}` : c.category ?? ""}</p>
@@ -73,7 +73,7 @@ function Rows({ rows, catNames }: { rows: Found[]; catNames: Record<string, stri
   );
 }
 
-/** TikTok's recommended creators in your categories, already filtered by your rules, in pages. A search is there too, folded away. */
+/** TikTok's recommended creators in your categories, already filtered by your criteria, in pages. A search is there too, folded away. */
 export function FindCreators({ initial, catNames = {}, hidden: h0 = 0 }: { initial: Found[]; fieldsSeen?: string[]; hidden?: number; catNames?: Record<string, string> }) {
   const [rows, setRows] = useState<Found[]>(initial);
   const [hidden, setHidden] = useState(h0);
@@ -92,11 +92,11 @@ export function FindCreators({ initial, catNames = {}, hidden: h0 = 0 }: { initi
   return (
     <div>
       {shown.length === 0 ? (
-        <p className="px-5 py-10 text-center text-[13.5px] text-ink-3" data-testid="tiktok-empty"><Sparkles className="mx-auto mb-2 size-5 text-brand" />No creator in TikTok&apos;s list fits your rules yet.{unsure ? " Show the ones TikTok gives no level for below." : ""}</p>
+        <p className="px-5 py-10 text-center text-[13.5px] text-ink-3" data-testid="tiktok-empty"><Sparkles className="mx-auto mb-2 size-5 text-brand" />No creator in TikTok&apos;s list meets your criteria yet.{unsure ? " Show the ones TikTok gives no level for below." : ""}</p>
       ) : <Rows rows={shown.slice((p - 1) * per, p * per)} catNames={catNames} />}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 text-[12.5px] text-ink-3">
         <span>
-          {shown.length} fit your rules{unsure > 0 && <> · <button type="button" onClick={() => { setShowAll((v) => !v); setPage(1); }} className="font-semibold text-brand hover:underline" data-testid="show-unsure">{showAll ? "Hide" : "Show"} {unsure} without a level</button></>}{hidden > 0 && ` · ${hidden} left out (outside your rules)`}
+          {shown.length} meet your criteria{unsure > 0 && <> · <button type="button" onClick={() => { setShowAll((v) => !v); setPage(1); }} className="font-semibold text-brand hover:underline" data-testid="show-unsure">{showAll ? "Hide" : "Show"} {unsure} without a level</button></>}{hidden > 0 && ` · ${hidden} left out (outside your criteria)`}
         </span>
         <span className="flex items-center gap-1" data-testid="tiktok-pager">
           {pages > 1 && pageWindow(p, pages).map((n, i) => n == null ? <span key={`d${i}`} className="px-1">…</span> : <button key={n} type="button" onClick={() => setPage(n)} className={cn("tnum h-7 min-w-7 rounded-lg px-1.5", n === p ? "border border-brand font-semibold text-brand" : "hover:bg-surface-2")}>{n}</button>)}

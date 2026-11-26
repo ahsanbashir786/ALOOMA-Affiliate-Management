@@ -88,24 +88,26 @@ export function offerNext(rows: DirRow[], minShare = 0.15, minSellers = 5): (r: 
  * Your own good performers who could take another sample: selling now, nothing outstanding (no sample still unposted or on the way),
  * ranked by what they sell. Each comes with what to offer next and why (see offerNext). All of them, not a top few: the screen pages them.
  */
-export function giveMoreSamples(rows: DirRow[], limit = Infinity): MoreSample[] {
+/** `salesIn`: each creator's sales in the chosen dates (default: the latest 28 days). */
+export function giveMoreSamples(rows: DirRow[], limit = Infinity, salesIn?: Map<string, number>): MoreSample[] {
   const names = new Map(PRODUCTS.map((p) => [p.key as string, p.name]));
   const next = offerNext(rows);
   const out: MoreSample[] = [];
   for (const r of rows) {
     if (r.paused) continue;
     const e = r.extra;
-    if (!e || e.gmv28 <= 0) continue;
+    const selling = salesIn ? salesIn.get(r.username) ?? 0 : e?.gmv28 ?? 0;
+    if (!e || selling <= 0) continue;
     const lines = r.allLines;
     if (lines.some((l) => l.sampled && (l.status === "Silent" || l.status === "Waiting"))) continue; // a sample is still outstanding
     if (!lines.some((l) => l.sampled)) continue; // not yet part of the sample programme: new-creator logic covers them
     const sampled = lines.filter((l) => l.sampled && l.pid).map((l) => l.pid!);
-    const selling = lines.filter((l) => l.gmv28 > 0 && l.pid).map((l) => l.pid!);
+    const sellingNow = lines.filter((l) => l.gmv28 > 0 && l.pid).map((l) => l.pid!);
     const recs = next(r);
     out.push({
-      username: r.username, sales28: e.gmv28, sales: r.gmvAll, score: e.score ?? null, followers: e.followers,
-      sampledProducts: sampled.map((k) => names.get(k) ?? k), sellingProducts: selling.map((k) => names.get(k) ?? k), recs,
-      why: `Sells RM ${Math.round(e.gmv28).toLocaleString("en-MY")} in 28 days.`,
+      username: r.username, sales28: selling, sales: r.gmvAll, score: e.score ?? null, followers: e.followers,
+      sampledProducts: sampled.map((k) => names.get(k) ?? k), sellingProducts: sellingNow.map((k) => names.get(k) ?? k), recs,
+      why: `Sells RM ${Math.round(selling).toLocaleString("en-MY")}${salesIn ? " in the chosen dates" : " in 28 days"}.`,
     });
   }
   return out.sort((a, b) => b.sales28 - a.sales28 || b.sales - a.sales).slice(0, limit);

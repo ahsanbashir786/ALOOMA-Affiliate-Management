@@ -62,6 +62,7 @@ export function parseCreatorParams(sp: Record<string, string | undefined>): DirO
     sort: (ALLOWED_SORTS.has(sp.sort ?? "") ? sp.sort : "gmv") as DirSort,
     page: Math.max(1, Number(sp.page) || 1),
     range,
+    sent: validDay(sp.sfrom) && validDay(sp.sto) ? { start: sp.sfrom!, end: sp.sto! } : undefined,
     from: range?.start ?? "",
     to: range?.end ?? "",
   };

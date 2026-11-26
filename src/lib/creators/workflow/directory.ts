@@ -89,6 +89,9 @@ export type DirRow = {
   extra?: CreatorExtra;
 };
 
+/** True when a sample of this line was sent within the dates. */
+export const sentIn = (l: DirLine, r: { start: string; end: string }) => !!l.sampleSkus?.some((k) => k.times.some((t) => t.on >= r.start && t.on <= r.end));
+
 export type DirSort = "followers" | "score" | "recent" | "orders" | "orders_asc" | "videos_all" | "videos_all_asc" | "gmv" | "gmv_asc" | "linegmv" | "linegmv_asc" | "lately" | "attention" | "video" | "stale" | "stuck" | "name";
 export type DirOpts = {
   q?: string;
@@ -106,6 +109,8 @@ export type DirOpts = {
   owner?: string;
   tier?: Tier | "";
   sort?: DirSort;
+  /** Only samples sent in these dates (from Creator Outreach's idle-samples links). */
+  sent?: { start: string; end: string };
   /** Period shown in the table's orders, GMV and videos (status always uses the latest 28 days). */
   range?: { start: string; end: string };
   page?: number;
@@ -150,6 +155,7 @@ export async function getAffiliateDirectory(opts: DirOpts): Promise<Directory> {
   const creatorOkStage = (a: DirRow) => creatorOk(a) && (!opts.stage || stageOf(a) === opts.stage);
   const lineOk = (l: DirLine, skip?: "status" | "action") =>
     (!opts.product || l.pid === opts.product) &&
+    (!opts.sent || sentIn(l, opts.sent)) &&
     (skip === "status" || !opts.status || l.status === opts.status) &&
     (skip === "action" || !opts.action || (opts.action === "todo" ? NEEDS_ACTION.includes(l.action) : l.action === opts.action));
 

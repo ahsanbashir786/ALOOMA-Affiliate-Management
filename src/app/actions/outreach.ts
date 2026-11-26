@@ -52,7 +52,7 @@ export async function findCreators(keyword: string, gmv: string[]): Promise<Find
   const sc = await outreachScopes();
   if (!sc.connected || !sc.market) return { ok: false, error: "TikTok has not granted the creator search permission yet." };
   const prefs = await preferredCategories();
-  const r = await searchMarketplace({ keyword: keyword.slice(0, 60), gmvRanges: gmv.slice(0, 4), categoryIds: prefs.ids, notInvited90d: true });
+  const r = await searchMarketplace({ keyword: keyword.slice(0, 60), gmvRanges: gmv.slice(0, 4), categoryIds: prefs.ids, children: prefs.children, notInvited90d: true });
   if (!r.ok) return { ok: false, error: /too many requests|rate limit/i.test(r.error) ? "TikTok is busy right now. Wait a minute and press Search TikTok again." : r.error };
   return judgeCreators(r.creators, prefs, r.fieldsSeen);
 }

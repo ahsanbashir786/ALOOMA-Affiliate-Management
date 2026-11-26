@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startNav } from "@/components/shell/nav-progress";
-import { PRESETS, fmtDay, makeRange, presetDates, type RangeKey } from "@/lib/range";
+import { LIFETIME_FROM, PRESETS, fmtDay, makeRange, presetDates, type RangeKey } from "@/lib/range";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -47,10 +47,12 @@ type Core = {
   /** Say what the period is compared with. */
   compare?: boolean;
   testPrefix: string;
+  /** "dates" screens whose empty address means a shorter default (e.g. last 30 days): Lifetime is then written out as dates. */
+  lifetimeDates?: boolean;
 };
 
 /** The calendar every screen uses for its date range: quick choices and a two-month calendar, like TikTok Ads Manager. */
-function Picker({ today, rangeKey, from, to, label, mode, presets, compare, testPrefix }: Core) {
+function Picker({ today, rangeKey, from, to, label, mode, presets, compare, testPrefix, lifetimeDates }: Core) {
   const router = useRouter(), path = usePathname(), params = useSearchParams();
   const list = presets?.length ? PRESETS.filter((p) => presets.includes(p.key)) : PRESETS;
   const [open, setOpen] = useState(false);
@@ -93,7 +95,7 @@ function Picker({ today, rangeKey, from, to, label, mode, presets, compare, test
     const q = new URLSearchParams(params.toString());
     q.delete("from"); q.delete("to"); q.delete("range");
     q.delete("page");
-    if (mode === "dates") { if (draft.from) { q.set("from", draft.from); q.set("to", draft.to); } }
+    if (mode === "dates") { if (draft.from) { q.set("from", draft.from); q.set("to", draft.to); } else if (lifetimeDates) { q.set("from", LIFETIME_FROM); q.set("to", today); } }
     else if (key === "custom") { q.set("range", "custom"); q.set("from", draft.from!); q.set("to", draft.to); } else q.set("range", key);
     setOpen(false);
     const qs = q.toString();
@@ -152,9 +154,14 @@ export function RangePicker({ today, rangeKey, from, to, label, presets, compare
   return <Picker today={today} rangeKey={rangeKey} from={from} to={to} label={label} mode="range" presets={presets} compare={compare} testPrefix="ads-range" />;
 }
 
-/** For screens whose range is plain dates in the address (?from=…&to=…): Affiliate Data and Product Analysis. Empty dates mean all time (or `emptyLabel`). */
-export function DatesPicker({ today, from, to, presets, compare, emptyLabel = "Lifetime" }: { today: string; from: string; to: string; presets?: Core["presets"]; compare?: boolean; emptyLabel?: string }) {
-  const key = !from ? "lifetime" : (PRESETS.find((p) => { const d = presetDates(p.key, today); return d.from === from && d.to === (to || today); })?.key ?? "custom");
-  const r = makeRange(key, from || null, to || today);
-  return <Picker today={today} rangeKey={key} from={from || null} to={to || today} label={from ? r.label : emptyLabel} mode="dates" presets={presets} compare={compare} testPrefix="date-range" />;
+/** For screens whose range is plain dates in the address (?from=…&to=…). Empty dates mean all time, or the screen's default (`emptyKey`, labelled `emptyLabel`). */
+export function DatesPicker({ today, from, to, presets, compare, emptyLabel = "Lifetime", emptyKey = "lifetime" }: { today: string; from: string; to: string; presets?: Core["presets"]; compare?: boolean; emptyLabel?: string; emptyKey?: RangeKey }) {
+  const lifetimeDates = emptyKey !== "lifetime";
+  // An empty address shows the screen's default as the chosen option, with its dates.
+  const def = !from && lifetimeDates && emptyKey !== "custom" ? presetDates(emptyKey, today) : null;
+  const f = from || def?.from || "", t = to || def?.to || today;
+  const isLife = !f || f <= LIFETIME_FROM;
+  const key: RangeKey = !from ? emptyKey : isLife ? "lifetime" : (PRESETS.find((p) => { const d = presetDates(p.key, today); return d.from === f && d.to === t; })?.key ?? "custom");
+  const r = makeRange(key, isLife ? null : f, t);
+  return <Picker today={today} rangeKey={key} from={isLife ? null : f} to={t} label={!from ? emptyLabel : isLife ? "Lifetime" : r.label} mode="dates" presets={presets} compare={compare} testPrefix="date-range" lifetimeDates={lifetimeDates} />;
 }

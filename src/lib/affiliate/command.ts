@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
 import { loadCreatorRows } from "@/lib/creators/load";
-import type { DirRow } from "@/lib/creators/workflow/directory";
+import { sentIn, type DirRow } from "@/lib/creators/workflow/directory";
 import { todayKL } from "@/lib/time";
 import { baselineOf, buildQueue, splitQueue } from "./actions";
 
@@ -13,13 +13,14 @@ export type SampleGuard = { notPosted: number; noSale: number; soldThenQuiet: nu
 const GUARD_HIGH = 25;
 
 /** The sample guard counts product lines (creator + product), because one creator can hold several samples. */
-export function sampleGuard(all: DirRow[]): SampleGuard {
+/** `sent`: only samples sent in these dates (default: every sample). */
+export function sampleGuard(all: DirRow[], sent?: { start: string; end: string }): SampleGuard {
   let notPosted = 0, noSale = 0, soldThenQuiet = 0, sampled = 0, requestsWaiting = 0;
   const holders = new Set<string>();
   for (const r of all) {
     requestsWaiting += r.extra?.requestsOpen ?? 0;
     for (const l of r.lines) {
-      if (!l.sampled) continue;
+      if (!l.sampled || (sent && !sentIn(l, sent))) continue;
       sampled++;
       if (l.status === "Silent") { notPosted++; holders.add(r.username); }
       else if (l.status === "Posted") { noSale++; holders.add(r.username); }

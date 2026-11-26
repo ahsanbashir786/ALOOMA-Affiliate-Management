@@ -22,7 +22,7 @@ export function ReviewButtons({ id, creator, product, enabled, canReview, warn }
       {mode === "approve" && (
         <div className="rounded-xl border border-brand/40 bg-brand/5 p-3 text-[13px]">
           <p>Approve <b>{product}</b> for <b>@{creator}</b>? TikTok will ship the sample. <b>This cannot be undone.</b></p>
-          {warn && <p className="mt-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 font-semibold text-warn" data-testid="approve-warn">Not eligible by your rules: {warn}</p>}
+          {warn && <p className="mt-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 font-semibold text-warn" data-testid="approve-warn">Does not meet criteria: {warn}</p>}
           <div className="mt-2 flex gap-2"><Button size="sm" disabled={pending} onClick={() => send("APPROVE")} data-testid="approve-yes">Yes, Approve</Button><Button size="sm" variant="secondary" disabled={pending} onClick={() => setMode(null)}>Cancel</Button></div>
         </div>
       )}

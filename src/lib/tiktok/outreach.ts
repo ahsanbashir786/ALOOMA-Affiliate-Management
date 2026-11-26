@@ -45,7 +45,7 @@ export async function reviewSampleApplication(applicationId: string, result: "AP
   }
 }
 
-export type MarketFilters = { keyword?: string; gmvRanges?: string[]; pageToken?: string; /** TikTok's key for the same search, needed with every next page. */ searchKey?: string; /** Only creators in these top-level TikTok categories. */ categoryIds?: string[]; /** Leave out creators you invited in the last 90 days. */ notInvited90d?: boolean };
+export type MarketFilters = { keyword?: string; gmvRanges?: string[]; pageToken?: string; /** TikTok's key for the same search, needed with every next page. */ searchKey?: string; /** Only creators in these top-level TikTok categories. */ categoryIds?: string[]; /** TikTok needs the sub-categories (one level down) of each category, or it refuses the search. */ children?: Record<string, string[]>; /** Leave out creators you invited in the last 90 days. */ notInvited90d?: boolean };
 export type MarketResult = { ok: true; creators: MarketCreator[]; next: string | null; searchKey: string | null; fieldsSeen: string[] } | { ok: false; error: string; busy: boolean; raw: string };
 
 /** TikTok's own Creator Marketplace (last 30 days of data). Read only. */
@@ -53,7 +53,7 @@ export async function searchMarketplace(filters: MarketFilters = {}, f?: Fetch):
   const body: Record<string, unknown> = {};
   if (filters.keyword?.trim()) body.keyword = filters.keyword.trim().slice(0, 60);
   if (filters.gmvRanges?.length) body.gmv_ranges = filters.gmvRanges.filter((g) => /^GMV_RANGE_[0-9_A-Z]+$/.test(g));
-  if (filters.categoryIds?.length) body.category = filters.categoryIds.filter((c) => /^\d{3,12}$/.test(c)).map((id) => ({ parent_category_id: id }));
+  if (filters.categoryIds?.length) body.category = filters.categoryIds.filter((c) => /^\d{3,12}$/.test(c)).map((id) => (filters.children?.[id]?.length ? { parent_category_id: id, child_category_id_list: filters.children[id].slice(0, 200) } : { parent_category_id: id }));
   if (filters.notInvited90d) body.affiliate_data = { not_invited_l90_days: true };
   if (filters.searchKey) body.search_key = filters.searchKey;
   try {
@@ -70,24 +70,30 @@ export async function searchMarketplace(filters: MarketFilters = {}, f?: Fetch):
 // ───────── your categories, and what TikTok says about one creator ─────────
 const CAT_KEY = "tt_category_roots";
 const CAT_DAYS = 7;
-export type PreferredCategories = { ok: boolean; error?: string; roots: Category[]; ids: string[]; matched: { id: string; name: string }[]; missing: string[] };
+export type PreferredCategories = { ok: boolean; error?: string; roots: Category[]; ids: string[]; matched: { id: string; name: string }[]; missing: string[]; /** Sub-categories one level down, per top-level category. */ children: Record<string, string[]> };
 
 /** TikTok's top-level categories (kept for a week), and which of them are the ones ALOOMA wants. */
 export async function preferredCategories(f?: Fetch): Promise<PreferredCategories> {
   const [row] = await db.select().from(settings).where(eq(settings.key, CAT_KEY));
-  const saved = row?.value as { at?: number; roots?: Category[] } | undefined;
+  const saved = row?.value as { at?: number; roots?: Category[]; kids?: Record<string, string[]> } | undefined;
   let roots = saved?.roots ?? [];
-  if (!roots.length || Date.now() - (saved?.at ?? 0) > CAT_DAYS * 86_400_000) {
+  let kids = saved?.kids ?? {};
+  if (!roots.length || !saved?.kids || Date.now() - (saved?.at ?? 0) > CAT_DAYS * 86_400_000) {
     try {
       const d = await callApi<{ categories?: { id?: unknown; parent_id?: unknown; local_name?: unknown }[] }>("/product/202309/categories", { method: "GET", query: { category_version: "v2", listing_platform: "TIKTOK_SHOP", include_prohibited_categories: "false", locale: "en-US" }, f });
-      roots = (d.categories ?? []).filter((c) => String(c.parent_id ?? "") === "0" || c.parent_id === 0).map((c) => ({ id: String(c.id), parent_id: "0", local_name: String(c.local_name ?? "") })).filter((c) => c.id && c.local_name);
-      if (roots.length) await db.insert(settings).values({ key: CAT_KEY, value: { at: Date.now(), roots } }).onConflictDoUpdate({ target: settings.key, set: { value: { at: Date.now(), roots }, updatedAt: new Date() } });
+      const all = d.categories ?? [];
+      roots = all.filter((c) => String(c.parent_id ?? "") === "0" || c.parent_id === 0).map((c) => ({ id: String(c.id), parent_id: "0", local_name: String(c.local_name ?? "") })).filter((c) => c.id && c.local_name);
+      const rootIds = new Set(roots.map((r) => r.id));
+      kids = {};
+      for (const c of all) { const pid = String(c.parent_id ?? ""); if (rootIds.has(pid) && c.id != null) (kids[pid] ??= []).push(String(c.id)); }
+      const value = { at: Date.now(), roots, kids };
+      if (roots.length) await db.insert(settings).values({ key: CAT_KEY, value }).onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
     } catch (e) {
-      if (!roots.length) return { ok: false, error: e instanceof Error ? e.message.replace(/^TikTok said no \(\d+\): /, "") : "TikTok did not answer.", roots: [], ids: [], matched: [], missing: [] };
+      if (!roots.length) return { ok: false, error: e instanceof Error ? e.message.replace(/^TikTok said no \(\d+\): /, "") : "TikTok did not answer.", roots: [], ids: [], matched: [], missing: [], children: {} };
     }
   }
   const p = preferredRootIds(roots);
-  return { ok: p.ids.length > 0, roots, ids: p.ids, matched: p.matched, missing: p.missing, error: p.ids.length ? undefined : "None of your categories were found in TikTok's list." };
+  return { ok: p.ids.length > 0, roots, ids: p.ids, matched: p.matched, missing: p.missing, children: kids, error: p.ids.length ? undefined : "None of your categories were found in TikTok's list." };
 }
 
 export type ProfileResult = { ok: true; profile: CreatorProfile } | { ok: false; error: string; busy: boolean };

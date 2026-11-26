@@ -150,7 +150,7 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
   const dir = await getAffiliateDirectory({ ...opts, size: per, page: size === "all" ? 1 : opts.page });
   const ov = dir.overview!;
   const periodLabel = opts.range ? `${fmtDayLabel(opts.range.start)} – ${fmtDayLabel(opts.range.end)}` : "All time";
-  const values = { q: opts.q ?? "", samples: opts.samples ?? "all", product: opts.product ?? "", status: opts.status ?? "", stage: opts.stage ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", owner: opts.owner ?? "", tier: opts.tier ?? "", sort: opts.sort ?? "gmv", from: opts.from, to: opts.to };
+  const values = { q: opts.q ?? "", samples: opts.samples ?? "all", product: opts.product ?? "", status: opts.status ?? "", stage: opts.stage ?? "", action: opts.action ?? "", type: opts.type ?? "", wa: opts.wa ?? "", contact: opts.contact ?? "", owner: opts.owner ?? "", tier: opts.tier ?? "", sort: opts.sort ?? "gmv", from: opts.from, to: opts.to, sfrom: opts.sent?.start ?? "", sto: opts.sent?.end ?? "" };
   const pageFilters = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, (k === "samples" && v === "all") || (k === "sort" && v === "gmv") ? undefined : v || undefined]));
   const sortHref = (sort: string) => href("/creators", { ...pageFilters, sort: sort === "gmv" ? undefined : sort });
   /** A column heading that sorts: first click high to low, click again for low to high. */
@@ -181,6 +181,12 @@ export default async function CreatorsPage({ searchParams }: PageProps<"/creator
         <StatTile icon={UserX} tone="neutral" label="No Owner" value={ov.unowned.toLocaleString("en-MY")} note="no one assigned" change={<ChangePill now={ov.unowned} before={cmp?.unowned ?? null} good="down" />} href="/creators?owner=none" className="col-span-2 lg:col-span-1" />
       </div>
 
+      {opts.sent && (
+        <p className="-mb-2 flex items-center gap-2 text-[13px] text-ink-2" data-testid="sent-filter">
+          <span className="rounded-full border border-brand/40 bg-brand-soft px-3 py-1 font-medium text-brand">Samples sent {fmtDayLabel(opts.sent.start)} – {fmtDayLabel(opts.sent.end)}</span>
+          <Link href={href("/creators", { ...pageFilters, sfrom: undefined, sto: undefined, page: undefined })} scroll={false} className="text-[12.5px] font-semibold text-ink-3 hover:text-brand">Clear</Link>
+        </p>
+      )}
       <nav aria-label="Stage" className="flex flex-wrap gap-2" data-testid="stage-strip">
         <Link href={href("/creators", { ...pageFilters, stage: undefined, page: undefined })} scroll={false} aria-current={!opts.stage ? "page" : undefined} className={cn("inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13.5px] font-medium transition-colors", !opts.stage ? "border-brand/40 bg-brand-soft text-brand" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>All Stages</Link>
         {STAGES.filter((x) => STRIP_STAGES.includes(x.key) || opts.stage === x.key).map((x) => (
